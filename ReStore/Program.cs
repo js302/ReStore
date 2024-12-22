@@ -6,7 +6,7 @@ namespace ReStore
 {
     public class Program
     {
-        private const string USAGE_MESSAGE = "Usage:\n  ReStore.exe [--service <remote>]\n  ReStore.exe backup <remote> <sourceDir>\n  ReStore.exe restore <remote> <backupPath> <targetDir>";
+        private const string USAGE_MESSAGE = "Usage:\n  ReStore.exe --service <remote-source>\n  ReStore.exe backup <remote-source> <sourceDir>\n  ReStore.exe restore <remote-source> <backupPath> <targetDir>\n\nExample:\n  ReStore.exe --service gdrive\n  ReStore.exe backup gdrive %USERPROFILE%\\Desktop\n";
 
         public static async Task Main(string[] args)
         {
