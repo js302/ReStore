@@ -1,0 +1,6 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+brace_style = end_of_line
