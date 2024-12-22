@@ -36,36 +36,43 @@ namespace ReStore
             var sizeAnalyzer = new SizeAnalyzer();
             var compressionUtil = new CompressionUtil();
 
-            if (isServiceMode)
+            try
             {
-                var watcher = new FileWatcher(configManager, logger, systemState, storage, sizeAnalyzer, compressionUtil);
-                await watcher.StartAsync();
-            }
-            else
-            {
-                var command = args[0];
-                switch (command)
+                if (isServiceMode)
                 {
-                    case "backup":
-                        if (args.Length < 3)
-                        {
-                            Console.WriteLine(USAGE_MESSAGE);
-                            break;
-                        }
-                        var backup = new Backup(logger, systemState, sizeAnalyzer, storage, compressionUtil);
-                        await backup.BackupDirectoryAsync(args[2]);
-                        break;
-
-                    case "restore":
-                        if (args.Length < 4)
-                        {
-                            Console.WriteLine(USAGE_MESSAGE);
-                            break;
-                        }
-                        var restore = new Restore(logger, systemState, storage);
-                        await restore.RestoreFromBackupAsync(args[2], args[3]);
-                        break;
+                    var watcher = new FileWatcher(configManager, logger, systemState, storage, sizeAnalyzer, compressionUtil);
+                    await watcher.StartAsync();
                 }
+                else
+                {
+                    var command = args[0];
+                    switch (command)
+                    {
+                        case "backup":
+                            if (args.Length < 3)
+                            {
+                                Console.WriteLine(USAGE_MESSAGE);
+                                break;
+                            }
+                            var backup = new Backup(logger, systemState, sizeAnalyzer, storage, compressionUtil);
+                            await backup.BackupDirectoryAsync(args[2]);
+                            break;
+
+                        case "restore":
+                            if (args.Length < 4)
+                            {
+                                Console.WriteLine(USAGE_MESSAGE);
+                                break;
+                            }
+                            var restore = new Restore(logger, systemState, storage);
+                            await restore.RestoreFromBackupAsync(args[2], args[3]);
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Log($"Error: {ex.Message}");
             }
         }
     }

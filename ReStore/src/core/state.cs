@@ -3,9 +3,9 @@ namespace ReStore.Core;
 public class SystemState
 {
     public DateTime LastBackupTime { get; set; }
-    public Dictionary<string, string> FileHashes { get; set; } = new();
-    public List<string> TrackedDirectories { get; set; } = new();
-    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = new();
+    public Dictionary<string, string> FileHashes { get; set; } = [];
+    public List<string> TrackedDirectories { get; set; } = [];
+    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
 
     public void AddOrUpdateFile(string path, string hash)
     {

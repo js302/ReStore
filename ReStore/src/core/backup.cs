@@ -21,54 +21,70 @@ public class Backup
     }
 
     public async Task BackupDirectoryAsync(string sourceDirectory)
-    {
-        _logger.Log($"Starting backup of {sourceDirectory}");
-
-        var (size, exceedsThreshold) = await _sizeAnalyzer.AnalyzeDirectoryAsync(sourceDirectory);
-
-        if (exceedsThreshold)
+    {   
+        try
         {
-            _logger.Log($"Warning: Directory size ({size} bytes) exceeds threshold");
-            // TODO: Implement user notification/confirmation logic here
-        }
+            sourceDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(sourceDirectory));
+            _logger.Log($"Starting backup of {sourceDirectory}");
 
-        var diffManager = new DiffManager();
-        var previousBackupPath = _state.GetPreviousBackupPath(sourceDirectory);
-        var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+            var (size, exceedsThreshold) = await _sizeAnalyzer.AnalyzeDirectoryAsync(sourceDirectory);
 
-        if (previousBackupPath != null)
-        {
-            try
+            if (exceedsThreshold)
             {
-                var diff = await diffManager.CreateDiffAsync(previousBackupPath, sourceDirectory);
-                var diffPath = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.diff");
-                await File.WriteAllBytesAsync(diffPath, diff);
-                
-                var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.diff";
-                await _storage.UploadAsync(diffPath, remotePath);
-                _state.AddBackup(sourceDirectory, remotePath, true);
-                
-                File.Delete(diffPath);
+                _logger.Log($"Warning: Directory size ({size} bytes) exceeds threshold");
+                // TODO: Implement user notification/confirmation logic here
             }
-            catch (Exception ex)
+
+            var diffManager = new DiffManager();
+            var previousBackupPath = _state.GetPreviousBackupPath(sourceDirectory);
+            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+
+            if (previousBackupPath != null)
             {
-                _logger.Log($"Failed to create diff backup: {ex.Message}");
+                try
+                {
+                    var diff = await diffManager.CreateDiffAsync(previousBackupPath, sourceDirectory);
+                    var diffPath = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.diff");
+                    await File.WriteAllBytesAsync(diffPath, diff);
+                    
+                    var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.diff";
+                    await _storage.UploadAsync(diffPath, remotePath);
+                    _state.AddBackup(sourceDirectory, remotePath, true);
+                    
+                    File.Delete(diffPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log($"Failed to create diff backup: {ex.Message}");
+                }
+            }
+            else
+            {
+                await CreateFullBackupAsync(sourceDirectory, timestamp);
             }
         }
-        else
+        catch (Exception ex)
         {
-            await CreateFullBackupAsync(sourceDirectory, timestamp);
+            _logger.Log($"Failed to backup directory: {ex.Message}");
         }
     }
     private async Task CreateFullBackupAsync(string sourceDirectory, string timestamp)
-    {
-        var tempArchive = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.zip");
-        await _compressionUtil.CompressDirectoryAsync(sourceDirectory, tempArchive);
+    {   
+        try
+        {
+            var tempArchive = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.zip");
+            await _compressionUtil.CompressDirectoryAsync(sourceDirectory, tempArchive);
 
-        var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.zip";
-        await _storage.UploadAsync(tempArchive, remotePath);
-        _state.AddBackup(sourceDirectory, remotePath, false);
+            var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.zip";
+            await _storage.UploadAsync(tempArchive, remotePath);
+            _state.AddBackup(sourceDirectory, remotePath, false);
 
-        File.Delete(tempArchive);
+            File.Delete(tempArchive);
+            _logger.Log($"Backup completed successfully: {remotePath}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Failed to create full backup: {ex.Message}");
+        }
     }
 }
