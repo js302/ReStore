@@ -1,4 +1,4 @@
-namespace ReStore.Core;
+namespace ReStore.src.core;
 
 public class SystemState
 {

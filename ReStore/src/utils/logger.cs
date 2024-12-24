@@ -1,4 +1,4 @@
-namespace ReStore.Utils;
+namespace ReStore.src.utils;
 
 public interface ILogger
 {

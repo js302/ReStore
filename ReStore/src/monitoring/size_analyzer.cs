@@ -1,4 +1,4 @@
-namespace ReStore.Monitoring;
+namespace ReStore.src.monitoring;
 
 public class SizeAnalyzer
 {

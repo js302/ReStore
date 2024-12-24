@@ -1,30 +1,6 @@
-// namespace ReStore.Core;
+using ReStore.src.utils;
 
-// public class DiffManager
-// {
-//     private const int CHUNK_SIZE = 4096;
-
-//     public async Task<byte[]> CreateDiffAsync(string originalFile, string newFile)
-//     {
-//         // This is a placeholder for future implementation
-//         // TODO: Implement actual binary diff algorithm
-//         // Possible approaches:
-//         // 1. Block-based diffing
-//         // 2. Rolling hash for similarity detection
-//         // 3. Delta compression
-//         throw new NotImplementedException();
-//     }
-
-//     public async Task ApplyDiffAsync(string originalFile, byte[] diff, string outputFile)
-//     {
-//         // This is a placeholder for future implementation
-//         // TODO: Implement diff application logic
-//         throw new NotImplementedException();
-//     }
-// }
-
-
-namespace ReStore.Core;
+namespace ReStore.src.core;
 
 public class DiffManager
 {
@@ -33,6 +9,14 @@ public class DiffManager
 
     public async Task<byte[]> CreateDiffAsync(string originalFile, string newFile)
     {
+        // Quick skip if hashes match
+        var fileHasher = new FileHasher();
+        if (!await fileHasher.IsContentDifferentAsync(originalFile, newFile))
+        {
+            // No need to create a diff if files match
+            return [];
+        }
+
         using var memStream = new MemoryStream();
         using var writer = new BinaryWriter(memStream);
         using var origFile = File.OpenRead(originalFile);

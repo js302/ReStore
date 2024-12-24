@@ -1,9 +1,9 @@
-using ReStore.Utils;
-using ReStore.Storage.AWS;
-using ReStore.Storage.GitHub;
-using ReStore.Storage.GoogleDrive;
+using ReStore.src.utils;
+using ReStore.src.storage.aws;
+using ReStore.src.storage.github;
+using ReStore.src.storage.google;
 
-namespace ReStore.Storage;
+namespace ReStore.src.storage;
 
 public interface IStorage
 {

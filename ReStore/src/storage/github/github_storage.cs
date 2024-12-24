@@ -1,7 +1,7 @@
 using Octokit;
-using ReStore.Utils;
+using ReStore.src.utils;
 
-namespace ReStore.Storage.GitHub;
+namespace ReStore.src.storage.github;
 
 public class GitHubStorage(ILogger logger) : StorageBase(logger)
 {

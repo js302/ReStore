@@ -1,7 +1,7 @@
-using ReStore.Utils;
-using ReStore.Storage;
+using ReStore.src.utils;
+using ReStore.src.storage;
 
-namespace ReStore.Core;
+namespace ReStore.src.core;
 
 public class Restore
 {
