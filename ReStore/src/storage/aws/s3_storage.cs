@@ -1,8 +1,8 @@
 using Amazon.S3;
 using Amazon.S3.Model;
-using ReStore.Utils;
+using ReStore.src.utils;
 
-namespace ReStore.Storage.AWS;
+namespace ReStore.src.storage.aws;
 
 public class S3Storage(ILogger logger) : StorageBase(logger)
 {

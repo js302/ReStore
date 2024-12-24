@@ -3,17 +3,15 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Google.Apis.Upload;
 using Google.Apis.Util.Store;
-using ReStore.Utils;
+using ReStore.src.utils;
 
-namespace ReStore.Storage.GoogleDrive;
+namespace ReStore.src.storage.google;
 
-public class DriveStorage: StorageBase
+public class DriveStorage(ILogger logger) : StorageBase(logger)
 {
     private DriveService? _driveService;
     private string _backupFolderId = string.Empty;
     private const string BACKUP_FOLDER_NAME = "ReStore Backups";
-
-    public DriveStorage(ILogger logger) : base(logger) { }
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {

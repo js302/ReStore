@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace ReStore.Utils;
+namespace ReStore.src.utils;
 
 public class FileHasher
 {
@@ -25,5 +25,16 @@ public class FileHasher
         }
 
         return hashes;
+    }
+
+    public async Task<bool> IsContentDifferentAsync(string fileA, string fileB)
+    {
+        // Check if sizes differ first
+        if(new FileInfo(fileA).Length != new FileInfo(fileB).Length) return true;
+
+        // Compare hashes
+        var hashA = await ComputeHashAsync(fileA);
+        var hashB = await ComputeHashAsync(fileB);
+        return !hashA.Equals(hashB, StringComparison.OrdinalIgnoreCase);
     }
 }

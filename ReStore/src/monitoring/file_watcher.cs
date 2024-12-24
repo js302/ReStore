@@ -1,14 +1,14 @@
-using ReStore.Utils;
-using ReStore.Core;
-using ReStore.Storage;
+using ReStore.src.utils;
+using ReStore.src.core;
+using ReStore.src.storage;
 
-namespace ReStore.Monitoring;
+namespace ReStore.src.monitoring;
 
 public class FileWatcher
 {
-    private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
-    private readonly HashSet<string> _changedPaths = new();
-    private readonly object _lockObject = new();
+    private readonly Dictionary<string, FileSystemWatcher> _watchers = [];
+    private readonly HashSet<string> _changedPaths = [];
+    private readonly Lock _lockObject = new();
     private readonly Timer _backupTimer;
     private readonly ILogger _logger;
     private readonly IConfigManager _config;

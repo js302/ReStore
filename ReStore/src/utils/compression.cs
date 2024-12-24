@@ -1,6 +1,6 @@
 using System.IO.Compression;
 
-namespace ReStore.Utils;
+namespace ReStore.src.utils;
 
 public class CompressionUtil
 {

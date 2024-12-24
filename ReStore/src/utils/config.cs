@@ -1,7 +1,7 @@
 using System.Text.Json;
-using ReStore.Storage;
+using ReStore.src.storage;
 
-namespace ReStore.Utils;
+namespace ReStore.src.utils;
 
 public interface IConfigManager
 {
