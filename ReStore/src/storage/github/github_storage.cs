@@ -9,8 +9,6 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
     private string _repoOwner = string.Empty;
     private string _repoName = string.Empty;
 
-    // public GitHubStorage(ILogger logger) : base(logger) { }
-
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
         ValidateOptions(options);
