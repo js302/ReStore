@@ -9,8 +9,6 @@ public class S3Storage(ILogger logger) : StorageBase(logger)
     private AmazonS3Client? _s3Client;
     private string _bucketName = string.Empty;
 
-    // public S3Storage(ILogger logger) : base(logger) { }
-
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
         ValidateOptions(options);

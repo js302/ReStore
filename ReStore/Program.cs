@@ -1,6 +1,6 @@
-﻿using ReStore.Core;
-using ReStore.Utils;
-using ReStore.Monitoring;
+﻿using ReStore.src.core;
+using ReStore.src.utils;
+using ReStore.src.monitoring;
 
 namespace ReStore
 {
