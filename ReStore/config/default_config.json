@@ -1,7 +1,6 @@
 {
   "watchDirectories": [
     "%APPDATA%",
-    "%LOCALAPPDATA%",
     "%USERPROFILE%\\Desktop",
     "%USERPROFILE%\\Documents",
     "%USERPROFILE%\\Downloads",

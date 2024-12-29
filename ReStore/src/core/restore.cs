@@ -3,20 +3,11 @@ using ReStore.src.storage;
 
 namespace ReStore.src.core;
 
-public class Restore
+public class Restore(ILogger logger, SystemState state, IStorage storage)
 {
-    private readonly ILogger _logger;
-    private readonly SystemState _state;
-    private readonly IStorage _storage;
-    private readonly CompressionUtil _compressionUtil;
-
-    public Restore(ILogger logger, SystemState state, IStorage storage)
-    {
-        _logger = logger;
-        _state = state;
-        _storage = storage;
-        _compressionUtil = new CompressionUtil();
-    }
+    private readonly ILogger _logger = logger;
+    private readonly SystemState _state = state;
+    private readonly IStorage _storage = storage;
 
     public async Task RestoreFromBackupAsync(string backupPath, string targetDirectory)
     {
@@ -33,7 +24,7 @@ public class Restore
             _logger.Log($"Downloaded backup to {localBackupFile}");
 
             // Extract files
-            await _compressionUtil.DecompressAsync(localBackupFile, targetDirectory);
+            await CompressionUtil.DecompressAsync(localBackupFile, targetDirectory);
             _logger.Log($"Extracted backup to {targetDirectory}");
 
             // Restore file permissions if necessary
