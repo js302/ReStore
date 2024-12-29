@@ -42,6 +42,7 @@ namespace ReStore
                 {
                     var watcher = new FileWatcher(configManager, logger, systemState, storage, sizeAnalyzer, compressionUtil);
                     await watcher.StartAsync();
+                    await Task.Delay(Timeout.Infinite);
                 }
                 else
                 {
@@ -54,7 +55,7 @@ namespace ReStore
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
-                            var backup = new Backup(logger, systemState, sizeAnalyzer, storage, compressionUtil);
+                            var backup = new Backup(logger, systemState, sizeAnalyzer, storage);
                             await backup.BackupDirectoryAsync(args[2]);
                             break;
 

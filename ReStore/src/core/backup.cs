@@ -3,22 +3,12 @@ using ReStore.src.monitoring;
 using ReStore.src.storage;
 namespace ReStore.src.core;
 
-public class Backup
+public class Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IStorage storage)
 {
-    private readonly ILogger _logger;
-    private readonly SystemState _state;
-    private readonly SizeAnalyzer _sizeAnalyzer;
-    private readonly IStorage _storage;
-    private readonly CompressionUtil _compressionUtil;
-
-    public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IStorage storage, CompressionUtil compressionUtil)
-    {
-        _logger = logger;
-        _state = state;
-        _sizeAnalyzer = sizeAnalyzer;
-        _storage = storage;
-        _compressionUtil = compressionUtil;
-    }
+    private readonly ILogger _logger = logger;
+    private readonly SystemState _state = state;
+    private readonly SizeAnalyzer _sizeAnalyzer = sizeAnalyzer;
+    private readonly IStorage _storage = storage;
 
     public async Task BackupDirectoryAsync(string sourceDirectory)
     {   
@@ -32,7 +22,7 @@ public class Backup
             if (exceedsThreshold)
             {
                 _logger.Log($"Warning: Directory size ({size} bytes) exceeds threshold");
-                // TODO: Implement user notification/confirmation logic here
+                // TODO: implement some user notification/confirmation logic here
             }
 
             var diffManager = new DiffManager();
@@ -73,7 +63,7 @@ public class Backup
         try
         {
             var tempArchive = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.zip");
-            await _compressionUtil.CompressDirectoryAsync(sourceDirectory, tempArchive);
+            await CompressionUtil.CompressDirectoryAsync(sourceDirectory, tempArchive);
 
             var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.zip";
             await _storage.UploadAsync(tempArchive, remotePath);
