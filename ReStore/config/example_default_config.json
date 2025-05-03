@@ -3,18 +3,41 @@
     "%APPDATA%",
     "%USERPROFILE%\\Desktop",
     "%USERPROFILE%\\Documents",
-    "%USERPROFILE%\\Downloads",
     "%USERPROFILE%\\Pictures"
   ],
   "backupInterval": "01:00:00",
   "sizeThresholdMB": 500,
+  "maxFileSizeMB": 100,
+  "backupType": "Incremental",
+  "excludedPatterns": [
+    "*.tmp",
+    "*.temp",
+    "~$*",
+    "Thumbs.db",
+    ".DS_Store",
+    "*.log",
+    "*.pst",
+    "desktop.ini",
+    "*.lnk",
+    "*.crdownload",
+    "*.partial"
+  ],
+  "excludedPaths": [
+    "%USERPROFILE%\\Documents\\Temp",
+    "%USERPROFILE%\\Downloads",
+    "%TEMP%",
+    "%LOCALAPPDATA%\\Temp",
+    "%WINDIR%",
+    "%ProgramFiles%",
+    "%ProgramFiles(x86)%"
+  ],
   "storageSources": {
     "gdrive": {
       "path": "./backups",
       "options": {
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
-        "refresh_token": "your_refresh_token"
+        "token_folder": "%USERPROFILE%\\.restore\\tokens"
       }
     },
     "s3": {
@@ -22,7 +45,8 @@
       "options": {
         "accessKeyId": "your_access_key_id",
         "secretAccessKey": "your_secret_access_key",
-        "region": "your_region"
+        "region": "your_region",
+        "bucketName": "restore-backups"
       }
     },
     "github": {
@@ -30,8 +54,12 @@
       "options": {
         "token": "your_token",
         "repo": "your_repo",
-        "owner": "your_owner"
+        "owner": "your-github-username"
       }
+    },
+    "local": {
+      "path": "%USERPROFILE%\\ReStoreBackups",
+      "options": {}
     }
   }
 }

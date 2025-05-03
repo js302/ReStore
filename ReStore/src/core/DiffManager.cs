@@ -13,7 +13,6 @@ public class DiffManager
         var fileHasher = new FileHasher();
         if (!await fileHasher.IsContentDifferentAsync(originalFile, newFile))
         {
-            // No need to create a diff if files match
             return [];
         }
 
@@ -39,7 +38,7 @@ public class DiffManager
             {
                 Array.Copy(buffer, 0, window, 0, ROLLING_WINDOW);
                 var weakHash = CalculateRollingHash(window);
-                
+
                 if (blockMap.TryGetValue(weakHash, out var blockPositions))
                 {
                     foreach (var blockPos in blockPositions)
@@ -50,7 +49,7 @@ public class DiffManager
                             writer.Write((byte)DiffOperation.Copy);
                             writer.Write(blockPos);
                             writer.Write(CHUNK_SIZE);
-                            
+
                             position += CHUNK_SIZE;
                             matchFound = true;
                             break;
@@ -88,7 +87,7 @@ public class DiffManager
                 case DiffOperation.Copy:
                     var sourcePos = reader.ReadInt64();
                     var length = reader.ReadInt32();
-                    
+
                     origFile.Position = sourcePos;
                     await origFile.CopyToAsync(outFile, length);
                     break;
@@ -116,13 +115,13 @@ public class DiffManager
             if (bytesRead >= ROLLING_WINDOW)
             {
                 var hash = CalculateRollingHash(buffer[..ROLLING_WINDOW]);
-                
+
                 if (!blocks.TryGetValue(hash, out var positions))
                 {
                     positions = new List<long>();
                     blocks[hash] = positions;
                 }
-                
+
                 positions.Add(position);
             }
 

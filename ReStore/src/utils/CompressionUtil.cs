@@ -4,15 +4,15 @@ namespace ReStore.src.utils;
 
 public class CompressionUtil
 {
-    public static async Task CompressDirectoryAsync(string sourceDirectory, string outputZipFile)
+    public async Task CompressDirectoryAsync(string sourceDirectory, string outputZipFile)
     {
         await Task.Run(() =>
         {
             Directory.CreateDirectory(Path.GetDirectoryName(outputZipFile)!);
             using var archive = ZipFile.Open(outputZipFile, ZipArchiveMode.Create);
-            
+
             var files = Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories);
-                
+
             foreach (var file in files)
             {
                 var relativePath = Path.GetRelativePath(sourceDirectory, file);
@@ -21,7 +21,7 @@ public class CompressionUtil
         });
     }
 
-    public static async Task DecompressAsync(string zipFile, string outputDirectory)
+    public async Task DecompressAsync(string zipFile, string outputDirectory)
     {
         zipFile = Path.GetFullPath(Environment.ExpandEnvironmentVariables(zipFile));
         outputDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(outputDirectory));
