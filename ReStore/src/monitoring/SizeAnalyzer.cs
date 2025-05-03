@@ -12,13 +12,13 @@ public class SizeAnalyzer
         return (size, size > SizeThreshold);
     }
 
-    private async Task<long> CalculateDirectorySizeAsync(string path)
+    private static async Task<long> CalculateDirectorySizeAsync(string path)
     {
         var info = new DirectoryInfo(path);
         return await Task.Run(() => CalculateSize(info));
     }
 
-    private long CalculateSize(DirectoryInfo directory)
+    private static long CalculateSize(DirectoryInfo directory)
     {
         long size = 0;
 

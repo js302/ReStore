@@ -55,7 +55,7 @@ namespace ReStore
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
-                            var backup = new Backup(logger, systemState, sizeAnalyzer, storage);
+                            var backup = new Backup(logger, systemState, sizeAnalyzer, storage, configManager);
                             await backup.BackupDirectoryAsync(args[2]);
                             break;
 

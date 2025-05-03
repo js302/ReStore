@@ -8,6 +8,7 @@ public class Restore(ILogger logger, SystemState state, IStorage storage)
     private readonly ILogger _logger = logger;
     private readonly SystemState _state = state;
     private readonly IStorage _storage = storage;
+    private readonly CompressionUtil _compressionUtil = new();
 
     public async Task RestoreFromBackupAsync(string backupPath, string targetDirectory)
     {
@@ -24,7 +25,7 @@ public class Restore(ILogger logger, SystemState state, IStorage storage)
             _logger.Log($"Downloaded backup to {localBackupFile}");
 
             // Extract files
-            await CompressionUtil.DecompressAsync(localBackupFile, targetDirectory);
+            await _compressionUtil.DecompressAsync(localBackupFile, targetDirectory);
             _logger.Log($"Extracted backup to {targetDirectory}");
 
             // Restore file permissions if necessary
@@ -34,18 +35,18 @@ public class Restore(ILogger logger, SystemState state, IStorage storage)
             {
                 var diffManager = new DiffManager();
                 var baseBackupPath = _state.GetBaseBackupPath(backupPath);
-                
+
                 // Download and apply diff
                 var localDiffFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(backupPath));
                 await _storage.DownloadAsync(backupPath, localDiffFile);
-                
+
                 var diff = await File.ReadAllBytesAsync(localDiffFile);
                 if (baseBackupPath == null)
                 {
                     throw new InvalidOperationException("Base backup path cannot be null.");
                 }
                 await diffManager.ApplyDiffAsync(baseBackupPath, diff, targetDirectory);
-                
+
                 File.Delete(localDiffFile);
             }
 

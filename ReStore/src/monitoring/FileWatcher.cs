@@ -8,8 +8,7 @@ namespace ReStore.src.monitoring;
 public class FileWatcher
 {
     private readonly Dictionary<string, FileSystemWatcher> _watchers = [];
-    readonly ConcurrentDictionary<string, DateTime> _changedPaths = new();
-    private readonly Lock _lockObject = new();
+    private readonly ConcurrentDictionary<string, DateTime> _changedPaths = new();
     private readonly Timer _backupTimer;
     private readonly ILogger _logger;
     private readonly IConfigManager _config;
@@ -17,24 +16,7 @@ public class FileWatcher
     private readonly IStorage _storage;
     private readonly SizeAnalyzer _sizeAnalyzer;
     private readonly CompressionUtil _compressionUtil;
-
-    // Patterns to ignore during backup
-    private static readonly string[] EXCLUDED_PATTERNS = {
-        @"\\Temp\\",
-        @"\\Windows\\",
-        @"\\Microsoft\\",
-        @"\\AppData\\Local\\Temp\\",
-        @"\\Program Files\\",
-        @"\\Program Files (x86)\\",
-        "~$",
-        ".tmp",
-        ".temp",
-        "desktop.ini"
-    };
-
-    private static readonly string[] EXCLUDED_EXTENSIONS = {
-        ".tmp", ".temp", ".lnk", ".crdownload", ".partial", ".bak"
-    };
+    private readonly FileSelectionService _fileSelectionService;
 
     public FileWatcher(IConfigManager config, ILogger logger, SystemState state, IStorage storage,
                     SizeAnalyzer sizeAnalyzer, CompressionUtil compressionUtil)
@@ -45,6 +27,7 @@ public class FileWatcher
         _storage = storage;
         _sizeAnalyzer = sizeAnalyzer;
         _compressionUtil = compressionUtil;
+        _fileSelectionService = new FileSelectionService(logger, config);
         _backupTimer = new Timer(OnBackupTimer, null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -52,7 +35,15 @@ public class FileWatcher
     {
         foreach (var path in _config.WatchDirectories)
         {
-            AddWatcher(path);
+            if (Directory.Exists(path))
+            {
+                AddWatcher(path);
+                _logger.Log($"Added watcher for directory: {path}", LogLevel.Info);
+            }
+            else
+            {
+                _logger.Log($"Directory not found: {path}", LogLevel.Warning);
+            }
         }
 
         // Start periodic backup timer
@@ -77,45 +68,9 @@ public class FileWatcher
         _watchers[path] = watcher;
     }
 
-    private static bool ShouldExcludePath(string path)
-    {
-        // normalize path for comparison
-        path = path.Replace('/', '\\');
-
-        // checking if the path exists
-        if (!File.Exists(path) && !Directory.Exists(path))
-            return true;
-
-        // checking against excluded patterns
-        if (EXCLUDED_PATTERNS.Any(pattern => path.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        // checking file extension
-        var extension = Path.GetExtension(path);
-        if (EXCLUDED_EXTENSIONS.Contains(extension, StringComparer.OrdinalIgnoreCase))
-            return true;
-
-        // check if it's a system or hidden file
-        // TODO: check if this is necessary
-        try
-        {
-            var attr = File.GetAttributes(path);
-            if ((attr & FileAttributes.System) == FileAttributes.System ||
-                (attr & FileAttributes.Hidden) == FileAttributes.Hidden)
-                return true;
-        }
-        catch
-        {
-            // if I can't access the file, better to skip it
-            return true;
-        }
-
-        return false;
-    }
-
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
-        if (!ShouldExcludePath(e.FullPath))
+        if (!_fileSelectionService.ShouldExcludeFile(e.FullPath))
         {
             _changedPaths[e.FullPath] = DateTime.UtcNow;
         }
@@ -123,7 +78,7 @@ public class FileWatcher
 
     private void OnFileRenamed(object sender, RenamedEventArgs e)
     {
-        if (!ShouldExcludePath(e.FullPath))
+        if (!_fileSelectionService.ShouldExcludeFile(e.FullPath))
         {
             // only track the new name, remove the old one
             _changedPaths.TryRemove(e.OldFullPath, out _);
@@ -134,8 +89,6 @@ public class FileWatcher
     private void OnBackupTimer(object? state)
     {
         var now = DateTime.UtcNow;
-
-        // waiting for sometime after last change before backing up
         var bufferTime = TimeSpan.FromSeconds(10);
 
         // get paths that haven't been modified in the buffer period
@@ -160,7 +113,7 @@ public class FileWatcher
                     // double checking file still exists
                     if (File.Exists(path))
                     {
-                        var backup = new Backup(_logger, _state, _sizeAnalyzer, _storage);
+                        var backup = new Backup(_logger, _state, _sizeAnalyzer, _storage, _config);
                         await backup.BackupDirectoryAsync(Path.GetDirectoryName(path)!);
                     }
                 }
