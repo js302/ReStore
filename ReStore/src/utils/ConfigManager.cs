@@ -185,14 +185,13 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     private async Task CreateDefaultConfigAsync()
     {
-        // Set default watch directories
         WatchDirectories =
         [
+            Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Desktop"),
             Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Documents"),
             Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Pictures")
         ];
 
-        // Set default storage
         StorageSources = new Dictionary<string, StorageConfig>
         {
             ["local"] = new StorageConfig

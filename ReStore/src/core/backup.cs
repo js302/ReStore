@@ -14,7 +14,7 @@ public class Backup
     private readonly IConfigManager _config;
     private readonly FileSelectionService _fileSelectionService;
     private readonly FileDiffSyncManager? _diffSyncManager;
-    private readonly CompressionUtil _compressionUtil = new();
+    private readonly CompressionUtil _compressionUtil;
 
     public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IStorage storage, IConfigManager? config = null)
     {
@@ -24,6 +24,7 @@ public class Backup
         _storage = storage;
         _config = config ?? throw new ArgumentNullException(nameof(config), "Config cannot be null");
         _fileSelectionService = new FileSelectionService(logger, _config);
+        _compressionUtil = new CompressionUtil();
 
         var backupConfig = new BackupConfigurationManager(logger, _config);
         _diffSyncManager = new FileDiffSyncManager(logger, state, backupConfig);
@@ -31,23 +32,32 @@ public class Backup
 
     public async Task BackupDirectoryAsync(string sourceDirectory)
     {
+        if (string.IsNullOrWhiteSpace(sourceDirectory))
+        {
+            throw new ArgumentException("Source directory cannot be null or empty", nameof(sourceDirectory));
+        }
+
         try
         {
             sourceDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(sourceDirectory));
+            
+            if (!Directory.Exists(sourceDirectory))
+            {
+                throw new DirectoryNotFoundException($"Source directory not found: {sourceDirectory}");
+            }
+
             _logger.Log($"Starting backup of {sourceDirectory}");
 
+            _sizeAnalyzer.SizeThreshold = _config.SizeThresholdMB * 1024 * 1024;
             var (size, exceedsThreshold) = await _sizeAnalyzer.AnalyzeDirectoryAsync(sourceDirectory);
 
             if (exceedsThreshold)
             {
                 _logger.Log($"Warning: Directory size ({size} bytes) exceeds threshold");
-                // TODO: implement some user notification/confirmation logic here
             }
 
-            // Get all files to consider for backup
             var allFiles = GetFilesInDirectory(sourceDirectory);
 
-            // Determine which files need to be backed up based on backup type
             var filesToBackup = _diffSyncManager != null
                 ? _diffSyncManager.GetFilesToBackup(allFiles)
                 : allFiles;
@@ -61,7 +71,6 @@ public class Backup
 
             _logger.Log($"Preparing to backup {filesToBackup.Count} files from {sourceDirectory}");
 
-            // Update metadata for files being backed up
             if (_diffSyncManager != null)
             {
                 await _diffSyncManager.UpdateFileMetadataAsync(filesToBackup);
@@ -91,6 +100,16 @@ public class Backup
 
     public async Task BackupFilesAsync(IEnumerable<string> filesToBackup, string baseDirectory)
     {
+        if (filesToBackup == null)
+        {
+            throw new ArgumentNullException(nameof(filesToBackup));
+        }
+
+        if (string.IsNullOrWhiteSpace(baseDirectory))
+        {
+            throw new ArgumentException("Base directory cannot be null or empty", nameof(baseDirectory));
+        }
+
         var fileList = filesToBackup.ToList();
         if (!fileList.Any())
         {

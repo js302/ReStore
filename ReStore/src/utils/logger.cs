@@ -25,7 +25,20 @@ public class Logger : ILogger
         lock (_lockObject)
         {
             Console.WriteLine(logMessage);
-            File.AppendAllText(LOG_FILE, logMessage + Environment.NewLine);
+            
+            try
+            {
+                File.AppendAllText(LOG_FILE, logMessage + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+                // If we can't write to the log file, at least we've output to console
+                // This prevents the entire application from failing due to logging issues
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Same as above - continue even if log file access is denied
+            }
         }
     }
 }

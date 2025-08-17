@@ -2,6 +2,7 @@ using ReStore.src.utils;
 using ReStore.src.storage.aws;
 using ReStore.src.storage.github;
 using ReStore.src.storage.google;
+using ReStore.src.storage.local;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -79,7 +80,8 @@ public class StorageFactory
         {
             ["s3"] = logger => new S3Storage(logger),
             ["github"] = logger => new GitHubStorage(logger),
-            ["gdrive"] = logger => new DriveStorage(logger)
+            ["gdrive"] = logger => new DriveStorage(logger),
+            ["local"] = logger => new LocalStorage(logger)
         };
     }
 

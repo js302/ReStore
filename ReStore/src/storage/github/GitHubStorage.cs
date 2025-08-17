@@ -8,6 +8,7 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
     private GitHubClient? _client;
     private string _repoOwner = string.Empty;
     private string _repoName = string.Empty;
+    private bool _disposed = false;
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
@@ -46,11 +47,6 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
 
     public override async Task UploadAsync(string localPath, string remotePath)
     {
-        // Note: This is a simplified implementation
-        // A full implementation would need to:
-        // 1. Use Git LFS for large files
-        // 2. Handle commits and branches
-        // 3. Deal with rate limits
         var bytes = await File.ReadAllBytesAsync(localPath);
         var base64Content = Convert.ToBase64String(bytes);
 
@@ -61,16 +57,35 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
                 _repoName,
                 remotePath,
                 new CreateFileRequest(
-                    $"Update {remotePath}",
+                    $"Create {remotePath}",
                     base64Content,
                     false
                 )
             );
+            Logger.Log($"Successfully uploaded {Path.GetFileName(localPath)} to GitHub", LogLevel.Info);
         }
-        catch (NotFoundException)
+        catch (ApiValidationException ex) when (ex.ApiError?.Message?.Contains("already exists") == true)
         {
-            Logger.Log($"Creating new file: {remotePath}");
-            throw;
+            Logger.Log($"File {remotePath} already exists, updating...", LogLevel.Info);
+            
+            var existingFile = await _client!.Repository.Content.GetAllContentsByRef(_repoOwner, _repoName, remotePath);
+            await _client.Repository.Content.UpdateFile(
+                _repoOwner,
+                _repoName,
+                remotePath,
+                new UpdateFileRequest(
+                    $"Update {remotePath}",
+                    base64Content,
+                    existingFile[0].Sha,
+                    false
+                )
+            );
+            Logger.Log($"Successfully updated {Path.GetFileName(localPath)} on GitHub", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Failed to upload {localPath}: {ex.Message}", LogLevel.Error);
+            throw new InvalidOperationException($"Failed to upload {localPath} to GitHub", ex);
         }
     }
 
@@ -102,5 +117,19 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
             remotePath,
             new DeleteFileRequest($"Delete {remotePath}", content[0].Sha)
         );
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+
+        if (disposing)
+        {
+            _client = null;
+            Logger.Log("Disposed GitHubStorage resources.", LogLevel.Debug);
+        }
+
+        _disposed = true;
+        base.Dispose(disposing);
     }
 }
