@@ -16,6 +16,7 @@ public class FileWatcher : IDisposable
     private readonly Backup _backup;
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly ConcurrentDictionary<string, DateTime> _changedFiles = new();
+    private readonly FileSelectionService _fileSelectionService;
     private Timer? _backupTimer;
     private readonly TimeSpan _bufferTime = TimeSpan.FromSeconds(10);
     private bool _isDisposed = false;
@@ -29,6 +30,7 @@ public class FileWatcher : IDisposable
         _sizeAnalyzer = sizeAnalyzer;
         _compressionUtil = compressionUtil;
         _backup = new Backup(_logger, _systemState, _sizeAnalyzer, _storage, _configManager);
+        _fileSelectionService = new FileSelectionService(_logger, _configManager);
     }
 
     public Task StartAsync()
@@ -68,6 +70,11 @@ public class FileWatcher : IDisposable
 
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
+        if (_fileSelectionService.ShouldExcludeFile(e.FullPath))
+        {
+            return;
+        }
+
         _logger.Log($"File change detected ({e.ChangeType}): {e.FullPath}", LogLevel.Debug);
         _changedFiles.AddOrUpdate(e.FullPath, DateTime.UtcNow, (key, oldValue) => DateTime.UtcNow);
         _backupTimer?.Change(_bufferTime, Timeout.InfiniteTimeSpan);
@@ -75,6 +82,11 @@ public class FileWatcher : IDisposable
 
     private void OnRenamed(object sender, RenamedEventArgs e)
     {
+        if (_fileSelectionService.ShouldExcludeFile(e.FullPath))
+        {
+            return;
+        }
+
         _logger.Log($"File rename detected: {e.OldFullPath} -> {e.FullPath}", LogLevel.Debug);
         _changedFiles.AddOrUpdate(e.FullPath, DateTime.UtcNow, (key, oldValue) => DateTime.UtcNow);
         _backupTimer?.Change(_bufferTime, Timeout.InfiniteTimeSpan);

@@ -283,16 +283,16 @@ public class SystemState
     {
         try
         {
-            using var md5 = MD5.Create();
+            using var sha256 = SHA256.Create();
             using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            byte[] hash = await md5.ComputeHashAsync(stream);
+            byte[] hash = await sha256.ComputeHashAsync(stream);
             return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
         }
-        catch (IOException ex)
+        catch (IOException)
         {
             return string.Empty;
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
             return string.Empty;
         }

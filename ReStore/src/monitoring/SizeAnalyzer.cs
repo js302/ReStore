@@ -8,6 +8,16 @@ public class SizeAnalyzer
 
     public async Task<(long Size, bool ExceedsThreshold)> AnalyzeDirectoryAsync(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("Path cannot be null or empty", nameof(path));
+        }
+
+        if (!Directory.Exists(path))
+        {
+            throw new DirectoryNotFoundException($"Directory not found: {path}");
+        }
+
         long size = await CalculateDirectorySizeAsync(path);
         return (size, size > SizeThreshold);
     }
@@ -22,16 +32,25 @@ public class SizeAnalyzer
     {
         long size = 0;
 
-        // Add size of all files
-        foreach (FileInfo file in directory.GetFiles())
+        try
         {
-            size += file.Length;
-        }
+            foreach (FileInfo file in directory.GetFiles())
+            {
+                size += file.Length;
+            }
 
-        // Recursively add subdirectory sizes
-        foreach (DirectoryInfo dir in directory.GetDirectories())
+            foreach (DirectoryInfo dir in directory.GetDirectories())
+            {
+                size += CalculateSize(dir);
+            }
+        }
+        catch (UnauthorizedAccessException)
         {
-            size += CalculateSize(dir);
+            // Skip directories/files we can't access
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Skip directories that no longer exist
         }
 
         return size;
