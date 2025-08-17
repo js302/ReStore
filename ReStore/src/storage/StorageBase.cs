@@ -8,7 +8,8 @@ using System.Threading.Tasks;
 
 namespace ReStore.src.storage;
 
-public interface IStorage
+// Inherit from IDisposable
+public interface IStorage : IDisposable
 {
     Task InitializeAsync(Dictionary<string, string> options);
     Task UploadAsync(string localPath, string remotePath);
@@ -17,9 +18,11 @@ public interface IStorage
     Task DeleteAsync(string remotePath);
 }
 
+// Implement IDisposable
 public abstract class StorageBase : IStorage
 {
     protected readonly ILogger Logger;
+    private bool _disposed = false; // Track disposal status
 
     protected StorageBase(ILogger logger)
     {
@@ -31,6 +34,37 @@ public abstract class StorageBase : IStorage
     public abstract Task DownloadAsync(string remotePath, string localPath);
     public abstract Task<bool> ExistsAsync(string remotePath);
     public abstract Task DeleteAsync(string remotePath);
+
+    // Public Dispose method
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    // Protected virtual Dispose method for subclasses to override
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+
+        if (disposing)
+        {
+            // Dispose managed state (managed objects).
+            // Subclasses will override this to dispose their specific clients.
+            Logger.Log($"Disposing {GetType().Name} resources.", LogLevel.Debug);
+        }
+
+        // Free unmanaged resources (unmanaged objects) and override finalizer
+        // Set large fields to null
+
+        _disposed = true;
+    }
+
+    // Optional Finalizer (only if the base class directly owns unmanaged resources)
+    // ~StorageBase()
+    // {
+    //     Dispose(false);
+    // }
 }
 
 public class StorageFactory

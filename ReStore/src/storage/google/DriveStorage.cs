@@ -20,6 +20,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
     private const string BACKUP_FOLDER_NAME = "ReStore Backups";
     private const int MAX_RETRY_ATTEMPTS = 3;
     private readonly Dictionary<string, string> _folderCache = new();
+    private bool _disposed = false; // Add disposed flag specific to this class
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
@@ -388,5 +389,24 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
             ".zip" => "application/zip",
             _ => "application/octet-stream"
         };
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+
+        if (disposing)
+        {
+            // Dispose managed state (managed objects).
+            _driveService?.Dispose();
+            _driveService = null; // Set to null after disposal
+            Logger.Log("Disposed DriveService.", LogLevel.Debug);
+        }
+
+        // Free unmanaged resources (unmanaged objects) and override finalizer
+        // Set large fields to null
+
+        _disposed = true;
+        base.Dispose(disposing); // Call base class implementation
     }
 }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Security.Cryptography;
 using ReStore.src.utils;
+using System.Text.Json.Serialization;
 
 namespace ReStore.src.core;
 
@@ -12,36 +13,38 @@ public class FileMetadata
     public string Hash { get; set; } = "";
 }
 
+internal class PersistentStateData
+{
+    public DateTime LastBackupTime { get; set; }
+    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
+    public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
+}
+
 public class SystemState
 {
     public DateTime LastBackupTime { get; set; }
-    public Dictionary<string, string> FileHashes { get; set; } = [];
     public List<string> TrackedDirectories { get; set; } = [];
     public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
     public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
 
-    private string _metadataPath = "state/metadata.json";
-    private ILogger? _logger;
+    private string _stateFilePath = Path.Combine(AppContext.BaseDirectory, "state", "system_state.json");
+    [JsonIgnore]
+    private readonly ILogger? _logger;
 
     public SystemState(ILogger? logger = null)
     {
         _logger = logger;
-        LoadMetadata();
     }
 
-    public void SetMetadataPath(string path)
+    public void SetStateFilePath(string path)
     {
-        _metadataPath = path;
-    }
-
-    public void AddOrUpdateFile(string path, string hash)
-    {
-        FileHashes[path] = hash;
+        _stateFilePath = path;
+        _logger?.Log($"System state file path set to: {_stateFilePath}", LogLevel.Debug);
     }
 
     public bool HasFileChanged(string path, string currentHash)
     {
-        return !FileHashes.TryGetValue(path, out var storedHash) || storedHash != currentHash;
+        return !FileMetadata.TryGetValue(path, out var storedMetadata) || storedMetadata.Hash != currentHash;
     }
 
     public string? GetPreviousBackupPath(string directory)
@@ -92,7 +95,14 @@ public class SystemState
         {
             var fileInfo = new FileInfo(filePath);
             if (!fileInfo.Exists)
+            {
+                if (FileMetadata.ContainsKey(filePath))
+                {
+                    FileMetadata.Remove(filePath);
+                    _logger?.Log($"Removed metadata for deleted file: {filePath}", LogLevel.Debug);
+                }
                 return;
+            }
 
             var metadata = new FileMetadata
             {
@@ -104,60 +114,100 @@ public class SystemState
 
             FileMetadata[filePath] = metadata;
         }
+        catch (IOException ioEx)
+        {
+            _logger?.Log($"IO Error updating metadata for {filePath}: {ioEx.Message}. Skipping file.", LogLevel.Warning);
+        }
+        catch (UnauthorizedAccessException uaEx)
+        {
+            _logger?.Log($"Access Denied updating metadata for {filePath}: {uaEx.Message}. Skipping file.", LogLevel.Warning);
+        }
         catch (Exception ex)
         {
             _logger?.Log($"Error updating metadata for {filePath}: {ex.Message}", LogLevel.Warning);
         }
     }
 
-    public async Task SaveMetadataAsync()
+    public async Task SaveStateAsync()
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_metadataPath)!);
-            var json = JsonSerializer.Serialize(FileMetadata.Values.ToList(), new JsonSerializerOptions
+            var stateData = new PersistentStateData
             {
-                WriteIndented = true
-            });
-            await File.WriteAllTextAsync(_metadataPath, json);
-            _logger?.Log($"Saved metadata for {FileMetadata.Count} files", LogLevel.Info);
+                LastBackupTime = this.LastBackupTime,
+                BackupHistory = this.BackupHistory,
+                FileMetadata = this.FileMetadata
+            };
+
+            Directory.CreateDirectory(Path.GetDirectoryName(_stateFilePath)!);
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(stateData, options);
+            await File.WriteAllTextAsync(_stateFilePath, json);
+            _logger?.Log($"System state saved to {_stateFilePath}", LogLevel.Info);
         }
         catch (Exception ex)
         {
-            _logger?.Log($"Error saving metadata: {ex.Message}", LogLevel.Error);
+            _logger?.Log($"Error saving system state to {_stateFilePath}: {ex.Message}", LogLevel.Error);
         }
     }
 
-    private void LoadMetadata()
+    public async Task LoadStateAsync()
     {
         try
         {
-            if (File.Exists(_metadataPath))
+            if (File.Exists(_stateFilePath))
             {
-                string json = File.ReadAllText(_metadataPath);
-                var metadata = JsonSerializer.Deserialize<List<FileMetadata>>(json);
-                if (metadata != null)
+                _logger?.Log($"Loading system state from {_stateFilePath}", LogLevel.Debug);
+                string json = await File.ReadAllTextAsync(_stateFilePath);
+                var stateData = JsonSerializer.Deserialize<PersistentStateData>(json);
+                if (stateData != null)
                 {
-                    FileMetadata = metadata.ToDictionary(m => m.FilePath);
-                    _logger?.Log($"Loaded metadata for {FileMetadata.Count} files", LogLevel.Info);
+                    this.LastBackupTime = stateData.LastBackupTime;
+                    this.BackupHistory = stateData.BackupHistory ?? [];
+                    this.FileMetadata = stateData.FileMetadata ?? [];
+                    _logger?.Log($"Loaded state: {FileMetadata.Count} file metadata entries, {BackupHistory.Count} backup history entries.", LogLevel.Info);
+                }
+                else
+                {
+                    _logger?.Log($"Deserialization of state file resulted in null: {_stateFilePath}", LogLevel.Warning);
+                    InitializeEmptyState();
                 }
             }
+            else
+            {
+                _logger?.Log($"State file not found, initializing empty state: {_stateFilePath}", LogLevel.Info);
+                InitializeEmptyState();
+            }
+        }
+        catch (JsonException jsonEx)
+        {
+            _logger?.Log($"Error deserializing system state file {_stateFilePath}: {jsonEx.Message}. Initializing empty state.", LogLevel.Error);
+            InitializeEmptyState();
         }
         catch (Exception ex)
         {
-            _logger?.Log($"Error loading metadata: {ex.Message}", LogLevel.Error);
-            FileMetadata = new Dictionary<string, FileMetadata>();
+            _logger?.Log($"Error loading system state from {_stateFilePath}: {ex.Message}. Initializing empty state.", LogLevel.Error);
+            InitializeEmptyState();
         }
+    }
+
+    private void InitializeEmptyState()
+    {
+        this.LastBackupTime = DateTime.MinValue;
+        this.BackupHistory = [];
+        this.FileMetadata = [];
     }
 
     public List<string> GetChangedFiles(List<string> allFiles, BackupType backupType)
     {
         if (backupType == BackupType.Full)
         {
+            _logger?.Log("Full backup requested, including all files.", LogLevel.Info);
             return allFiles;
         }
 
         var filesToBackup = new List<string>();
+        DateTime lastFullBackupTime = GetLastFullBackupTime();
 
         foreach (var filePath in allFiles)
         {
@@ -171,25 +221,24 @@ public class SystemState
 
                 if (!FileMetadata.TryGetValue(filePath, out var previousMetadata))
                 {
-                    // New file
+                    _logger?.Log($"New file detected: {filePath}", LogLevel.Debug);
                     shouldBackup = true;
                 }
                 else
                 {
                     if (backupType == BackupType.Incremental)
                     {
-                        // For incremental backup, check if file was modified since last backup
-                        if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified ||
-                            fileInfo.Length != previousMetadata.Size)
+                        if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified || fileInfo.Length != previousMetadata.Size)
                         {
+                            _logger?.Log($"File changed (Incremental): {filePath}", LogLevel.Debug);
                             shouldBackup = true;
                         }
                     }
                     else if (backupType == BackupType.Differential)
                     {
-                        // For differential backup, check if file was modified since last full backup
-                        if (fileInfo.LastWriteTimeUtc > LastBackupTime)
+                        if (fileInfo.LastWriteTimeUtc > lastFullBackupTime)
                         {
+                            _logger?.Log($"File changed (Differential): {filePath}", LogLevel.Debug);
                             shouldBackup = true;
                         }
                     }
@@ -202,22 +251,51 @@ public class SystemState
             }
             catch (Exception ex)
             {
-                _logger?.Log($"Error checking file {filePath}: {ex.Message}", LogLevel.Warning);
-                // If we can't check, include it to be safe
+                _logger?.Log($"Error checking file {filePath}: {ex.Message}. Including in backup.", LogLevel.Warning);
                 filesToBackup.Add(filePath);
             }
         }
 
-        _logger?.Log($"Found {filesToBackup.Count} changed files out of {allFiles.Count} total files", LogLevel.Info);
+        _logger?.Log($"Found {filesToBackup.Count} changed files out of {allFiles.Count} total files for {backupType} backup.", LogLevel.Info);
         return filesToBackup;
+    }
+
+    private DateTime GetLastFullBackupTime()
+    {
+        DateTime lastFullTime = DateTime.MinValue;
+        foreach (var historyList in BackupHistory.Values)
+        {
+            var lastFull = historyList
+                .Where(b => !b.IsDiff)
+                .OrderByDescending(b => b.Timestamp)
+                .FirstOrDefault();
+
+            if (lastFull != null && lastFull.Timestamp > lastFullTime)
+            {
+                lastFullTime = lastFull.Timestamp;
+            }
+        }
+        _logger?.Log($"Last full backup time determined as: {lastFullTime}", LogLevel.Debug);
+        return lastFullTime;
     }
 
     private static async Task<string> CalculateFileHashAsync(string filePath)
     {
-        using var md5 = MD5.Create();
-        using var stream = File.OpenRead(filePath);
-        byte[] hash = await md5.ComputeHashAsync(stream);
-        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        try
+        {
+            using var md5 = MD5.Create();
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            byte[] hash = await md5.ComputeHashAsync(stream);
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        }
+        catch (IOException ex)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return string.Empty;
+        }
     }
 }
 

@@ -5,95 +5,60 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 
-namespace ReStore.src.backup
-{
-    public class FileDiffSyncManager
-    {
-        private readonly ILogger _logger;
-        private readonly SystemState _systemState;
-        private readonly BackupConfigurationManager _backupConfig;
-        
-        private const int MAX_RETRY_ATTEMPTS = 3;
-        
-        public FileDiffSyncManager(ILogger logger, SystemState systemState, BackupConfigurationManager backupConfig)
-        {
-            _logger = logger;
-            _systemState = systemState;
-            _backupConfig = backupConfig;
-        }
-        
-        public async Task UpdateFileMetadataAsync(List<string> backedUpFiles)
-        {
-            foreach (var file in backedUpFiles)
-            {
-                await _systemState.AddOrUpdateFileMetadataAsync(file);
-            }
-            
-            await _systemState.SaveMetadataAsync();
-            _logger.Log($"Updated metadata for {backedUpFiles.Count} files", LogLevel.Info);
-        }
+namespace ReStore.src.backup;
 
-        public List<string> GetFilesToBackup(List<string> candidateFiles)
+public class FileDiffSyncManager
+{
+    private readonly ILogger _logger;
+    private readonly SystemState _systemState; // Inject SystemState
+    private readonly BackupConfigurationManager _backupConfigManager;
+
+    // Constructor updated to accept SystemState
+    public FileDiffSyncManager(ILogger logger, SystemState systemState, BackupConfigurationManager backupConfigManager)
+    {
+        _logger = logger;
+        _systemState = systemState;
+        _backupConfigManager = backupConfigManager;
+    }
+
+    // Implement GetFilesToBackup using SystemState
+    public List<string> GetFilesToBackup(List<string> allFiles)
+    {
+        var backupType = _backupConfigManager.Configuration.Type;
+        _logger.Log($"Determining files to backup based on type: {backupType}", LogLevel.Debug);
+
+        // Delegate the logic to SystemState
+        var filesToBackup = _systemState.GetChangedFiles(allFiles, backupType);
+
+        _logger.Log($"Identified {filesToBackup.Count} files requiring backup.", LogLevel.Info);
+        return filesToBackup;
+    }
+
+    // Implement UpdateFileMetadataAsync using SystemState
+    public async Task UpdateFileMetadataAsync(List<string> backedUpFiles)
+    {
+        _logger.Log($"Updating metadata for {backedUpFiles.Count} successfully backed up files.", LogLevel.Debug);
+        foreach (var filePath in backedUpFiles)
         {
-            var backupType = _backupConfig.Configuration.Type;
-            var maxFileSize = _backupConfig.Configuration.MaxFileSize;
-            var excludePatterns = _backupConfig.Configuration.ExcludePatterns;
-            
-            // First filter by configuration rules
-            var filteredFiles = FilterFilesByConfiguration(candidateFiles, maxFileSize, excludePatterns);
-            
-            // Then use SystemState to determine which files have changed
-            var changedFiles = _systemState.GetChangedFiles(filteredFiles, backupType);
-            
-            _logger.Log($"Identified {changedFiles.Count} files to backup based on {backupType} strategy", LogLevel.Info);
-            return changedFiles;
-        }
-        
-        private List<string> FilterFilesByConfiguration(List<string> files, int maxFileSize, List<string> excludePatterns)
-        {
-            var result = new List<string>();
-            
-            foreach (var file in files)
+            try
             {
-                try
+                // Ensure file still exists before updating metadata
+                if (File.Exists(filePath))
                 {
-                    var fileInfo = new FileInfo(file);
-                    if (!fileInfo.Exists) continue;
-                    
-                    // Skip files that exceed max size
-                    if (fileInfo.Length > maxFileSize)
-                    {
-                        _logger.Log($"Skipping large file: {file} ({fileInfo.Length / (1024 * 1024)}MB)", LogLevel.Debug);
-                        continue;
-                    }
-                    
-                    // Apply backup-specific exclusion patterns
-                    if (IsExcludedByPattern(file, excludePatterns)) continue;
-                    
-                    result.Add(file);
+                    await _systemState.AddOrUpdateFileMetadataAsync(filePath);
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.Log($"Error filtering file {file}: {ex.Message}", LogLevel.Warning);
+                    _logger.Log($"File no longer exists, skipping metadata update: {filePath}", LogLevel.Warning);
                 }
             }
-            
-            return result;
-        }
-        
-        private bool IsExcludedByPattern(string filePath, List<string> patterns)
-        {
-            string fileName = Path.GetFileName(filePath);
-            
-            foreach (var pattern in patterns)
+            catch (Exception ex)
             {
-                if (FileSelectionService.IsWildcardMatch(fileName, pattern))
-                {
-                    return true;
-                }
+                _logger.Log($"Error updating metadata for file {filePath}: {ex.Message}", LogLevel.Warning);
+                // Continue updating metadata for other files
             }
-            
-            return false;
         }
+        _logger.Log("Metadata update complete.", LogLevel.Debug);
+        // State saving should happen after metadata updates in the Backup class
     }
 }

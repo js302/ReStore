@@ -48,69 +48,104 @@ public class Backup
             var allFiles = GetFilesInDirectory(sourceDirectory);
 
             // Determine which files need to be backed up based on backup type
-            var backupType = _config.BackupType;
             var filesToBackup = _diffSyncManager != null
                 ? _diffSyncManager.GetFilesToBackup(allFiles)
                 : allFiles;
 
-            if (filesToBackup.Count == 0)
+            if (!filesToBackup.Any())
             {
-                _logger.Log("No files need to be backed up", LogLevel.Info);
+                _logger.Log("No files need to be backed up based on the current state and backup type.", LogLevel.Info);
+                await _state.SaveStateAsync();
                 return;
             }
 
             _logger.Log($"Preparing to backup {filesToBackup.Count} files from {sourceDirectory}");
 
             // Update metadata for files being backed up
-            foreach (var file in filesToBackup)
-            {
-                await _state.AddOrUpdateFileMetadataAsync(file);
-            }
-
-            var diffManager = new DiffManager();
-            var previousBackupPath = _state.GetPreviousBackupPath(sourceDirectory);
-            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-
-            if (previousBackupPath != null && backupType != BackupType.Full)
-            {
-                try
-                {
-                    var diff = await diffManager.CreateDiffAsync(previousBackupPath, sourceDirectory);
-                    var diffPath = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.diff");
-                    await File.WriteAllBytesAsync(diffPath, diff);
-
-                    var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.diff";
-                    await _storage.UploadAsync(diffPath, remotePath);
-                    _state.AddBackup(sourceDirectory, remotePath, true);
-
-                    File.Delete(diffPath);
-                    _logger.Log($"Incremental backup completed: {remotePath}", LogLevel.Info);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log($"Failed to create diff backup: {ex.Message}", LogLevel.Error);
-                    // Fall back to full backup
-                    await CreateFullBackupAsync(sourceDirectory, timestamp);
-                }
-            }
-            else
-            {
-                await CreateFullBackupAsync(sourceDirectory, timestamp);
-            }
-
-            await _state.SaveMetadataAsync();
-
-            _state.LastBackupTime = DateTime.UtcNow;
-
-            // Update metadata after backup
             if (_diffSyncManager != null)
             {
                 await _diffSyncManager.UpdateFileMetadataAsync(filesToBackup);
             }
+            else
+            {
+                foreach (var file in filesToBackup)
+                {
+                    await _state.AddOrUpdateFileMetadataAsync(file);
+                }
+            }
+
+            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+
+            _logger.Log("Proceeding with full backup creation for selected files.", LogLevel.Info);
+            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp);
+
+            _state.LastBackupTime = DateTime.UtcNow;
+
+            await _state.SaveStateAsync();
         }
         catch (Exception ex)
         {
             _logger.Log($"Failed to backup directory: {ex.Message}", LogLevel.Error);
+        }
+    }
+
+    public async Task BackupFilesAsync(IEnumerable<string> filesToBackup, string baseDirectory)
+    {
+        var fileList = filesToBackup.ToList();
+        if (!fileList.Any())
+        {
+            _logger.Log("No files provided for backup.", LogLevel.Info);
+            return;
+        }
+
+        _logger.Log($"Starting backup of {fileList.Count} specific files from base directory {baseDirectory}", LogLevel.Info);
+
+        try
+        {
+            foreach (var file in fileList)
+            {
+                if (File.Exists(file))
+                {
+                    await _state.AddOrUpdateFileMetadataAsync(file);
+                }
+                else
+                {
+                    _logger.Log($"File no longer exists, skipping metadata update: {file}", LogLevel.Warning);
+                }
+            }
+
+            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+            var archiveFileName = $"backup_{Path.GetFileName(baseDirectory)}_{timestamp}.zip";
+            var tempArchive = Path.Combine(Path.GetTempPath(), archiveFileName);
+
+            _logger.Log($"Creating temporary archive: {tempArchive}", LogLevel.Debug);
+
+            var existingFilesToBackup = fileList.Where(File.Exists).ToList();
+            if (!existingFilesToBackup.Any())
+            {
+                _logger.Log("All specified files were deleted before archiving could start.", LogLevel.Warning);
+                return;
+            }
+
+            await _compressionUtil.CompressFilesAsync(existingFilesToBackup, baseDirectory, tempArchive);
+
+            var remotePath = $"backups/{Path.GetFileName(baseDirectory)}/{archiveFileName}";
+
+            _logger.Log($"Uploading archive {tempArchive} to {remotePath}", LogLevel.Debug);
+            await _storage.UploadAsync(tempArchive, remotePath);
+
+            _state.AddBackup(baseDirectory, remotePath, false);
+
+            File.Delete(tempArchive);
+            _logger.Log($"Deleted temporary archive: {tempArchive}", LogLevel.Debug);
+
+            _logger.Log($"Specific file backup completed: {remotePath}", LogLevel.Info);
+
+            await _state.SaveStateAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Failed to backup specific files from {baseDirectory}: {ex.Message}", LogLevel.Error);
         }
     }
 
@@ -132,18 +167,31 @@ public class Backup
         return files;
     }
 
-    private async Task CreateFullBackupAsync(string sourceDirectory, string timestamp)
+    private async Task CreateFullBackupAsync(string sourceDirectory, List<string> filesToInclude, string timestamp)
     {
+        if (!filesToInclude.Any())
+        {
+            _logger.Log("CreateFullBackupAsync called with no files to include.", LogLevel.Warning);
+            return;
+        }
+
         try
         {
-            var tempArchive = Path.Combine(Path.GetTempPath(), $"backup_{timestamp}.zip");
-            await _compressionUtil.CompressDirectoryAsync(sourceDirectory, tempArchive);
+            var archiveFileName = $"backup_{Path.GetFileName(sourceDirectory)}_{timestamp}.zip";
+            var tempArchive = Path.Combine(Path.GetTempPath(), archiveFileName);
 
-            var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{timestamp}.zip";
+            _logger.Log($"Creating temporary archive for full backup: {tempArchive}", LogLevel.Debug);
+
+            await _compressionUtil.CompressFilesAsync(filesToInclude, sourceDirectory, tempArchive);
+
+            var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{archiveFileName}";
+            _logger.Log($"Uploading full backup archive {tempArchive} to {remotePath}", LogLevel.Debug);
             await _storage.UploadAsync(tempArchive, remotePath);
+
             _state.AddBackup(sourceDirectory, remotePath, false);
 
             File.Delete(tempArchive);
+            _logger.Log($"Deleted temporary archive: {tempArchive}", LogLevel.Debug);
             _logger.Log($"Full backup completed: {remotePath}", LogLevel.Info);
         }
         catch (Exception ex)

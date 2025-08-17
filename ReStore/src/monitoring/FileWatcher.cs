@@ -5,119 +5,159 @@ using System.Collections.Concurrent;
 
 namespace ReStore.src.monitoring;
 
-public class FileWatcher
+public class FileWatcher : IDisposable
 {
-    private readonly Dictionary<string, FileSystemWatcher> _watchers = [];
-    private readonly ConcurrentDictionary<string, DateTime> _changedPaths = new();
-    private readonly Timer _backupTimer;
+    private readonly IConfigManager _configManager;
     private readonly ILogger _logger;
-    private readonly IConfigManager _config;
-    private readonly SystemState _state;
+    private readonly SystemState _systemState;
     private readonly IStorage _storage;
     private readonly SizeAnalyzer _sizeAnalyzer;
     private readonly CompressionUtil _compressionUtil;
-    private readonly FileSelectionService _fileSelectionService;
+    private readonly Backup _backup;
+    private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly ConcurrentDictionary<string, DateTime> _changedFiles = new();
+    private Timer? _backupTimer;
+    private readonly TimeSpan _bufferTime = TimeSpan.FromSeconds(10);
+    private bool _isDisposed = false;
 
-    public FileWatcher(IConfigManager config, ILogger logger, SystemState state, IStorage storage,
-                    SizeAnalyzer sizeAnalyzer, CompressionUtil compressionUtil)
+    public FileWatcher(IConfigManager configManager, ILogger logger, SystemState systemState, IStorage storage, SizeAnalyzer sizeAnalyzer, CompressionUtil compressionUtil)
     {
-        _config = config;
+        _configManager = configManager;
         _logger = logger;
-        _state = state;
+        _systemState = systemState;
         _storage = storage;
         _sizeAnalyzer = sizeAnalyzer;
         _compressionUtil = compressionUtil;
-        _fileSelectionService = new FileSelectionService(logger, config);
-        _backupTimer = new Timer(OnBackupTimer, null, Timeout.Infinite, Timeout.Infinite);
+        _backup = new Backup(_logger, _systemState, _sizeAnalyzer, _storage, _configManager);
     }
 
-    public async Task StartAsync()
+    public Task StartAsync()
     {
-        foreach (var path in _config.WatchDirectories)
+        _logger.Log("Starting file watcher service...");
+        foreach (var dir in _configManager.WatchDirectories)
         {
-            if (Directory.Exists(path))
+            if (Directory.Exists(dir))
             {
-                AddWatcher(path);
-                _logger.Log($"Added watcher for directory: {path}", LogLevel.Info);
+                var watcher = new FileSystemWatcher(dir)
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                    IncludeSubdirectories = true,
+                    EnableRaisingEvents = true
+                };
+
+                watcher.Changed += OnChanged;
+                watcher.Created += OnChanged;
+                watcher.Deleted += OnChanged;
+                watcher.Renamed += OnRenamed;
+                watcher.Error += OnError;
+
+                _watchers.Add(watcher);
+                _logger.Log($"Watching directory: {dir}");
             }
             else
             {
-                _logger.Log($"Directory not found: {path}", LogLevel.Warning);
+                _logger.Log($"Directory not found, cannot watch: {dir}", LogLevel.Warning);
             }
         }
 
-        // Start periodic backup timer
-        _backupTimer.Change(TimeSpan.Zero, _config.BackupInterval);
+        _backupTimer = new Timer(OnBackupTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
-        await Task.CompletedTask;
+        _logger.Log("File watcher service started.");
+        return Task.CompletedTask;
     }
 
-    private void AddWatcher(string path)
+    private void OnChanged(object sender, FileSystemEventArgs e)
     {
-        var watcher = new FileSystemWatcher(path)
-        {
-            IncludeSubdirectories = true,
-            EnableRaisingEvents = true
-        };
-
-        watcher.Changed += OnFileChanged;
-        watcher.Created += OnFileChanged;
-        watcher.Deleted += OnFileChanged;
-        watcher.Renamed += OnFileRenamed;
-
-        _watchers[path] = watcher;
+        _logger.Log($"File change detected ({e.ChangeType}): {e.FullPath}", LogLevel.Debug);
+        _changedFiles.AddOrUpdate(e.FullPath, DateTime.UtcNow, (key, oldValue) => DateTime.UtcNow);
+        _backupTimer?.Change(_bufferTime, Timeout.InfiniteTimeSpan);
     }
 
-    private void OnFileChanged(object sender, FileSystemEventArgs e)
+    private void OnRenamed(object sender, RenamedEventArgs e)
     {
-        if (!_fileSelectionService.ShouldExcludeFile(e.FullPath))
+        _logger.Log($"File rename detected: {e.OldFullPath} -> {e.FullPath}", LogLevel.Debug);
+        _changedFiles.AddOrUpdate(e.FullPath, DateTime.UtcNow, (key, oldValue) => DateTime.UtcNow);
+        _backupTimer?.Change(_bufferTime, Timeout.InfiniteTimeSpan);
+    }
+
+    private void OnError(object sender, ErrorEventArgs e)
+    {
+        _logger.Log($"File watcher error: {e.GetException().Message}", LogLevel.Error);
+    }
+
+    private async void OnBackupTimer(object? state)
+    {
+        _backupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+        var pathsToBackup = _changedFiles.Keys.ToList();
+        _changedFiles.Clear();
+
+        if (!pathsToBackup.Any())
         {
-            _changedPaths[e.FullPath] = DateTime.UtcNow;
+            _logger.Log("Backup timer triggered, but no pending changes.", LogLevel.Debug);
+            return;
         }
-    }
 
-    private void OnFileRenamed(object sender, RenamedEventArgs e)
-    {
-        if (!_fileSelectionService.ShouldExcludeFile(e.FullPath))
-        {
-            // only track the new name, remove the old one
-            _changedPaths.TryRemove(e.OldFullPath, out _);
-            _changedPaths[e.FullPath] = DateTime.UtcNow;
-        }
-    }
+        _logger.Log($"Backup buffer time elapsed. Processing {pathsToBackup.Count} changes.", LogLevel.Info);
 
-    private void OnBackupTimer(object? state)
-    {
-        var now = DateTime.UtcNow;
-        var bufferTime = TimeSpan.FromSeconds(10);
-
-        // get paths that haven't been modified in the buffer period
-        var pathsToBackup = _changedPaths
-            .Where(kvp => (now - kvp.Value) > bufferTime)
-            .Select(kvp => kvp.Key)
+        var groupedFiles = pathsToBackup
+            .Select(path => new { Path = path, Root = FindWatchedRoot(path) })
+            .Where(x => x.Root != null)
+            .GroupBy(x => x.Root!)
             .ToList();
 
-        // remove paths that are going to be backed up
-        foreach (var path in pathsToBackup)
+        foreach (var group in groupedFiles)
         {
-            _changedPaths.TryRemove(path, out _);
+            var rootDirectory = group.Key;
+            var filesInGroup = group.Select(x => x.Path).ToList();
+
+            _logger.Log($"Initiating backup for {filesInGroup.Count} changed files under {rootDirectory}", LogLevel.Info);
+            try
+            {
+                await _backup.BackupFilesAsync(filesInGroup, rootDirectory);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log($"Error during scheduled backup for {rootDirectory}: {ex.Message}", LogLevel.Error);
+            }
+        }
+    }
+
+    private string? FindWatchedRoot(string filePath)
+    {
+        var normalizedPath = Path.GetFullPath(filePath);
+
+        return _configManager.WatchDirectories
+            .Select(Path.GetFullPath)
+            .Where(watchedDir => normalizedPath.StartsWith(watchedDir, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(watchedDir => watchedDir.Length)
+            .FirstOrDefault();
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_isDisposed) return;
+
+        if (disposing)
+        {
+            _logger.Log("Disposing FileWatcher resources...", LogLevel.Debug);
+            _backupTimer?.Dispose();
+            foreach (var watcher in _watchers)
+            {
+                watcher.EnableRaisingEvents = false;
+                watcher.Dispose();
+            }
+            _watchers.Clear();
+            _changedFiles.Clear();
+            _logger.Log("FileWatcher resources disposed.", LogLevel.Debug);
         }
 
-        if (pathsToBackup.Count > 0)
-        {
-            _logger.Log($"Initiating backup for {pathsToBackup.Count} changed items");
-            Task.Run(async () =>
-            {
-                foreach (var path in pathsToBackup)
-                {
-                    // double checking file still exists
-                    if (File.Exists(path))
-                    {
-                        var backup = new Backup(_logger, _state, _sizeAnalyzer, _storage, _config);
-                        await backup.BackupDirectoryAsync(Path.GetDirectoryName(path)!);
-                    }
-                }
-            }).ConfigureAwait(false);
-        }
+        _isDisposed = true;
     }
 }

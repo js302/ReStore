@@ -8,16 +8,11 @@ public class CompressionUtil
     {
         await Task.Run(() =>
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(outputZipFile)!);
-            using var archive = ZipFile.Open(outputZipFile, ZipArchiveMode.Create);
-
-            var files = Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories);
-
-            foreach (var file in files)
+            if (File.Exists(outputZipFile))
             {
-                var relativePath = Path.GetRelativePath(sourceDirectory, file);
-                archive.CreateEntryFromFile(file, relativePath, CompressionLevel.Optimal);
+                File.Delete(outputZipFile);
             }
+            ZipFile.CreateFromDirectory(sourceDirectory, outputZipFile, CompressionLevel.Optimal, false);
         });
     }
 
@@ -35,6 +30,35 @@ public class CompressionUtil
             else
             {
                 throw new FileNotFoundException($"Zip file not found: {zipFile}");
+            }
+        });
+    }
+
+    public async Task CompressFilesAsync(IEnumerable<string> filesToInclude, string baseDirectory, string destinationArchivePath)
+    {
+        await Task.Run(() =>
+        {
+            if (File.Exists(destinationArchivePath))
+            {
+                File.Delete(destinationArchivePath);
+            }
+
+            using var archive = ZipFile.Open(destinationArchivePath, ZipArchiveMode.Create);
+            foreach (var filePath in filesToInclude)
+            {
+                // Ensure the file exists before trying to add it
+                if (!File.Exists(filePath))
+                {
+                    // Log this?
+                    continue;
+                }
+
+                // Calculate the relative path within the archive
+                var entryName = Path.GetRelativePath(baseDirectory, filePath);
+                // Normalize directory separators for zip standard
+                entryName = entryName.Replace(Path.DirectorySeparatorChar, '/');
+
+                archive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
             }
         });
     }
