@@ -397,4 +397,4 @@ FodyWeavers.xsd
 *.sln.iml
 
 # Config folder with sensitive information
-ReStore/config/default_config.json
+ReStore/config/config.json

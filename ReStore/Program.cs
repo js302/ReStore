@@ -2,12 +2,27 @@
 using ReStore.src.utils;
 using ReStore.src.monitoring;
 using ReStore.src.storage; // Added for IStorage
+using ReStore.src.backup;
 
 namespace ReStore
 {
     public class Program
     {
-        private const string USAGE_MESSAGE = "Usage:\n  ReStore.exe --service <remote-source>\n  ReStore.exe backup <remote-source> <sourceDir>\n  ReStore.exe restore <remote-source> <backupPath> <targetDir>\n\nExample:\n  ReStore.exe --service gdrive\n  ReStore.exe backup gdrive %USERPROFILE%\\Desktop\n";
+        private const string USAGE_MESSAGE = @"Usage:
+  ReStore.exe --service <remote-source>
+  ReStore.exe backup <remote-source> <sourceDir>
+  ReStore.exe restore <remote-source> <backupPath> <targetDir>
+  ReStore.exe system-backup <remote-source> [programs|environment|all]
+  ReStore.exe system-restore <remote-source> <backupPath> [programs|environment]
+  ReStore.exe --validate-config
+
+Examples:
+  ReStore.exe --service gdrive
+  ReStore.exe backup gdrive %USERPROFILE%\Desktop
+  ReStore.exe system-backup local all
+  ReStore.exe system-backup gdrive programs
+  ReStore.exe system-restore local system_backups/programs/programs_backup_20250906143022.zip programs
+  ReStore.exe --validate-config";
 
         public static async Task Main(string[] args)
         {
@@ -21,13 +36,35 @@ namespace ReStore
                 return;
             }
 
+            // Handle configuration validation
+            if (args.Length == 1 && args[0] == "--validate-config")
+            {
+                ValidateConfiguration(configManager, logger);
+                return;
+            }
+
             var isServiceMode = args.Length == 2 && args[0] == "--service";
-            var commandMode = args.Length >= 2 && (args[0] == "backup" || args[0] == "restore");
+            var commandMode = args.Length >= 2 && (args[0] == "backup" || args[0] == "restore" || args[0] == "system-backup" || args[0] == "system-restore");
 
             if (!isServiceMode && !commandMode)
             {
                 Console.WriteLine(USAGE_MESSAGE);
                 return;
+            }
+
+            // Auto-validate configuration for all operations
+            var validationResult = configManager.ValidateConfiguration();
+            if (!validationResult.IsValid)
+            {
+                logger.Log("Configuration validation failed. Please fix the errors before proceeding.", LogLevel.Error);
+                PrintValidationResults(validationResult, logger);
+                Environment.Exit(1);
+                return;
+            }
+            else if (validationResult.HasIssues)
+            {
+                logger.Log("Configuration validation completed with warnings.", LogLevel.Warning);
+                PrintValidationResults(validationResult, logger);
             }
 
             var remote = args[1];
@@ -85,6 +122,41 @@ namespace ReStore
                             var restore = new Restore(logger, systemState, storage);
                             await restore.RestoreFromBackupAsync(args[2], args[3]);
                             break;
+
+                        case "system-backup":
+                            if (args.Length < 2)
+                            {
+                                Console.WriteLine(USAGE_MESSAGE);
+                                break;
+                            }
+                            var backupType = args.Length >= 3 ? args[2] : "all";
+                            var systemBackupManager = new SystemBackupManager(logger, storage, systemState);
+                            
+                            switch (backupType.ToLowerInvariant())
+                            {
+                                case "programs":
+                                    await systemBackupManager.BackupInstalledProgramsAsync();
+                                    break;
+                                case "environment":
+                                    await systemBackupManager.BackupEnvironmentVariablesAsync();
+                                    break;
+                                case "all":
+                                default:
+                                    await systemBackupManager.BackupSystemAsync();
+                                    break;
+                            }
+                            break;
+
+                        case "system-restore":
+                            if (args.Length < 4)
+                            {
+                                Console.WriteLine(USAGE_MESSAGE);
+                                break;
+                            }
+                            var restoreType = args.Length >= 4 ? args[3] : "all";
+                            var systemRestoreManager = new SystemBackupManager(logger, storage, systemState);
+                            await systemRestoreManager.RestoreSystemAsync(restoreType, args[2]);
+                            break;
                     }
                 }
             }
@@ -106,6 +178,67 @@ namespace ReStore
                     await systemState.SaveStateAsync();
                 }
                 logger.Log("Application finished.", LogLevel.Info);
+            }
+        }
+
+        private static void ValidateConfiguration(IConfigManager configManager, ILogger logger)
+        {
+            logger.Log($"Configuration file location: {configManager.GetConfigFilePath()}", LogLevel.Info);
+            logger.Log("Running comprehensive configuration validation...", LogLevel.Info);
+            
+            var result = configManager.ValidateConfiguration();
+            
+            PrintValidationResults(result, logger);
+            
+            if (result.IsValid)
+            {
+                Console.WriteLine("\nConfiguration is valid and ready to use!");
+                if (result.Warnings.Count > 0)
+                {
+                    Console.WriteLine($"Found {result.Warnings.Count} warning(s) that should be reviewed.");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"\nConfiguration validation failed with {result.Errors.Count} error(s).");
+                Console.WriteLine("Please fix the errors above before using ReStore.");
+                Environment.Exit(1);
+            }
+        }
+
+        private static void PrintValidationResults(ConfigValidationResult result, ILogger logger)
+        {
+            // Print errors
+            if (result.Errors.Count > 0)
+            {
+                Console.WriteLine("\nERRORS:");
+                foreach (var error in result.Errors)
+                {
+                    Console.WriteLine($"{error}");
+                    logger.Log($"Config Error: {error}", LogLevel.Error);
+                }
+            }
+
+            // Print warnings
+            if (result.Warnings.Count > 0)
+            {
+                Console.WriteLine("\nWARNINGS:");
+                foreach (var warning in result.Warnings)
+                {
+                    Console.WriteLine($"{warning}");
+                    logger.Log($"Config Warning: {warning}", LogLevel.Warning);
+                }
+            }
+
+            // Print info messages (only in validation mode, not during startup)
+            if (result.Info.Count > 0)
+            {
+                Console.WriteLine("\nINFO:");
+                foreach (var info in result.Info)
+                {
+                    Console.WriteLine($"{info}");
+                    logger.Log($"Config Info: {info}", LogLevel.Info);
+                }
             }
         }
     }

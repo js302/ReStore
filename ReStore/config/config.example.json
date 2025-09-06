@@ -9,6 +9,20 @@
   "sizeThresholdMB": 500,
   "maxFileSizeMB": 100,
   "backupType": "Incremental",
+  "systemBackup": {
+    "enabled": true,
+    "includePrograms": true,
+    "includeEnvironmentVariables": true,
+    "backupInterval": "24:00:00",
+    "excludeSystemPrograms": [
+      "Microsoft Visual C++",
+      "Microsoft .NET",
+      "Windows SDK",
+      "KB[0-9]+",
+      "Update for",
+      "Security Update"
+    ]
+  },
   "excludedPatterns": [
     "*.tmp",
     "*.temp",
@@ -45,7 +59,7 @@
       "options": {
         "accessKeyId": "your_access_key_id",
         "secretAccessKey": "your_secret_access_key",
-        "region": "your_region",
+        "region": "your_aws_region",
         "bucketName": "restore-backups"
       }
     },
