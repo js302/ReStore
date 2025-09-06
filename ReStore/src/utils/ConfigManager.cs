@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using ReStore.src.storage;
 
 namespace ReStore.src.utils;
@@ -16,6 +17,8 @@ public interface IConfigManager
     Task LoadAsync();
     Task SaveAsync(string configPath = "");
     Task<IStorage> CreateStorageAsync(string storageType);
+    ConfigValidationResult ValidateConfiguration();
+    string GetConfigFilePath();
 }
 
 public enum BackupType
@@ -33,8 +36,9 @@ public class StorageConfig
 
 public class ConfigManager(ILogger logger) : IConfigManager
 {
-    private const string CONFIG_PATH = "config/default_config.json";
+    private static readonly string CONFIG_PATH = GetConfigPath();
     private JsonDocument? _config;
+    private ConfigValidator? _validator;
 
     private static readonly JsonSerializerOptions _writeOptions = new()
     {
@@ -57,6 +61,12 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     private readonly StorageFactory _storageFactory = new(logger);
 
+    public ConfigValidationResult ValidateConfiguration()
+    {
+        _validator ??= new ConfigValidator(logger);
+        return _validator.ValidateConfiguration(this);
+    }
+
     public async Task<IStorage> CreateStorageAsync(string storageType)
     {
         if (_config is null)
@@ -76,6 +86,11 @@ public class ConfigManager(ILogger logger) : IConfigManager
         }
 
         return await _storageFactory.CreateStorageAsync(storageType, config);
+    }
+
+    public string GetConfigFilePath()
+    {
+        return CONFIG_PATH;
     }
 
     public async Task LoadAsync()
@@ -242,5 +257,55 @@ public class ConfigManager(ILogger logger) : IConfigManager
             Environment.ExpandEnvironmentVariables("%ProgramFiles%"),
             Environment.ExpandEnvironmentVariables("%ProgramFiles(x86)%")
         ];
+    }
+
+    private static string GetConfigPath()
+    {
+        // Get the assembly location
+        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+        var assemblyDirectory = Path.GetDirectoryName(assemblyLocation);
+        
+        if (string.IsNullOrEmpty(assemblyDirectory))
+        {
+            // Fallback to current directory
+            return Path.Combine(Directory.GetCurrentDirectory(), "config", "config.json");
+        }
+
+        // Check if we're running from a bin directory (development mode)
+        var currentDir = new DirectoryInfo(assemblyDirectory);
+        DirectoryInfo? projectRoot = null;
+
+        // Navigate up to find the project root
+        // Look for indicators like .csproj files or the specific directory structure
+        while (currentDir?.Parent != null)
+        {
+            // Check if we're in a bin directory and go up to project root
+            if (currentDir.Name == "net9.0" && currentDir.Parent?.Name == "Debug" && currentDir.Parent.Parent?.Name == "bin")
+            {
+                projectRoot = currentDir.Parent.Parent.Parent; // Go up from bin/Debug/net9.0 to project root
+                break;
+            }
+            else if (currentDir.Name == "net9.0" && currentDir.Parent?.Name == "Release" && currentDir.Parent.Parent?.Name == "bin")
+            {
+                projectRoot = currentDir.Parent.Parent.Parent; // Go up from bin/Release/net9.0 to project root
+                break;
+            }
+            // Check if current directory contains .csproj file (project root)
+            else if (currentDir.GetFiles("*.csproj").Length > 0)
+            {
+                projectRoot = currentDir;
+                break;
+            }
+            
+            currentDir = currentDir.Parent;
+        }
+
+        if (projectRoot != null && projectRoot.Exists)
+        {
+            return Path.Combine(projectRoot.FullName, "config", "config.json");
+        }
+
+        // Fallback: use the directory where the executable is located
+        return Path.Combine(assemblyDirectory, "config", "config.json");
     }
 }
