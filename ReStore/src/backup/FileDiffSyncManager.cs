@@ -10,7 +10,7 @@ namespace ReStore.src.backup;
 public class FileDiffSyncManager
 {
     private readonly ILogger _logger;
-    private readonly SystemState _systemState; // Inject SystemState
+    private readonly SystemState _systemState;
     private readonly BackupConfigurationManager _backupConfigManager;
 
     // Constructor updated to accept SystemState

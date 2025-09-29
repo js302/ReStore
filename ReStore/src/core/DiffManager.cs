@@ -89,7 +89,7 @@ public class DiffManager
                     var length = reader.ReadInt32();
 
                     origFile.Position = sourcePos;
-                    await origFile.CopyToAsync(outFile, length);
+                    await CopyFixedLengthAsync(origFile, outFile, length);
                     break;
 
                 case DiffOperation.Data:
@@ -166,5 +166,23 @@ public class DiffManager
     {
         Copy = 0,
         Data = 1
+    }
+
+    private static async Task CopyFixedLengthAsync(Stream source, Stream destination, int bytesToCopy)
+    {
+        const int bufferSize = 81920;
+        byte[] buffer = new byte[Math.Min(bufferSize, bytesToCopy)];
+        int remaining = bytesToCopy;
+        while (remaining > 0)
+        {
+            int toRead = Math.Min(buffer.Length, remaining);
+            int read = await source.ReadAsync(buffer.AsMemory(0, toRead));
+            if (read == 0)
+            {
+                break;
+            }
+            await destination.WriteAsync(buffer.AsMemory(0, read));
+            remaining -= read;
+        }
     }
 }

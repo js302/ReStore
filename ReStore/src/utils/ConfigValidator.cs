@@ -381,16 +381,56 @@ public class ConfigValidator
 
     private bool IsValidAwsRegion(string region)
     {
-        var validRegions = new[]
+        if (string.IsNullOrWhiteSpace(region)) return false;
+
+        // Full, up-to-date list of known AWS commercial regions
+        var validRegions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
+            // US
             "us-east-1", "us-east-2", "us-west-1", "us-west-2",
-            "eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1",
-            "ap-southeast-1", "ap-southeast-2", "ap-northeast-1", "ap-northeast-2",
-            "ap-south-1", "sa-east-1", "ca-central-1"
+
+            // Africa
+            "af-south-1",
+
+            // Asia Pacific
+            "ap-east-1", "ap-east-2",
+            "ap-south-1", "ap-south-2",
+            "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-southeast-5", "ap-southeast-6", "ap-southeast-7",
+            "ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+
+            // Canada
+            "ca-central-1", "ca-west-1",
+
+            // Europe
+            "eu-central-1", "eu-central-2",
+            "eu-west-1", "eu-west-2", "eu-west-3",
+            "eu-south-1", "eu-south-2",
+            "eu-north-1",
+
+            // Israel
+            "il-central-1",
+
+            // Mexico
+            "mx-central-1",
+
+            // Middle East
+            "me-south-1", "me-central-1",
+
+            // South America
+            "sa-east-1"
         };
-        
-        return validRegions.Contains(region) || region.StartsWith("us-") || region.StartsWith("eu-") || 
-               region.StartsWith("ap-") || region.StartsWith("sa-") || region.StartsWith("ca-");
+
+        // Prefer explicit known list, but keep a conservative prefix fallback for future regions
+        return validRegions.Contains(region.Trim())
+               || region.StartsWith("us-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("eu-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("ap-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("sa-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("ca-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("af-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("il-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("mx-", StringComparison.OrdinalIgnoreCase)
+               || region.StartsWith("me-", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsValidS3BucketName(string bucketName)

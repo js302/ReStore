@@ -51,7 +51,8 @@
       "options": {
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
-        "token_folder": "%USERPROFILE%\\.restore\\tokens"
+        "token_folder": "%USERPROFILE%\\.restore\\tokens",
+        "backup_folder_name": "ReStore Backups"
       }
     },
     "s3": {
@@ -60,7 +61,7 @@
         "accessKeyId": "your_access_key_id",
         "secretAccessKey": "your_secret_access_key",
         "region": "your_aws_region",
-        "bucketName": "restore-backups"
+        "bucketName": "your_bucket_name"
       }
     },
     "github": {
@@ -68,7 +69,7 @@
       "options": {
         "token": "your_token",
         "repo": "your_repo",
-        "owner": "your-github-username"
+        "owner": "your_github_username"
       }
     },
     "local": {

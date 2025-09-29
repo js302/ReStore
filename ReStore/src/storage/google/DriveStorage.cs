@@ -20,7 +20,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
     private const string BACKUP_FOLDER_NAME = "ReStore Backups";
     private const int MAX_RETRY_ATTEMPTS = 3;
     private readonly Dictionary<string, string> _folderCache = new();
-    private bool _disposed = false; // Add disposed flag specific to this class
+    private bool _disposed = false;
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {

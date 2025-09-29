@@ -27,7 +27,7 @@ public class SystemState
     public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
     public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
 
-    private string _stateFilePath = Path.Combine(AppContext.BaseDirectory, "state", "system_state.json");
+    private string _stateFilePath = Path.Combine(Directory.GetCurrentDirectory(), "state", "system_state.json");
     [JsonIgnore]
     private readonly ILogger? _logger;
 

@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.Text.Json;
 using ReStore.src.utils;
+using System.Runtime.Versioning;
 
 namespace ReStore.src.backup;
 
+[SupportedOSPlatform("windows")]
 public class ProgramRestoreManager
 {
     private readonly ILogger _logger;
