@@ -19,7 +19,6 @@ public interface IStorage : IDisposable
     Task DeleteAsync(string remotePath);
 }
 
-// Implement IDisposable
 public abstract class StorageBase : IStorage
 {
     protected readonly ILogger Logger;
@@ -36,7 +35,6 @@ public abstract class StorageBase : IStorage
     public abstract Task<bool> ExistsAsync(string remotePath);
     public abstract Task DeleteAsync(string remotePath);
 
-    // Public Dispose method
     public void Dispose()
     {
         Dispose(true);
@@ -61,7 +59,7 @@ public abstract class StorageBase : IStorage
         _disposed = true;
     }
 
-    // Optional Finalizer (only if the base class directly owns unmanaged resources)
+    // Optional Finalizer (only if the base class directly owns unmanaged resources) Consider if needed
     // ~StorageBase()
     // {
     //     Dispose(false);

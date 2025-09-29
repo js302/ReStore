@@ -2,9 +2,11 @@ using ReStore.src.utils;
 using ReStore.src.storage;
 using ReStore.src.core;
 using System.Text.Json;
+using System.Runtime.Versioning;
 
 namespace ReStore.src.backup;
 
+[SupportedOSPlatform("windows")]
 public class SystemBackupManager
 {
     private readonly ILogger _logger;
@@ -52,17 +54,13 @@ public class SystemBackupManager
             var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
             Directory.CreateDirectory(tempDir);
 
-            // Export to JSON
             var jsonPath = Path.Combine(tempDir, "installed_programs.json");
             await _programDiscovery.ExportProgramsToJsonAsync(programs, jsonPath);
 
-            // Create winget restore script
             await CreateWingetRestoreScriptAsync(programs, Path.Combine(tempDir, "restore_winget_programs.ps1"));
 
-            // Create manual install list
             await CreateManualInstallListAsync(programs, Path.Combine(tempDir, "manual_install_list.txt"));
 
-            // Create full restore script
             await CreateFullRestoreScriptAsync(programs, Path.Combine(tempDir, "restore_programs.ps1"));
 
             // Upload to storage
@@ -75,7 +73,6 @@ public class SystemBackupManager
 
             await _storage.UploadAsync(zipPath, remotePath);
 
-            // Update system state
             _systemState.AddBackup("system_programs", remotePath, false);
 
             // Cleanup
@@ -103,15 +100,12 @@ public class SystemBackupManager
             var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
             Directory.CreateDirectory(tempDir);
 
-            // Export to JSON
             var jsonPath = Path.Combine(tempDir, "environment_variables.json");
             await _envManager.ExportEnvironmentVariablesToJsonAsync(variables, jsonPath);
 
-            // Create restore script
             var scriptPath = Path.Combine(tempDir, "restore_environment_variables.ps1");
             await _envManager.CreateRestoreScriptAsync(variables, scriptPath);
 
-            // Create registry backup script
             await CreateRegistryBackupScriptAsync(Path.Combine(tempDir, "backup_env_registry.ps1"));
 
             // Upload to storage
@@ -124,7 +118,6 @@ public class SystemBackupManager
 
             await _storage.UploadAsync(zipPath, remotePath);
 
-            // Update system state
             _systemState.AddBackup("system_environment", remotePath, false);
 
             // Cleanup

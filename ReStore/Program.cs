@@ -1,7 +1,7 @@
 ﻿using ReStore.src.core;
 using ReStore.src.utils;
 using ReStore.src.monitoring;
-using ReStore.src.storage; // Added for IStorage
+using ReStore.src.storage;
 using ReStore.src.backup;
 
 namespace ReStore
@@ -71,7 +71,7 @@ Examples:
             // Use a 'using' statement to ensure storage is disposed
             using IStorage storage = await configManager.CreateStorageAsync(remote);
 
-            var systemState = new SystemState(logger); // Pass logger to SystemState
+            var systemState = new SystemState(logger);
             await systemState.LoadStateAsync();
 
             var sizeAnalyzer = new SizeAnalyzer();
@@ -129,6 +129,11 @@ Examples:
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
+                            if (!OperatingSystem.IsWindows())
+                            {
+                                logger.Log("The 'system-backup' command is only supported on Windows.", LogLevel.Error);
+                                break;
+                            }
                             var backupType = args.Length >= 3 ? args[2] : "all";
                             var systemBackupManager = new SystemBackupManager(logger, storage, systemState);
                             
@@ -153,6 +158,11 @@ Examples:
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
+                            if (!OperatingSystem.IsWindows())
+                            {
+                                logger.Log("The 'system-restore' command is only supported on Windows.", LogLevel.Error);
+                                break;
+                            }
                             var restoreType = args.Length >= 4 ? args[3] : "all";
                             var systemRestoreManager = new SystemBackupManager(logger, storage, systemState);
                             await systemRestoreManager.RestoreSystemAsync(restoreType, args[2]);
@@ -168,7 +178,7 @@ Examples:
             catch (Exception ex)
             {
                 logger.Log($"An unexpected error occurred: {ex.Message}", LogLevel.Error);
-                logger.Log($"Stack Trace: {ex.StackTrace}", LogLevel.Debug); // Log stack trace for debugging
+                logger.Log($"Stack Trace: {ex.StackTrace}", LogLevel.Debug);
             }
             finally
             {

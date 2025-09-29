@@ -8,7 +8,7 @@ public class S3Storage(ILogger logger) : StorageBase(logger)
 {
     private AmazonS3Client? _s3Client;
     private string _bucketName = string.Empty;
-    private bool _disposed = false; // Add disposed flag specific to this class
+    private bool _disposed = false;
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
@@ -108,6 +108,6 @@ public class S3Storage(ILogger logger) : StorageBase(logger)
         // Set large fields to null
 
         _disposed = true;
-        base.Dispose(disposing); // Call base class implementation
+        base.Dispose(disposing);
     }
 }

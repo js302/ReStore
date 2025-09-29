@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using System.Management;
+using System.Runtime.Versioning;
 
 namespace ReStore.src.utils;
 
@@ -19,6 +20,7 @@ public class InstalledProgram
     public bool IsWingetAvailable { get; set; } = false;
 }
 
+[SupportedOSPlatform("windows")]
 public class SystemProgramDiscovery
 {
     private readonly ILogger _logger;

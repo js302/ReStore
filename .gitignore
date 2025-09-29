@@ -398,3 +398,4 @@ FodyWeavers.xsd
 
 # Config folder with sensitive information
 ReStore/config/config.json
+Restore/state
