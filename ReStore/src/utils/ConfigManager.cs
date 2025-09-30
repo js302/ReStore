@@ -200,6 +200,24 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     private async Task CreateDefaultConfigAsync()
     {
+        // If an example config exists alongside the target config, prefer copying it
+        try
+        {
+            var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
+            Directory.CreateDirectory(configDir);
+            var examplePath = Path.Combine(configDir, "config.example.json");
+            if (File.Exists(examplePath) && !File.Exists(CONFIG_PATH))
+            {
+                File.Copy(examplePath, CONFIG_PATH, overwrite: false);
+                logger.Log("No config.json found. Seeded from config.example.json", LogLevel.Info);
+                return;
+            }
+        }
+        catch
+        {
+            // Fall back to generating a minimal default config below
+        }
+
         WatchDirectories =
         [
             Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Desktop"),
@@ -280,12 +298,14 @@ public class ConfigManager(ILogger logger) : IConfigManager
         while (currentDir?.Parent != null)
         {
             // Check if we're in a bin directory and go up to project root
-            if (currentDir.Name == "net9.0" && currentDir.Parent?.Name == "Debug" && currentDir.Parent.Parent?.Name == "bin")
+            if ((currentDir.Name == "net9.0" || currentDir.Name == "net9.0-windows")
+                && currentDir.Parent?.Name == "Debug" && currentDir.Parent.Parent?.Name == "bin")
             {
                 projectRoot = currentDir.Parent.Parent.Parent; // Go up from bin/Debug/net9.0 to project root
                 break;
             }
-            else if (currentDir.Name == "net9.0" && currentDir.Parent?.Name == "Release" && currentDir.Parent.Parent?.Name == "bin")
+            else if ((currentDir.Name == "net9.0" || currentDir.Name == "net9.0-windows")
+                && currentDir.Parent?.Name == "Release" && currentDir.Parent.Parent?.Name == "bin")
             {
                 projectRoot = currentDir.Parent.Parent.Parent; // Go up from bin/Release/net9.0 to project root
                 break;
@@ -302,6 +322,19 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
         if (projectRoot != null && projectRoot.Exists)
         {
+            // Prefer the nearest existing 'config' folder from project root upwards (handles solution-level config)
+            var probe = projectRoot;
+            for (int i = 0; i < 3 && probe != null; i++)
+            {
+                var candidate = Path.Combine(probe.FullName, "config", "config.json");
+                if (File.Exists(candidate) || Directory.Exists(Path.GetDirectoryName(candidate)!))
+                {
+                    return candidate;
+                }
+                probe = probe.Parent;
+            }
+
+            // Fallback to project-local config path
             return Path.Combine(projectRoot.FullName, "config", "config.json");
         }
 
