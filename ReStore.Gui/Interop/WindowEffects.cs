@@ -5,20 +5,19 @@ using System.Windows.Interop;
 using Wpf.Ui.Appearance;
 using System.Runtime.Versioning;
 
-namespace ReStore.Gui.Wpf.Interop
+namespace ReStore.Gui.Interop
 {
     public static class WindowEffects
     {
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-        private const int DWMWA_SYSTEMBACKDROP_TYPE = 38; // Windows 11 22H2+
-        private const int DWMWA_MICA_EFFECT = 1029;       // Older API (22000)
+        private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+        private const int DWMWA_MICA_EFFECT = 1029;
 
-        // DWM_SYSTEMBACKDROP_TYPE values
         private const int DWMSBT_AUTO = 0;
         private const int DWMSBT_NONE = 1;
-        private const int DWMSBT_MAINWINDOW = 2; // Mica
-        private const int DWMSBT_TRANSIENTWINDOW = 3; // Acrylic
-        private const int DWMSBT_TABBEDWINDOW = 4; // Mica Alt
+        private const int DWMSBT_MAINWINDOW = 2;
+        private const int DWMSBT_TRANSIENTWINDOW = 3;
+        private const int DWMSBT_TABBEDWINDOW = 4;
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
@@ -30,11 +29,9 @@ namespace ReStore.Gui.Wpf.Interop
                 var handle = GetHandle(window);
                 if (handle == IntPtr.Zero) return;
 
-                // Try new backdrop API first (22H2+) - Mica for main window
                 int backdrop = DWMSBT_MAINWINDOW;
                 var result = DwmSetWindowAttribute(handle, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
 
-                // Fallback to legacy Mica attribute (22000) if new API not available
                 if (result != 0)
                 {
                     int micaEnabled = 1;
@@ -46,7 +43,7 @@ namespace ReStore.Gui.Wpf.Interop
             }
             catch
             {
-                // Ignore if not supported (Windows 10 or older)
+                // Ignore if not supported
             }
         }
 
@@ -63,7 +60,7 @@ namespace ReStore.Gui.Wpf.Interop
             }
             catch
             {
-                // ignore
+                // Ignore if not supported
             }
         }
 

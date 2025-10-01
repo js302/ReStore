@@ -12,9 +12,9 @@ using ReStore.src.core;
 using ReStore.src.storage;
 using ReStore.src.utils;
 using ReStore.src.backup;
-using ReStore.Gui.Wpf.Services;
+using ReStore.Gui.Services;
 
-namespace ReStore.Gui.Wpf.Views.Pages
+namespace ReStore.Gui.Views.Pages
 {
     public class SystemBackupItem
     {

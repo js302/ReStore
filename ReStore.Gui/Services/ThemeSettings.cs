@@ -3,7 +3,7 @@ using System.IO;
 using System.Text.Json;
 using Wpf.Ui.Appearance;
 
-namespace ReStore.Gui.Wpf.Services
+namespace ReStore.Gui.Services
 {
     public enum ThemePreference
     {

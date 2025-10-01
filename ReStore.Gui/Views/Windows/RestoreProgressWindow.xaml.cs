@@ -9,7 +9,7 @@ using ReStore.src.core;
 using ReStore.src.storage;
 using ReStore.src.utils;
 
-namespace ReStore.Gui.Wpf.Views.Windows
+namespace ReStore.Gui.Views.Windows
 {
     public partial class RestoreProgressWindow : Window, ILogger
     {
