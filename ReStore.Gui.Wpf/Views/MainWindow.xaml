@@ -5,7 +5,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:views="clr-namespace:ReStore.Gui.Wpf.Views"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" mc:Ignorable="d" Title="ReStore" Height="560" Width="900" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False" Background="{DynamicResource ApplicationBackgroundBrush}" FontFamily="Segoe UI">
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" mc:Ignorable="d" Title="ReStore" Height="720" Width="1280" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False" Background="{DynamicResource ApplicationBackgroundBrush}" FontFamily="Segoe UI">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="32" CornerRadius="8" GlassFrameThickness="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False" />
@@ -16,19 +16,56 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,0"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Margin" Value="8,2"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}"/>
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="selectedBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <Grid>
+                                    <Rectangle x:Name="accentBorder" Width="3" HorizontalAlignment="Left" Fill="{DynamicResource AccentFillColorDefaultBrush}" RadiusX="2" RadiusY="2" Opacity="0" Margin="-12,0,0,0"/>
+                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="8,0,0,0"/>
+                                </Grid>
+                            </Border>
+                            <Border x:Name="hoverBorder" Background="#33FFFFFF" BorderBrush="Transparent" BorderThickness="0" CornerRadius="6" Opacity="0" Tag="NavHover">
+                                <Border.RenderTransform>
+                                    <ScaleTransform ScaleX="1" ScaleY="1" CenterX="0" CenterY="0"/>
+                                </Border.RenderTransform>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="hoverBorder" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="hoverBorder" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="selectedBorder" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- Caption buttons (minimize/maximize) style -->
@@ -37,33 +74,67 @@
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Width" Value="36"/>
-            <Setter Property="Height" Value="28"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}"/>
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Opacity" Value="0.9"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="baseBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            </Border>
+                            <Border x:Name="hoverBorder" Background="#1AFFFFFF" BorderBrush="Transparent" BorderThickness="0" Opacity="0" IsHitTestVisible="False" Tag="CaptionHover"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="hoverBorder" Property="Opacity" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="hoverBorder" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- Close button gets a red hover like Windows 11 -->
-        <Style x:Key="CaptionCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CaptionButtonStyle}">
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#E81123"/>
-                    <Setter Property="Foreground" Value="White"/>
-                </Trigger>
-            </Style.Triggers>
+        <Style x:Key="CaptionCloseButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#E81123"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#C50F1F"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
-    <Grid Margin="4">
+    <Grid x:Name="MainGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
@@ -80,11 +151,11 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <!-- Drag area (not hit-test visible in chrome so dragging works) -->
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
-                <TextBlock Text="ReStore" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <StackPanel x:Name="TitleTextPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0">
+                <TextBlock Text="ReStore" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
             </StackPanel>
             <!-- Caption buttons must be interactive in chrome -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+            <StackPanel x:Name="CaptionButtonsPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                 <Button x:Name="MinButton" Style="{StaticResource CaptionButtonStyle}" ToolTip="Minimize">
                     <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE921;"/>
                 </Button>
@@ -97,28 +168,37 @@
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="1" Grid.Column="0" Margin="0" Background="{DynamicResource ApplicationBackgroundBrush}" BorderThickness="0">
+        <Border Grid.Row="1" Grid.Column="0" Margin="0" BorderThickness="0" Background="{DynamicResource ApplicationBackgroundBrush}">
             <DockPanel>
-                <Border DockPanel.Dock="Top" Padding="12" Margin="0,0,0,12" Background="{DynamicResource ApplicationBackgroundBrush}" CornerRadius="8" BorderThickness="0">
-                    <TextBlock Text="ReStore" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <Border DockPanel.Dock="Top" Padding="16,12" Margin="12,8,12,16" CornerRadius="8" BorderThickness="0">
+                    <!-- <StackPanel> -->
+                    <!-- <TextBlock Text="" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Opacity="0.7"/> -->
+                    <!-- <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,8,0,0"/> -->
+                    <!-- </StackPanel> -->
                 </Border>
-                <StackPanel>
-                    <Button x:Name="NavDashboard" Style="{StaticResource SidebarNavButtonStyle}" Margin="0,0,0,8" Tag="Dashboard">
+                <StackPanel Margin="0,0,0,8">
+                    <Button x:Name="NavDashboard" Style="{StaticResource SidebarNavButtonStyle}" Tag="Dashboard">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE80F;" Margin="0,0,8,0"/>
-                            <TextBlock Text="Dashboard"/>
+                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE80F;" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Dashboard" FontSize="14" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="NavSettings" Style="{StaticResource SidebarNavButtonStyle}" Tag="Settings">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE713;" Margin="0,0,8,0"/>
-                            <TextBlock Text="Settings"/>
+                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE713;" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Settings" FontSize="14" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <Frame Grid.Row="1" Grid.Column="1" x:Name="ContentFrame" NavigationUIVisibility="Hidden" Background="Transparent"/>
+        <Border Grid.Row="1" Grid.Column="1" CornerRadius="8">
+            <Frame x:Name="ContentFrame" NavigationUIVisibility="Hidden" Background="{DynamicResource ApplicationBackgroundBrush}">
+                <Frame.RenderTransform>
+                    <TranslateTransform Y="0"/>
+                </Frame.RenderTransform>
+            </Frame>
+        </Border>
     </Grid>
 </Window>

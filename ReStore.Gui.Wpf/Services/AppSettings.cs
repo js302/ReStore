@@ -14,6 +14,7 @@ namespace ReStore.Gui.Wpf.Services
 
         public string? DefaultStorage { get; set; }
         public bool ShowOnlyConfiguredProviders { get; set; }
+        public bool MinimizeToTray { get; set; } = true;
 
         public static AppSettings Load()
         {

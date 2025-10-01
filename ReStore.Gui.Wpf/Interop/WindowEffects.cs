@@ -30,20 +30,23 @@ namespace ReStore.Gui.Wpf.Interop
                 var handle = GetHandle(window);
                 if (handle == IntPtr.Zero) return;
 
-                // Try new backdrop API first (22H2+)
+                // Try new backdrop API first (22H2+) - Mica for main window
                 int backdrop = DWMSBT_MAINWINDOW;
-                _ = DwmSetWindowAttribute(handle, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
+                var result = DwmSetWindowAttribute(handle, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
 
-                // Fallback to legacy Mica attribute (22000)
-                int micaEnabled = 1;
-                _ = DwmSetWindowAttribute(handle, DWMWA_MICA_EFFECT, ref micaEnabled, sizeof(int));
+                // Fallback to legacy Mica attribute (22000) if new API not available
+                if (result != 0)
+                {
+                    int micaEnabled = 1;
+                    _ = DwmSetWindowAttribute(handle, DWMWA_MICA_EFFECT, ref micaEnabled, sizeof(int));
+                }
 
                 // Match title bar with app theme
                 SetImmersiveDarkMode(window);
             }
             catch
             {
-                // Ignore if not supported
+                // Ignore if not supported (Windows 10 or older)
             }
         }
 

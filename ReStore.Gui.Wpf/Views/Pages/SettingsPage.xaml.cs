@@ -13,6 +13,7 @@ namespace ReStore.Gui.Wpf.Views.Pages
         private readonly ThemeSettings _themeSettings;
         private readonly AppSettings _appSettings;
         private readonly ConfigManager _configManager;
+        private bool _isLoading = true;
 
         public SettingsPage()
         {
@@ -23,6 +24,8 @@ namespace ReStore.Gui.Wpf.Views.Pages
 
             Loaded += async (_, __) =>
             {
+                _isLoading = true;
+
                 // Theme selector
                 ThemeSelector.SelectedIndex = _themeSettings.Preference switch
                 {
@@ -33,10 +36,13 @@ namespace ReStore.Gui.Wpf.Views.Pages
 
                 // Storage sources
                 ShowConfiguredOnly.IsChecked = _appSettings.ShowOnlyConfiguredProviders;
+                MinimizeToTrayCheckBox.IsChecked = _appSettings.MinimizeToTray;
                 await ReloadStorageSourcesAsync();
 
                 // Populate provider fields from config (if present)
                 PopulateProviderFields();
+
+                _isLoading = false;
             };
 
             ThemeSelector.SelectionChanged += (_, __) =>
@@ -49,6 +55,32 @@ namespace ReStore.Gui.Wpf.Views.Pages
                 };
                 _themeSettings.Save();
                 _themeSettings.Apply();
+            };
+
+            MinimizeToTrayCheckBox.Checked += (_, __) =>
+            {
+                if (_isLoading) return;
+                
+                _appSettings.MinimizeToTray = true;
+                _appSettings.Save();
+                
+                if (Application.Current.MainWindow is MainWindow mainWindow)
+                {
+                    mainWindow.UpdateTrayManager(true);
+                }
+            };
+
+            MinimizeToTrayCheckBox.Unchecked += (_, __) =>
+            {
+                if (_isLoading) return;
+                
+                _appSettings.MinimizeToTray = false;
+                _appSettings.Save();
+                
+                if (Application.Current.MainWindow is MainWindow mainWindow)
+                {
+                    mainWindow.UpdateTrayManager(false);
+                }
             };
 
             StorageCombo.SelectionChanged += (_, __) =>
@@ -133,7 +165,7 @@ namespace ReStore.Gui.Wpf.Views.Pages
             SaveS3Btn.Click += async (_, __) => await SaveProviderAsync("s3", new()
             {
                 ["accessKeyId"] = S3AccessKey.Text,
-                ["secretAccessKey"] = S3SecretKey.Text,
+                ["secretAccessKey"] = S3SecretKey.Password,
                 ["region"] = S3Region.Text,
                 ["bucketName"] = S3Bucket.Text
             });
@@ -141,14 +173,14 @@ namespace ReStore.Gui.Wpf.Views.Pages
             SaveGDriveBtn.Click += async (_, __) => await SaveProviderAsync("gdrive", new()
             {
                 ["client_id"] = GDClientId.Text,
-                ["client_secret"] = GDClientSecret.Text,
+                ["client_secret"] = GDClientSecret.Password,
                 ["token_folder"] = GDTokenFolder.Text,
                 ["backup_folder_name"] = GDBackupFolder.Text
             });
 
             SaveGitHubBtn.Click += async (_, __) => await SaveProviderAsync("github", new()
             {
-                ["token"] = GhToken.Text,
+                ["token"] = GhToken.Password,
                 ["owner"] = GhOwner.Text,
                 ["repo"] = GhRepo.Text
             });
@@ -206,20 +238,20 @@ namespace ReStore.Gui.Wpf.Views.Pages
                 if (_configManager.StorageSources.TryGetValue("s3", out var s3))
                 {
                     s3.Options.TryGetValue("accessKeyId", out var ak); S3AccessKey.Text = ak ?? string.Empty;
-                    s3.Options.TryGetValue("secretAccessKey", out var sk); S3SecretKey.Text = sk ?? string.Empty;
+                    s3.Options.TryGetValue("secretAccessKey", out var sk); S3SecretKey.Password = sk ?? string.Empty;
                     s3.Options.TryGetValue("region", out var rg); S3Region.Text = rg ?? string.Empty;
                     s3.Options.TryGetValue("bucketName", out var bn); S3Bucket.Text = bn ?? string.Empty;
                 }
                 if (_configManager.StorageSources.TryGetValue("gdrive", out var gd))
                 {
                     gd.Options.TryGetValue("client_id", out var cid); GDClientId.Text = cid ?? string.Empty;
-                    gd.Options.TryGetValue("client_secret", out var cs); GDClientSecret.Text = cs ?? string.Empty;
+                    gd.Options.TryGetValue("client_secret", out var cs); GDClientSecret.Password = cs ?? string.Empty;
                     gd.Options.TryGetValue("token_folder", out var tf); GDTokenFolder.Text = tf ?? string.Empty;
                     gd.Options.TryGetValue("backup_folder_name", out var bfn); GDBackupFolder.Text = bfn ?? string.Empty;
                 }
                 if (_configManager.StorageSources.TryGetValue("github", out var gh))
                 {
-                    gh.Options.TryGetValue("token", out var tk); GhToken.Text = tk ?? string.Empty;
+                    gh.Options.TryGetValue("token", out var tk); GhToken.Password = tk ?? string.Empty;
                     gh.Options.TryGetValue("owner", out var ow); GhOwner.Text = ow ?? string.Empty;
                     gh.Options.TryGetValue("repo", out var rp); GhRepo.Text = rp ?? string.Empty;
                 }

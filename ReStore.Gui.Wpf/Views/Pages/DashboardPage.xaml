@@ -1,31 +1,64 @@
 <Page x:Class="ReStore.Gui.Wpf.Views.Pages.DashboardPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" Background="{DynamicResource ApplicationBackgroundBrush}">
-    <Grid Margin="16">
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Background="{DynamicResource ApplicationBackgroundBrush}"
+    TextOptions.TextFormattingMode="Display"
+    TextOptions.TextRenderingMode="ClearType"
+    Loaded="Page_Loaded">
+
+    <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal">
-            <TextBlock Text="Dashboard" FontSize="20" FontWeight="SemiBold" Margin="0,0,12,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-            <Button x:Name="ValidateBtn" Content="Validate Config" />
-            <Button x:Name="StartWatcherBtn" Content="Start Watcher" Margin="8,0,0,0" />
-            <Button x:Name="StopWatcherBtn" Content="Stop Watcher" Margin="8,0,0,0" />
+
+        <!-- Header Section -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Dashboard" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <TextBlock Text="Monitor and control your backup operations" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
         </StackPanel>
 
-        <Border Grid.Row="1" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Margin="0,12,0,12">
-            <DockPanel>
-                <TextBlock Text="Logs" FontWeight="SemiBold" Margin="0,0,0,8" DockPanel.Dock="Top" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <TextBox x:Name="LogBox" AcceptsReturn="True" TextWrapping="Wrap" IsReadOnly="True" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                </ScrollViewer>
+        <!-- Action Buttons -->
+        <Border Grid.Row="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="20" Margin="0,0,0,16" Effect="{StaticResource CardShadow}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Button x:Name="ValidateBtn" Content="Validate Config" Padding="20,10" Cursor="Hand"/>
+                <Button x:Name="StartWatcherBtn" Content="Start Watcher" Margin="12,0,0,0" Padding="20,10" Cursor="Hand"/>
+                <Button x:Name="StopWatcherBtn" Content="Stop Watcher" Margin="12,0,0,0" Padding="20,10" Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Logs Section -->
+        <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Margin="0,0,0,16" Effect="{StaticResource CardShadow}">
+            <DockPanel Margin="20">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C3;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,8,0"/>
+                    <TextBlock Text="Activity Logs" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                </StackPanel>
+                <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <TextBox x:Name="LogBox" AcceptsReturn="True" TextWrapping="Wrap" IsReadOnly="True" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    </ScrollViewer>
+                </Border>
             </DockPanel>
         </Border>
 
-        <Border Grid.Row="2" Margin="0,8,0,0" Padding="10" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8">
-            <TextBlock x:Name="StatusText" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16,12" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Ellipse x:Name="StatusIndicator" Width="10" Height="10" Fill="#10B981" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Ellipse.Effect>
+                        <DropShadowEffect Color="#10B981" BlurRadius="8" ShadowDepth="0" Opacity="0.6"/>
+                    </Ellipse.Effect>
+                </Ellipse>
+                <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="13" FontWeight="Medium" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </Grid>
         </Border>
     </Grid>
 </Page>
