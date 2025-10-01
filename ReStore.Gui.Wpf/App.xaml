@@ -8,7 +8,38 @@
                 <ui:ThemesDictionary />
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
+
             <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
+
+            <!-- Animation Durations -->
+            <Duration x:Key="FastAnimation">0:0:0.15</Duration>
+            <Duration x:Key="MediumAnimation">0:0:0.25</Duration>
+            <Duration x:Key="SlowAnimation">0:0:0.35</Duration>
+
+            <!-- Easing Functions -->
+            <CubicEase x:Key="EaseOut" EasingMode="EaseOut"/>
+            <CubicEase x:Key="EaseInOut" EasingMode="EaseInOut"/>
+            <QuadraticEase x:Key="QuadEaseOut" EasingMode="EaseOut"/>
+
+            <!-- Shadows -->
+            <DropShadowEffect x:Key="CardShadow" BlurRadius="16" ShadowDepth="4" Opacity="0.2" Color="Black"/>
+            <DropShadowEffect x:Key="ElevatedShadow" BlurRadius="24" ShadowDepth="8" Opacity="0.25" Color="Black"/>
+
+            <!-- Subtle background brushes for better delineation -->
+            <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#08000000"/>
+            <SolidColorBrush x:Key="SidebarBackgroundBrushDark" Color="Transparent"/>
+
+            <!-- Fade In Animation -->
+            <Storyboard x:Key="FadeInAnimation">
+                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="{StaticResource MediumAnimation}" EasingFunction="{StaticResource EaseOut}"/>
+            </Storyboard>
+
+            <!-- Slide In Animation -->
+            <Storyboard x:Key="SlideInAnimation">
+                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)" From="20" To="0" Duration="{StaticResource MediumAnimation}" EasingFunction="{StaticResource EaseOut}"/>
+                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="{StaticResource MediumAnimation}" EasingFunction="{StaticResource EaseOut}"/>
+            </Storyboard>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>
