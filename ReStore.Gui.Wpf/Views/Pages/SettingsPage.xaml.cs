@@ -1,6 +1,8 @@
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using ReStore.Gui.Wpf.Services;
 using ReStore.src.utils;
 using System.Collections.Generic;
@@ -14,6 +16,9 @@ namespace ReStore.Gui.Wpf.Views.Pages
         private readonly AppSettings _appSettings;
         private readonly ConfigManager _configManager;
         private bool _isLoading = true;
+        private readonly ObservableCollection<string> _watchDirectories = new();
+        private readonly ObservableCollection<string> _excludedPatterns = new();
+        private readonly ObservableCollection<string> _excludedPaths = new();
 
         public SettingsPage()
         {
@@ -21,6 +26,10 @@ namespace ReStore.Gui.Wpf.Views.Pages
             _themeSettings = ThemeSettings.Load();
             _appSettings = AppSettings.Load();
             _configManager = new ConfigManager(new Logger());
+
+            WatchDirectoriesList.ItemsSource = _watchDirectories;
+            ExcludedPatternsList.ItemsSource = _excludedPatterns;
+            ExcludedPathsList.ItemsSource = _excludedPaths;
 
             Loaded += async (_, __) =>
             {
@@ -41,6 +50,15 @@ namespace ReStore.Gui.Wpf.Views.Pages
 
                 // Populate provider fields from config (if present)
                 PopulateProviderFields();
+
+                // Load backup configuration
+                LoadBackupConfiguration();
+
+                // Load watch directories
+                LoadWatchDirectories();
+
+                // Load exclusions
+                LoadExclusions();
 
                 _isLoading = false;
             };
@@ -190,6 +208,296 @@ namespace ReStore.Gui.Wpf.Views.Pages
             TestS3Btn.Click += async (_, __) => await TestProviderAsync("s3");
             TestGDriveBtn.Click += async (_, __) => await TestProviderAsync("gdrive");
             TestGitHubBtn.Click += async (_, __) => await TestProviderAsync("github");
+
+            // New handlers for watch directories
+            AddWatchDirBtn.Click += async (_, __) => await AddWatchDirectoryAsync();
+
+            // New handlers for backup configuration
+            SaveBackupConfigBtn.Click += async (_, __) => await SaveBackupConfigurationAsync();
+
+            // New handlers for exclusions
+            AddPatternBtn.Click += (_, __) => AddExcludedPattern();
+            AddPathBtn.Click += (_, __) => AddExcludedPath();
+        }
+
+        private void LoadBackupConfiguration()
+        {
+            try
+            {
+                BackupTypeCombo.SelectedIndex = _configManager.BackupType switch
+                {
+                    BackupType.Full => 0,
+                    BackupType.Incremental => 1,
+                    BackupType.Differential => 2,
+                    _ => 1
+                };
+
+                BackupIntervalHoursBox.Text = _configManager.BackupInterval.TotalHours.ToString("F1");
+                SizeThresholdBox.Text = _configManager.SizeThresholdMB.ToString();
+                MaxFileSizeBox.Text = _configManager.MaxFileSizeMB.ToString();
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error loading backup configuration: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private void LoadWatchDirectories()
+        {
+            _watchDirectories.Clear();
+            foreach (var dir in _configManager.WatchDirectories)
+            {
+                _watchDirectories.Add(dir);
+            }
+        }
+
+        private void LoadExclusions()
+        {
+            _excludedPatterns.Clear();
+            foreach (var pattern in _configManager.ExcludedPatterns)
+            {
+                _excludedPatterns.Add(pattern);
+            }
+
+            _excludedPaths.Clear();
+            foreach (var path in _configManager.ExcludedPaths)
+            {
+                _excludedPaths.Add(path);
+            }
+        }
+
+        private async Task AddWatchDirectoryAsync()
+        {
+            try
+            {
+                var dialog = new OpenFileDialog
+                {
+                    ValidateNames = false,
+                    CheckFileExists = false,
+                    CheckPathExists = true,
+                    FileName = "Select Folder",
+                    Title = "Select folder to watch"
+                };
+
+                if (dialog.ShowDialog() == true)
+                {
+                    var folderPath = System.IO.Path.GetDirectoryName(dialog.FileName);
+                    if (!string.IsNullOrEmpty(folderPath))
+                    {
+                        if (!_watchDirectories.Contains(folderPath))
+                        {
+                            _watchDirectories.Add(folderPath);
+                            _configManager.WatchDirectories.Add(folderPath);
+                            await _configManager.SaveAsync();
+                            MessageBox.Show("Watch directory added successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show("This directory is already being watched.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error adding watch directory: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void RemoveWatchDir_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string path)
+            {
+                _ = RemoveWatchDirectoryAsync(path);
+            }
+        }
+
+        private async Task RemoveWatchDirectoryAsync(string path)
+        {
+            try
+            {
+                var result = MessageBox.Show(
+                    $"Remove this directory from watch list?\n\n{path}",
+                    "Confirm Remove",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    _watchDirectories.Remove(path);
+                    _configManager.WatchDirectories.Remove(path);
+                    await _configManager.SaveAsync();
+                    MessageBox.Show("Watch directory removed successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error removing watch directory: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task SaveBackupConfigurationAsync()
+        {
+            try
+            {
+                BackupType backupType = BackupType.Incremental;
+                if (BackupTypeCombo.SelectedItem is ComboBoxItem selectedType)
+                {
+                    backupType = selectedType.Tag?.ToString() switch
+                    {
+                        "Full" => BackupType.Full,
+                        "Differential" => BackupType.Differential,
+                        _ => BackupType.Incremental
+                    };
+                }
+
+                if (!double.TryParse(BackupIntervalHoursBox.Text, out var hours) || hours <= 0)
+                {
+                    MessageBox.Show("Invalid backup interval. Please enter a valid number of hours.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (!long.TryParse(SizeThresholdBox.Text, out var sizeThreshold) || sizeThreshold <= 0)
+                {
+                    MessageBox.Show("Invalid size threshold. Please enter a valid number.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (!int.TryParse(MaxFileSizeBox.Text, out var maxFileSize) || maxFileSize <= 0)
+                {
+                    MessageBox.Show("Invalid max file size. Please enter a valid number.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var configPath = _configManager.GetConfigFilePath();
+                var jsonString = await System.IO.File.ReadAllTextAsync(configPath);
+                
+                using var doc = System.Text.Json.JsonDocument.Parse(jsonString);
+                using var stream = new System.IO.MemoryStream();
+                using var writer = new System.Text.Json.Utf8JsonWriter(stream, new System.Text.Json.JsonWriterOptions { Indented = true });
+
+                writer.WriteStartObject();
+                foreach (var property in doc.RootElement.EnumerateObject())
+                {
+                    if (property.Name == "backupType")
+                    {
+                        writer.WriteString("backupType", backupType.ToString());
+                    }
+                    else if (property.Name == "backupInterval")
+                    {
+                        writer.WriteString("backupInterval", TimeSpan.FromHours(hours).ToString());
+                    }
+                    else if (property.Name == "sizeThresholdMB")
+                    {
+                        writer.WriteNumber("sizeThresholdMB", sizeThreshold);
+                    }
+                    else if (property.Name == "maxFileSizeMB")
+                    {
+                        writer.WriteNumber("maxFileSizeMB", maxFileSize);
+                    }
+                    else
+                    {
+                        property.WriteTo(writer);
+                    }
+                }
+                writer.WriteEndObject();
+                writer.Flush();
+
+                var newJsonString = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+                await System.IO.File.WriteAllTextAsync(configPath, newJsonString);
+
+                await _configManager.LoadAsync();
+                LoadBackupConfiguration();
+
+                MessageBox.Show("Backup configuration saved successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error saving backup configuration: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void AddExcludedPattern()
+        {
+            try
+            {
+                var pattern = NewPatternBox.Text?.Trim();
+                if (!string.IsNullOrEmpty(pattern))
+                {
+                    if (!_excludedPatterns.Contains(pattern))
+                    {
+                        _excludedPatterns.Add(pattern);
+                        _configManager.ExcludedPatterns.Add(pattern);
+                        _ = _configManager.SaveAsync();
+                        NewPatternBox.Text = string.Empty;
+                    }
+                    else
+                    {
+                        MessageBox.Show("This pattern is already in the exclusion list.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error adding pattern: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void RemovePattern_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string pattern)
+            {
+                _excludedPatterns.Remove(pattern);
+                _configManager.ExcludedPatterns.Remove(pattern);
+                _ = _configManager.SaveAsync();
+            }
+        }
+
+        private void AddExcludedPath()
+        {
+            try
+            {
+                var dialog = new OpenFileDialog
+                {
+                    ValidateNames = false,
+                    CheckFileExists = false,
+                    CheckPathExists = true,
+                    FileName = "Select Folder",
+                    Title = "Select folder to exclude"
+                };
+
+                if (dialog.ShowDialog() == true)
+                {
+                    var folderPath = System.IO.Path.GetDirectoryName(dialog.FileName);
+                    if (!string.IsNullOrEmpty(folderPath))
+                    {
+                        if (!_excludedPaths.Contains(folderPath))
+                        {
+                            _excludedPaths.Add(folderPath);
+                            _configManager.ExcludedPaths.Add(folderPath);
+                            _ = _configManager.SaveAsync();
+                        }
+                        else
+                        {
+                            MessageBox.Show("This path is already in the exclusion list.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error adding excluded path: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void RemovePath_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string path)
+            {
+                _excludedPaths.Remove(path);
+                _configManager.ExcludedPaths.Remove(path);
+                _ = _configManager.SaveAsync();
+            }
         }
 
         private async System.Threading.Tasks.Task ReloadStorageSourcesAsync()

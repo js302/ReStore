@@ -22,8 +22,8 @@
             <QuadraticEase x:Key="QuadEaseOut" EasingMode="EaseOut"/>
 
             <!-- Shadows -->
-            <DropShadowEffect x:Key="CardShadow" BlurRadius="16" ShadowDepth="4" Opacity="0.2" Color="Black"/>
-            <DropShadowEffect x:Key="ElevatedShadow" BlurRadius="24" ShadowDepth="8" Opacity="0.25" Color="Black"/>
+            <DropShadowEffect x:Key="CardShadow" BlurRadius="12" ShadowDepth="2" Opacity="0.08" Color="Black"/>
+            <DropShadowEffect x:Key="ElevatedShadow" BlurRadius="20" ShadowDepth="6" Opacity="0.12" Color="Black"/>
 
             <!-- Subtle background brushes for better delineation -->
             <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#08000000"/>

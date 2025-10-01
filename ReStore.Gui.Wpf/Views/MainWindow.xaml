@@ -5,7 +5,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:views="clr-namespace:ReStore.Gui.Wpf.Views"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" mc:Ignorable="d" Title="ReStore" Height="720" Width="1280" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False" Background="{DynamicResource ApplicationBackgroundBrush}" FontFamily="Segoe UI">
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" mc:Ignorable="d" Title="ReStore" Height="1080" Width="1920" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False" Background="{DynamicResource ApplicationBackgroundBrush}" FontFamily="Segoe UI">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="32" CornerRadius="8" GlassFrameThickness="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False" />
@@ -181,6 +181,18 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE80F;" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
                             <TextBlock Text="Dashboard" FontSize="14" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="NavBackups" Style="{StaticResource SidebarNavButtonStyle}" Tag="Backups">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE81C;" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Backups" FontSize="14" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="NavSystemRestore" Style="{StaticResource SidebarNavButtonStyle}" Tag="SystemRestore">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE777;" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="System Restore" FontSize="14" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="NavSettings" Style="{StaticResource SidebarNavButtonStyle}" Tag="Settings">

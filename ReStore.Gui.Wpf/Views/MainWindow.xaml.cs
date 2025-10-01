@@ -91,8 +91,12 @@ namespace ReStore.Gui.Wpf.Views
             ContentFrame.Navigate(new Pages.DashboardPage());
 
             var navDashboard = (System.Windows.Controls.Button)FindName("NavDashboard");
+            var navBackups = (System.Windows.Controls.Button)FindName("NavBackups");
+            var navSystemRestore = (System.Windows.Controls.Button)FindName("NavSystemRestore");
             var navSettings = (System.Windows.Controls.Button)FindName("NavSettings");
             if (navDashboard != null) navDashboard.Click += (_, __) => { NavigateWithTransition(new Pages.DashboardPage()); SetSelectedNav(navDashboard); };
+            if (navBackups != null) navBackups.Click += (_, __) => { NavigateWithTransition(new Pages.BackupsPage()); SetSelectedNav(navBackups); };
+            if (navSystemRestore != null) navSystemRestore.Click += (_, __) => { NavigateWithTransition(new Pages.SystemRestorePage()); SetSelectedNav(navSystemRestore); };
             if (navSettings != null) navSettings.Click += (_, __) => { NavigateWithTransition(new Pages.SettingsPage()); SetSelectedNav(navSettings); };
             if (navDashboard != null) SetSelectedNav(navDashboard);
 
@@ -234,8 +238,10 @@ namespace ReStore.Gui.Wpf.Views
         private void SetSelectedNav(Button selected)
         {
             var navDashboard = (Button)FindName("NavDashboard");
+            var navBackups = (Button)FindName("NavBackups");
+            var navSystemRestore = (Button)FindName("NavSystemRestore");
             var navSettings = (Button)FindName("NavSettings");
-            var buttons = new[] { navDashboard, navSettings };
+            var buttons = new[] { navDashboard, navBackups, navSystemRestore, navSettings };
             foreach (var btn in buttons)
             {
                 if (btn == null) continue;

@@ -2,199 +2,399 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" Background="{DynamicResource ApplicationBackgroundBrush}" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- Header Section -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-            <TextBlock Text="Configure your backup preferences and storage providers" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
-        </StackPanel>
-
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Orientation="Vertical">
-                <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}">
-                    <StackPanel Orientation="Vertical">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE790;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
-                            <TextBlock Text="Appearance" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        </StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="140"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Theme" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                            <ComboBox x:Name="ThemeSelector" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left">
-                                <ComboBoxItem Content="System"/>
-                                <ComboBoxItem Content="Light"/>
-                                <ComboBoxItem Content="Dark"/>
-                            </ComboBox>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Margin="0,16,0,0" Effect="{StaticResource CardShadow}">
-                    <StackPanel Orientation="Vertical">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C1;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
-                            <TextBlock Text="Application Behavior" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        </StackPanel>
-                        <CheckBox x:Name="MinimizeToTrayCheckBox" Content="Minimize to system tray on close" Margin="0,0,0,8"/>
-                        <TextBlock Text="When enabled, closing the window will minimize the app to the system tray instead of exiting. Double-click the tray icon to restore or right-click for options." Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Margin="0,16,0,0" Effect="{StaticResource CardShadow}">
-                    <StackPanel Orientation="Vertical">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
-                            <TextBlock Text="Storage Providers" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        </StackPanel>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="140"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Default storage" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                            <ComboBox x:Name="StorageCombo" Grid.Column="1" MinWidth="300" HorizontalAlignment="Left">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}"/>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                        </Grid>
-
-                        <CheckBox x:Name="ShowConfiguredOnly" Content="Show only configured providers" Margin="0,0,0,16"/>
-
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="OpenConfigBtn" Content="📂 Open Config Location" Cursor="Hand"/>
-                            <Button x:Name="LoadExampleBtn" Content="📄 Load Example Config" Margin="12,0,0,0" Cursor="Hand"/>
-                        </StackPanel>
-
-                        <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,20,0,16"/>
-
-                        <!-- Providers -->
-                        <TextBlock Text="Configure Providers" FontSize="14" FontWeight="Medium" Margin="0,0,0,12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-
-                        <Expander Header="Local Storage" Margin="0,0,0,12" IsExpanded="False">
-                            <StackPanel Margin="12,12,12,8">
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Path" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                    <TextBox x:Name="LocalPathBox" Grid.Column="1"/>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="SaveLocalBtn" Content="💾 Save" Cursor="Hand"/>
-                                    <Button x:Name="TestLocalBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander Header="Amazon S3" Margin="0,0,0,12" IsExpanded="False">
-                            <StackPanel Margin="12,12,12,8">
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBlock Text="Access Key" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <TextBox x:Name="S3AccessKey" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Secret Key" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <PasswordBox x:Name="S3SecretKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Region" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <TextBox x:Name="S3Region" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Bucket" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                    <TextBox x:Name="S3Bucket" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="SaveS3Btn" Content="💾 Save" Cursor="Hand"/>
-                                    <Button x:Name="TestS3Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander Header="Google Drive" Margin="0,0,0,12" IsExpanded="False">
-                            <StackPanel Margin="12,12,12,8">
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBlock Text="Client ID" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <TextBox x:Name="GDClientId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Client Secret" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <PasswordBox x:Name="GDClientSecret" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Token Folder" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <TextBox x:Name="GDTokenFolder" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Backup Folder" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                    <TextBox x:Name="GDBackupFolder" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="SaveGDriveBtn" Content="💾 Save" Cursor="Hand"/>
-                                    <Button x:Name="TestGDriveBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-
-                        <Expander Header="GitHub" Margin="0,0,0,12" IsExpanded="False">
-                            <StackPanel Margin="12,12,12,8">
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBlock Text="Token" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <PasswordBox x:Name="GhToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Owner" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                    <TextBox x:Name="GhOwner" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="Repo" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                    <TextBox x:Name="GhRepo" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="SaveGitHubBtn" Content="💾 Save" Cursor="Hand"/>
-                                    <Button x:Name="TestGitHubBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Border>
+            <!-- Header Section -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <TextBlock Text="Configure your backup preferences and storage providers" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
             </StackPanel>
-        </ScrollViewer>
-    </Grid>
+
+            <StackPanel Grid.Row="1" Orientation="Vertical">
+
+                <!-- Storage Providers Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Storage Providers" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Default storage" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <ComboBox x:Name="StorageCombo" Grid.Column="1" MinWidth="300" HorizontalAlignment="Left">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+
+                            <CheckBox x:Name="ShowConfiguredOnly" Content="Show only configured providers" Margin="0,0,0,16"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="OpenConfigBtn" Content="📂 Open Config Location" Cursor="Hand"/>
+                                <Button x:Name="LoadExampleBtn" Content="📄 Load Example Config" Margin="12,0,0,0" Cursor="Hand"/>
+                            </StackPanel>
+
+                            <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,20,0,16"/>
+
+                            <!-- Providers -->
+                            <TextBlock Text="Configure Providers" FontSize="14" FontWeight="Medium" Margin="0,0,0,12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                            <Expander Header="Local Storage" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Path" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBox x:Name="LocalPathBox" Grid.Column="1"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveLocalBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestLocalBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Amazon S3" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Access Key" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="S3AccessKey" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Secret Key" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="S3SecretKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Region" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="S3Region" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Bucket" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox x:Name="S3Bucket" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveS3Btn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestS3Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Google Drive" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Client ID" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="GDClientId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Client Secret" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="GDClientSecret" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Token Folder" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="GDTokenFolder" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Backup Folder" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox x:Name="GDBackupFolder" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveGDriveBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestGDriveBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="GitHub" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Token" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="GhToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Owner" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="GhOwner" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Repo" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox x:Name="GhRepo" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveGitHubBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestGitHubBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- Watch Directories Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Watched Directories" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <TextBlock Text="These directories will be monitored for changes when the file watcher is active." Margin="0,0,0,12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12"/>
+
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="200" Margin="0,0,0,12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="WatchDirectoriesList" Padding="0,0,8,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Padding="8" Margin="0,0,0,4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                                        <Button Grid.Column="2" Content="✕" FontSize="12" Padding="6,2" Tag="{Binding}" Click="RemoveWatchDir_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="AddWatchDirBtn" Content="➕ Add Directory" Cursor="Hand"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- Backup Configuration Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C8;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Backup Configuration" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="160"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="Backup Type" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <ComboBox x:Name="BackupTypeCombo" Grid.Row="0" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left" Margin="0,0,0,12">
+                                    <ComboBoxItem Content="Full" Tag="Full"/>
+                                    <ComboBoxItem Content="Incremental" Tag="Incremental"/>
+                                    <ComboBoxItem Content="Differential" Tag="Differential"/>
+                                </ComboBox>
+
+                                <TextBlock Grid.Row="1" Text="Backup Interval" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBox x:Name="BackupIntervalHoursBox" Width="60" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="hours" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="2" Text="Size Threshold" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBox x:Name="SizeThresholdBox" Width="80" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="3" Text="Max File Size" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBox x:Name="MaxFileSizeBox" Width="80" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Backup Type:" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="• Full: Backs up all files every time" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2"/>
+                            <TextBlock Text="• Incremental: Backs up only files changed since last backup" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2"/>
+                            <TextBlock Text="• Differential: Backs up files changed since last full backup" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
+
+                            <Button x:Name="SaveBackupConfigBtn" Content="💾 Save Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- Exclusions Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8E8;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Exclusions" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+
+                            <TextBlock Text="Excluded File Patterns" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="File patterns to exclude from backups (e.g., *.tmp, *.log)" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="150" Margin="0,0,0,12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="ExcludedPatternsList" Padding="0,0,8,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Padding="6" Margin="0,0,0,4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                        <Button Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemovePattern_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                <TextBox x:Name="NewPatternBox" Width="200" ToolTip="e.g., *.tmp, *.log"/>
+                                <Button x:Name="AddPatternBtn" Content="➕ Add" Margin="8,0,0,0" Cursor="Hand"/>
+                            </StackPanel>
+
+                            <TextBlock Text="Excluded Paths" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Full paths to exclude from backups (e.g., C:\Temp)" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="150" Margin="0,0,0,12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="ExcludedPathsList" Padding="0,0,8,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Padding="6" Margin="0,0,0,4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                                        <Button Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemovePath_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="AddPathBtn" Content="➕ Add Path" Cursor="Hand"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- Appearance & Behavior Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE790;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Appearance" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Theme" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <ComboBox x:Name="ThemeSelector" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left">
+                                    <ComboBoxItem Content="System"/>
+                                    <ComboBoxItem Content="Light"/>
+                                    <ComboBoxItem Content="Dark"/>
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- Application Behavior Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C1;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Application Behavior" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <CheckBox x:Name="MinimizeToTrayCheckBox" Content="Minimize to system tray on close" Margin="0,0,0,8"/>
+                            <TextBlock Text="When enabled, closing the window will minimize the app to the system tray instead of exiting. Double-click the tray icon to restore or right-click for options." Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
 </Page>
