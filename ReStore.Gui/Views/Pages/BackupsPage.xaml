@@ -1,4 +1,4 @@
-<Page x:Class="ReStore.Gui.Wpf.Views.Pages.BackupsPage"
+<Page x:Class="ReStore.Gui.Views.Pages.BackupsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" Background="{DynamicResource ApplicationBackgroundBrush}" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" Loaded="Page_Loaded">

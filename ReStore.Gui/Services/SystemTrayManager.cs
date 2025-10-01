@@ -2,7 +2,7 @@ using System;
 using System.Windows;
 using Hardcodet.Wpf.TaskbarNotification;
 
-namespace ReStore.Gui.Wpf.Services
+namespace ReStore.Gui.Services
 {
     public class SystemTrayManager : IDisposable
     {
@@ -121,7 +121,7 @@ namespace ReStore.Gui.Wpf.Services
         {
             try
             {
-                var iconStream = Application.GetResourceStream(new Uri("pack://application:,,,/ReStore.Gui.Wpf;component/icon.ico"))?.Stream;
+                var iconStream = Application.GetResourceStream(new Uri("pack://application:,,,/ReStore.Gui;component/icon.ico"))?.Stream;
                 if (iconStream != null)
                 {
                     return new System.Drawing.Icon(iconStream);

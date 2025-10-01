@@ -2,7 +2,7 @@ using System;
 using System.Threading.Tasks;
 using ReStore.src.monitoring;
 
-namespace ReStore.Gui.Wpf.Services
+namespace ReStore.Gui.Services
 {
     public class WatcherService
     {

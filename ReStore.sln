@@ -5,7 +5,7 @@ VisualStudioVersion = 17.5.002.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ReStore", "ReStore\ReStore.csproj", "{2F83696C-C34C-421F-895A-42CA7F038228}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ReStore.Gui.Wpf", "ReStore.Gui.Wpf\ReStore.Gui.Wpf.csproj", "{D14CFA9E-7E1D-4E0C-8E2F-3C7B48C6C5D3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ReStore.Gui", "ReStore.Gui\ReStore.Gui.csproj", "{D14CFA9E-7E1D-4E0C-8E2F-3C7B48C6C5D3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

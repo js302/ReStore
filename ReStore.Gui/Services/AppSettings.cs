@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace ReStore.Gui.Wpf.Services
+namespace ReStore.Gui.Services
 {
     public class AppSettings
     {

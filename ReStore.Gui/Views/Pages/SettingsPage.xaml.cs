@@ -3,12 +3,12 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
-using ReStore.Gui.Wpf.Services;
+using ReStore.Gui.Services;
 using ReStore.src.utils;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ReStore.Gui.Wpf.Views.Pages
+namespace ReStore.Gui.Views.Pages
 {
     public partial class SettingsPage : Page
     {

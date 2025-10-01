@@ -4,11 +4,11 @@ using System.Windows.Media;
 using System.Windows.Shell;
 using System.Windows.Shapes;
 using Wpf.Ui.Appearance;
-using ReStore.Gui.Wpf.Services;
-using ReStore.Gui.Wpf.Interop;
+using ReStore.Gui.Services;
+using ReStore.Gui.Interop;
 using System.Windows.Input;
 
-namespace ReStore.Gui.Wpf.Views
+namespace ReStore.Gui.Views
 {
     public partial class MainWindow : Window
     {

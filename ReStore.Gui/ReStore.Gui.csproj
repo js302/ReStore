@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <EnableWindowsTargeting>true</EnableWindowsTargeting>
-        <AssemblyName>ReStore.Gui.Wpf</AssemblyName>
+        <AssemblyName>ReStore.Gui</AssemblyName>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="..\ReStore\ReStore.csproj" />

@@ -1,13 +1,13 @@
 using System;
 using System.Diagnostics;
 using System.Windows;
-using ReStore.Gui.Wpf.Views;
-using ReStore.Gui.Wpf.Views.Pages;
+using ReStore.Gui.Views;
+using ReStore.Gui.Views.Pages;
 using Wpf.Ui.Appearance;
-using ReStore.Gui.Wpf.Services;
-using ReStore.Gui.Wpf.Interop;
+using ReStore.Gui.Services;
+using ReStore.Gui.Interop;
 
-namespace ReStore.Gui.Wpf
+namespace ReStore.Gui
 {
     public partial class App : Application
     {
