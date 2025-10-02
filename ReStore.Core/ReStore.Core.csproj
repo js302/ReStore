@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>ReStore.Core</AssemblyName>
+    <PackageId>ReStore.Core</PackageId>
+    <Product>ReStore Core</Product>
+    <Description>Command-line interface for ReStore backup and restore solution</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="3.7.*" />
+    <PackageReference Include="Google.Api.Gax.Grpc" Version="4.9.0" />
+    <PackageReference Include="Octokit" Version="9.0.*" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.68.0.3608" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
