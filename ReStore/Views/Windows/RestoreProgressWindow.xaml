@@ -1,0 +1,97 @@
+<Window x:Class="ReStore.Views.Windows.RestoreProgressWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="System Restore Progress" Height="500" Width="700" WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" Background="{DynamicResource ApplicationBackgroundBrush}">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="32" CornerRadius="8" GlassFrameThickness="0" ResizeBorderThickness="0"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Border BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="32"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title Bar -->
+            <Grid Grid.Row="0" Background="{DynamicResource ApplicationBackgroundBrush}" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <TextBlock Text="System Restore Progress" VerticalAlignment="Center" Margin="16,0" FontWeight="SemiBold"/>
+                <Button x:Name="CloseBtn" Content="✕" HorizontalAlignment="Right" Width="46" Height="32" Click="CloseBtn_Click" Background="Transparent" BorderThickness="0"/>
+            </Grid>
+
+            <!-- Content -->
+            <Grid Grid.Row="1" Margin="24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Status Header -->
+                <Border Grid.Row="0" Padding="16" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock x:Name="StatusText" Text="Preparing restore..." FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <ProgressBar x:Name="ProgressBar" Height="6" IsIndeterminate="True" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="DetailText" Text="Downloading backup..." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Statistics -->
+                <Grid Grid.Row="1" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Successful" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="SuccessCountText" Text="0" FontSize="24" FontWeight="Bold" Foreground="#10B981"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Margin="4,0">
+                        <StackPanel>
+                            <TextBlock Text="Failed" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="FailedCountText" Text="0" FontSize="24" FontWeight="Bold" Foreground="#EF4444"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Margin="8,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Total" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="TotalCountText" Text="0" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Log Output -->
+                <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Activity Log" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Action Buttons -->
+            <Border Grid.Row="2" Padding="24,16" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="OpenScriptsBtn" Content="Open Scripts Folder" Margin="0,0,8,0" Click="OpenScriptsBtn_Click" Visibility="Collapsed"/>
+                    <Button x:Name="CloseButton" Content="Close" IsEnabled="False" Click="CloseBtn_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

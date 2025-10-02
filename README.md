@@ -9,6 +9,8 @@ A backup and restore solution for Windows that protects your files, programs, an
 - **Modern Dashboard**: Real-time statistics, backup history, and quick actions
 - **Settings Management**: Configure watch directories, backup types, storage providers, and exclusions through an intuitive interface
 - **Backup Browser**: View and manage your backup history with one-click restore
+- **CLI Integration**: Enable/disable command-line access from the settings menu
+- **Run at Startup**: Option to automatically launch ReStore when Windows starts
 - **System Tray Integration**: Minimize to tray and control the file watcher in the background
 - **Theme Support**: Light, dark, and system theme options
 
@@ -62,7 +64,7 @@ A backup and restore solution for Windows that protects your files, programs, an
 3. Run the GUI application:
 
    ```bash
-   dotnet run --project ReStore.Gui
+   dotnet run --project ReStore
    ```
 
    Or run the CLI application:
@@ -78,7 +80,7 @@ A backup and restore solution for Windows that protects your files, programs, an
 Launch the WPF application for a visual interface:
 
 ```bash
-ReStore.Gui.exe
+ReStore.exe
 ```
 
 The GUI provides:
@@ -87,6 +89,13 @@ The GUI provides:
 - Backup history browser with one-click restore
 - Settings page for configuring watch directories, storage providers, and backup options
 - System tray support for background operation
+
+**Post-Installation Configuration**:
+
+After installation, visit the Settings page to:
+
+- Enable "Run at Windows Startup" to launch ReStore automatically when your computer boots
+- Enable "CLI Access" to add the `restore` command to your system PATH for terminal access
 
 ### Command Line Interface
 
@@ -155,10 +164,36 @@ You can configure ReStore through the GUI settings page or by editing `config/co
 
 ### Configuration File Location
 
-- GUI: `ReStore.Gui/config/config.json`
+- GUI: `ReStore/config/config.json`
 - CLI: `ReStore/config/config.json`
 
 A sample configuration file is provided as `config.example.json`.
+
+### Application Behavior Settings
+
+**Run at Windows Startup**: Configure ReStore to automatically launch when Windows starts. This feature adds an entry to the Windows Registry (`HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`). By default, this is disabled and can be toggled from the Settings page.
+
+**CLI Access Management**: Enable or disable command-line access to ReStore from any terminal:
+
+- **Enable**: Adds the ReStore CLI folder to your user PATH environment variable, allowing you to run `restore` commands from anywhere
+- **Disable**: Removes the CLI folder from your PATH
+- **Location**: The CLI executable is bundled with the GUI installation in the `cli\` subdirectory
+
+Example usage after enabling CLI access:
+
+```powershell
+# Create a manual backup
+restore backup
+
+# List all backups
+restore list-backups
+
+# Restore from a specific backup
+restore restore --id abc123
+
+# View help
+restore --help
+```
 
 ## System Backup
 
@@ -216,7 +251,7 @@ ReStore/
 │   │   └── backup/           # System backup functionality
 │   └── config/               # Configuration files
 │
-└── ReStore.Gui/           # WPF GUI application
+└── ReStore/           # WPF GUI application
     ├── App.xaml              # Application entry point
     ├── Views/                # UI pages (Dashboard, Backups, Settings)
     ├── Services/             # GUI services (theme, tray, settings)

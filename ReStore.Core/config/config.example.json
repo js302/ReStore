@@ -1,0 +1,80 @@
+{
+  "watchDirectories": [
+    "%APPDATA%",
+    "%USERPROFILE%\\Desktop",
+    "%USERPROFILE%\\Documents",
+    "%USERPROFILE%\\Pictures"
+  ],
+  "backupInterval": "01:00:00",
+  "sizeThresholdMB": 500,
+  "maxFileSizeMB": 100,
+  "backupType": "Incremental",
+  "systemBackup": {
+    "enabled": true,
+    "includePrograms": true,
+    "includeEnvironmentVariables": true,
+    "backupInterval": "24:00:00",
+    "excludeSystemPrograms": [
+      "Microsoft Visual C++",
+      "Microsoft .NET",
+      "Windows SDK",
+      "KB[0-9]+",
+      "Update for",
+      "Security Update"
+    ]
+  },
+  "excludedPatterns": [
+    "*.tmp",
+    "*.temp",
+    "~$*",
+    "Thumbs.db",
+    ".DS_Store",
+    "*.log",
+    "*.pst",
+    "desktop.ini",
+    "*.lnk",
+    "*.crdownload",
+    "*.partial"
+  ],
+  "excludedPaths": [
+    "%USERPROFILE%\\Documents\\Temp",
+    "%USERPROFILE%\\Downloads",
+    "%TEMP%",
+    "%LOCALAPPDATA%\\Temp",
+    "%WINDIR%",
+    "%ProgramFiles%",
+    "%ProgramFiles(x86)%"
+  ],
+  "storageSources": {
+    "gdrive": {
+      "path": "./backups",
+      "options": {
+        "client_id": "your_client_id",
+        "client_secret": "your_client_secret",
+        "token_folder": "%USERPROFILE%\\.restore\\tokens",
+        "backup_folder_name": "ReStore Backups"
+      }
+    },
+    "s3": {
+      "path": "./backups",
+      "options": {
+        "accessKeyId": "your_access_key_id",
+        "secretAccessKey": "your_secret_access_key",
+        "region": "your_aws_region",
+        "bucketName": "your_bucket_name"
+      }
+    },
+    "github": {
+      "path": "./backups",
+      "options": {
+        "token": "your_token",
+        "repo": "your_repo",
+        "owner": "your_github_username"
+      }
+    },
+    "local": {
+      "path": "%USERPROFILE%\\ReStoreBackups",
+      "options": {}
+    }
+  }
+}
