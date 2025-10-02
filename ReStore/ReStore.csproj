@@ -1,19 +1,50 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net9.0-windows</TargetFramework>
+        <UseWPF>true</UseWPF>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <EnableWindowsTargeting>true</EnableWindowsTargeting>
+        <AssemblyName>ReStore</AssemblyName>
+        <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+        <!-- MSIX Packaging Properties -->
+        <WindowsPackageType>MSIX</WindowsPackageType>
+        <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+        <SelfContained>true</SelfContained>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <PublishSingleFile>false</PublishSingleFile>
+        <PublishReadyToRun>false</PublishReadyToRun>
 
-  <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="3.7.*" />
-    <PackageReference Include="Google.Api.Gax.Grpc" Version="4.9.0" />
-    <PackageReference Include="Octokit" Version="9.0.*" />
-    <PackageReference Include="Google.Apis.Drive.v3" Version="1.68.0.3608" />
-    <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
-  </ItemGroup>
+        <!-- Application Identity -->
+        <PackageId>ReStore</PackageId>
+        <Version>1.0.0.0</Version>
+        <Authors>Jaskaran Singh</Authors>
+        <Company>Jaskaran Singh</Company>
+        <Product>ReStore</Product>
+        <Description>A backup and restore solution for Windows</Description>
+        <Copyright>Copyright © 2025 Jaskaran Singh</Copyright>
+        <PackageProjectUrl>https://github.com/js302/ReStore</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/js302/ReStore</RepositoryUrl>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\ReStore.Core\ReStore.Core.csproj" />
+        <PackageReference Include="WPF-UI" Version="4.0.3" />
+        <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    </ItemGroup>
+    <ItemGroup>
+        <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
 
+    <!-- Copy CLI executable and all dependencies to output folder -->
+    <Target Name="IncludeCLI" AfterTargets="Build">
+        <ItemGroup>
+            <CLIFiles Include="..\ReStore.Core\bin\$(Configuration)\net9.0\win-x64\**\*.*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(CLIFiles)" DestinationFolder="$(OutputPath)cli\%(RecursiveDir)" SkipUnchangedFiles="true" />
+        <!-- Rename the CLI executable from ReStore.Core.exe to restore.exe -->
+        <Move SourceFiles="$(OutputPath)cli\ReStore.Core.exe" DestinationFiles="$(OutputPath)cli\restore.exe" Condition="Exists('$(OutputPath)cli\ReStore.Core.exe')" />
+    </Target>
 </Project>
