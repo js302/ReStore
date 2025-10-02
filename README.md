@@ -1,6 +1,20 @@
 # ReStore
 
+[![Download Latest Release](https://img.shields.io/github/v/release/js302/ReStore?label=Download&style=for-the-badge)](https://github.com/js302/ReStore/releases/latest)
+[![License](https://img.shields.io/github/license/js302/ReStore?style=for-the-badge)](LICENSE)
+
 A backup and restore solution for Windows that protects your files, programs, and system configuration. ReStore includes both a command-line interface and a modern WPF GUI for managing your backups.
+
+## Installation
+
+### Download Pre-built Installer (Recommended)
+
+1. **[Download the latest MSIX installer](https://github.com/js302/ReStore/releases/latest)**
+2. **Double-click the MSIX file** to install ReStore
+
+### Build from Source
+
+See the [Build from Source](#build-from-source-1) section below.
 
 ## Features
 
@@ -39,14 +53,17 @@ A backup and restore solution for Windows that protects your files, programs, an
 - **Compression**: ZIP compression to save storage space
 - **History Tracking**: Complete backup history with metadata
 
-## Installation
-
 ### Prerequisites
 
-- .NET 9.0 or later
-- Windows OS (Windows 10 or later recommended)
+- Windows 10 version 1809 or later
+- ~200MB free disk space
 
 ### Build from Source
+
+**Prerequisites:**
+
+- .NET 9.0 SDK or later
+- Windows OS (Windows 10 or later recommended)
 
 1. Clone the repository:
 
@@ -58,16 +75,10 @@ A backup and restore solution for Windows that protects your files, programs, an
 2. Build the solution:
 
    ```bash
-   dotnet build
+   dotnet build ReStore.sln
    ```
 
 3. Run the GUI application:
-
-   ```bash
-   dotnet run --project ReStore
-   ```
-
-   Or run the CLI application:
 
    ```bash
    dotnet run --project ReStore
@@ -77,11 +88,7 @@ A backup and restore solution for Windows that protects your files, programs, an
 
 ### GUI Application
 
-Launch the WPF application for a visual interface:
-
-```bash
-ReStore.exe
-```
+Launch the application for a visual interface:
 
 The GUI provides:
 
@@ -97,52 +104,7 @@ After installation, visit the Settings page to:
 - Enable "Run at Windows Startup" to launch ReStore automatically when your computer boots
 - Enable "CLI Access" to add the `restore` command to your system PATH for terminal access
 
-### Command Line Interface
 
-The CLI is still available for scripting and automation.
-
-#### Start File Watcher
-
-Monitor directories for changes and backup automatically:
-
-```bash
-ReStore.exe --service local
-```
-
-#### Manual Backup
-
-Backup a specific directory:
-
-```bash
-ReStore.exe backup local "C:\Users\YourName\Documents"
-```
-
-#### Restore Files
-
-Restore from a backup:
-
-```bash
-ReStore.exe restore local "backups/Documents/backup_Documents_20250817120000.zip" "C:\Restore\Documents"
-```
-
-#### System Backup
-
-Backup installed programs and environment variables:
-
-```bash
-ReStore.exe system-backup local all
-ReStore.exe system-backup local programs
-ReStore.exe system-backup local environment
-```
-
-#### System Restore
-
-Restore system components:
-
-```bash
-ReStore.exe system-restore local "system_backups/programs/programs_backup_20250906143022.zip" programs
-ReStore.exe system-restore local "system_backups/environment/env_backup_20250906143022.zip" environment
-```
 
 ## Configuration
 
@@ -173,26 +135,57 @@ A sample configuration file is provided as `config.example.json`.
 
 **Run at Windows Startup**: Configure ReStore to automatically launch when Windows starts. This feature adds an entry to the Windows Registry (`HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`). By default, this is disabled and can be toggled from the Settings page.
 
+**System Tray Integration**: When minimized, ReStore can run in the system tray, allowing you to keep the file watcher active in the background without cluttering your taskbar.
+
 **CLI Access Management**: Enable or disable command-line access to ReStore from any terminal:
 
 - **Enable**: Adds the ReStore CLI folder to your user PATH environment variable, allowing you to run `restore` commands from anywhere
 - **Disable**: Removes the CLI folder from your PATH
 - **Location**: The CLI executable is bundled with the GUI installation in the `cli\` subdirectory
 
-Example usage after enabling CLI access:
+### Example usage after enabling CLI access:
 
-```powershell
-# Create a manual backup
-restore backup
+#### Start File Watcher
 
-# List all backups
-restore list-backups
+Monitor directories for changes and backup automatically:
 
-# Restore from a specific backup
-restore restore --id abc123
+```bash
+restore --service local
+```
 
-# View help
-restore --help
+#### Manual Backup
+
+Backup a specific directory:
+
+```bash
+restore backup local "C:\Users\YourName\Documents"
+```
+
+#### Restore Files
+
+Restore from a backup:
+
+```bash
+restore restore local "backups/Documents/backup_Documents_20250817120000.zip" "C:\Restore\Documents"
+```
+
+#### System Backup
+
+Backup installed programs and environment variables:
+
+```bash
+restore system-backup local all
+restore system-backup local programs
+restore system-backup local environment
+```
+
+#### System Restore
+
+Restore system components:
+
+```bash
+restore system-restore local "system_backups/programs/programs_backup_20250906143022.zip" programs
+restore system-restore local "system_backups/environment/env_backup_20250906143022.zip" environment
 ```
 
 ## System Backup
