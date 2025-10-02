@@ -400,4 +400,5 @@ FodyWeavers.xsd
 ReStore/config/config.json
 ReStore.Core/config/config.json
 Restore/state
+Restore.Core/state
 

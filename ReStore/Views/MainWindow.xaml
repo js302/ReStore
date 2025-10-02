@@ -5,11 +5,15 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:views="clr-namespace:ReStore.Views"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" mc:Ignorable="d" Title="ReStore" Height="1080" Width="1920" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False" Background="{DynamicResource ApplicationBackgroundBrush}" FontFamily="Segoe UI">
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" mc:Ignorable="d" Title="ReStore" Height="1080" Width="1920" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False" Background="{DynamicResource ApplicationBackgroundBrush}" FontFamily="Segoe UI" StateChanged="Window_StateChanged">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="32" CornerRadius="8" GlassFrameThickness="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
+
+    <Window.TaskbarItemInfo>
+        <shell:TaskbarItemInfo x:Name="TaskbarInfo"/>
+    </Window.TaskbarItemInfo>
 
     <Window.Resources>
         <Style x:Key="SidebarNavButtonStyle" TargetType="Button">
@@ -159,7 +163,7 @@
                 <Button x:Name="MinButton" Style="{StaticResource CaptionButtonStyle}" ToolTip="Minimize">
                     <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE921;"/>
                 </Button>
-                <Button x:Name="MaxButton" Style="{StaticResource CaptionButtonStyle}" ToolTip="Maximize/Restore">
+                <Button x:Name="MaxButton" Style="{StaticResource CaptionButtonStyle}" ToolTip="Maximize/Resize">
                     <TextBlock x:Name="MaxIcon" FontFamily="{StaticResource IconFont}" Text="&#xE922;"/>
                 </Button>
                 <Button x:Name="CloseButton" Style="{StaticResource CaptionCloseButtonStyle}" ToolTip="Close">
