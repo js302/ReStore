@@ -56,7 +56,7 @@ See the [Build from Source](#build-from-source-1) section below.
 ### Prerequisites
 
 - Windows 10 version 1809 or later
-- ~200MB free disk space
+- ~250MB free disk space
 
 ### Build from Source
 
