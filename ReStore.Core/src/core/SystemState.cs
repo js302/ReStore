@@ -27,13 +27,19 @@ public class SystemState
     public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
     public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
 
-    private string _stateFilePath = Path.Combine(Directory.GetCurrentDirectory(), "state", "system_state.json");
+    private string _stateFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "ReStore",
+        "state",
+        "system_state.json"
+    );
     [JsonIgnore]
     private readonly ILogger? _logger;
 
     public SystemState(ILogger? logger = null)
     {
         _logger = logger;
+        _logger?.Log($"System state will be stored at: {_stateFilePath}", LogLevel.Debug);
     }
 
     public void SetStateFilePath(string path)

@@ -41,6 +41,9 @@ namespace ReStore
             }
 
             base.OnStartup(e);
+            
+            ReStore.Core.src.utils.ConfigInitializer.EnsureConfigurationSetup();
+            
             AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             {
                 var ex = args.ExceptionObject as Exception;

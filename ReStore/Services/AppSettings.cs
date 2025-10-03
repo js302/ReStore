@@ -8,13 +8,13 @@ namespace ReStore.Services
     {
         private const string SETTINGS_FILE = "appsettings.json";
         private static readonly string SettingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "ReStore",
             SETTINGS_FILE);
 
         public string? DefaultStorage { get; set; }
         public bool ShowOnlyConfiguredProviders { get; set; }
-        public bool MinimizeToTray { get; set; } = true;
+        public bool MinimizeToTray { get; set; } = false;
 
         public static AppSettings Load()
         {

@@ -27,6 +27,9 @@ Examples:
         public static async Task Main(string[] args)
         {
             var logger = new Logger();
+            
+            ConfigInitializer.EnsureConfigurationSetup(logger);
+            
             var configManager = new ConfigManager(logger);
             await configManager.LoadAsync();
 

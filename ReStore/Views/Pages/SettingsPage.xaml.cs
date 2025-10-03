@@ -143,17 +143,39 @@ namespace ReStore.Views.Pages
             {
                 try
                 {
-                    var path = _configManager.GetConfigFilePath();
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    var configDir = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigDirectory();
+                    var configPath = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigPath();
+                    
+                    if (System.IO.File.Exists(configPath))
                     {
-                        FileName = "explorer.exe",
-                        Arguments = $"/select, \"{path}\"",
-                        UseShellExecute = true
-                    });
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "explorer.exe",
+                            Arguments = $"/select, \"{configPath}\"",
+                            UseShellExecute = true
+                        });
+                    }
+                    else
+                    {
+                        System.IO.Directory.CreateDirectory(configDir);
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "explorer.exe",
+                            Arguments = $"\"{configDir}\"",
+                            UseShellExecute = true
+                        });
+                        
+                        MessageBox.Show(
+                            $"Configuration directory opened.\n\n" +
+                            $"No config.json found yet. The application will create an example configuration on next startup.",
+                            "Configuration Directory",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
                 }
-                catch
+                catch (System.Exception ex)
                 {
-                    MessageBox.Show("Could not open config file location.");
+                    MessageBox.Show($"Could not open config file location: {ex.Message}");
                 }
             };
 
@@ -161,12 +183,18 @@ namespace ReStore.Views.Pages
             {
                 try
                 {
-                    var configPath = _configManager.GetConfigFilePath();
-                    var configDir = System.IO.Path.GetDirectoryName(configPath)!;
-                    var examplePath = System.IO.Path.Combine(configDir, "config.example.json");
+                    var configPath = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigPath();
+                    var configDir = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigDirectory();
+                    var examplePath = ReStore.Core.src.utils.ConfigInitializer.GetUserExampleConfigPath();
+                    
                     if (!System.IO.File.Exists(examplePath))
                     {
-                        MessageBox.Show($"No example config found at: {examplePath}");
+                        MessageBox.Show(
+                            $"No example config found at:\n{examplePath}\n\n" +
+                            "The example configuration should be created automatically on first run.",
+                            "Example Not Found",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
                         return;
                     }
 
@@ -180,11 +208,16 @@ namespace ReStore.Views.Pages
                     System.IO.File.Copy(examplePath, configPath, overwrite: true);
                     await ReloadStorageSourcesAsync();
                     PopulateProviderFields();
-                    MessageBox.Show("Example config loaded.");
+                    MessageBox.Show(
+                        "Example configuration loaded successfully!\n\n" +
+                        "Please review and update the settings as needed.",
+                        "Success",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
                 }
                 catch (System.Exception ex)
                 {
-                    MessageBox.Show($"Failed to load example config: {ex.Message}");
+                    MessageBox.Show($"Failed to load example config: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             };
 
