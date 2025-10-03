@@ -100,20 +100,20 @@
 
                                         <!-- Info -->
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Directory}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                            <TextBlock Text="{Binding Directory, Mode=OneWay}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                             <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
-                                                <Run Text="{Binding Timestamp, StringFormat='{}{0:MMM dd, yyyy HH:mm:ss}'}"/>
+                                                <Run Text="{Binding Timestamp, StringFormat='{}{0:MMM dd, yyyy HH:mm:ss}', Mode=OneWay}"/>
                                                 <Run Text="•"/>
-                                                <Run Text="{Binding TypeLabel}"/>
+                                                <Run Text="{Binding TypeLabel, Mode=OneWay}"/>
                                                 <Run Text="•"/>
-                                                <Run Text="{Binding SizeLabel}"/>
+                                                <Run Text="{Binding SizeLabel, Mode=OneWay}"/>
                                             </TextBlock>
-                                            <TextBlock Text="{Binding Path}" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Path, Mode=OneWay}" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
 
                                         <!-- Status Badge -->
-                                        <Border Grid.Column="3" Background="{Binding StatusColor}" CornerRadius="4" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding StatusText}" FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                                        <Border Grid.Column="3" Background="{Binding StatusColor, Mode=OneWay}" CornerRadius="4" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding StatusText, Mode=OneWay}" FontSize="10" FontWeight="SemiBold" Foreground="White"/>
                                         </Border>
 
                                         <!-- Action Buttons -->

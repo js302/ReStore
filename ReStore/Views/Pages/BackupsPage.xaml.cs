@@ -19,6 +19,8 @@ namespace ReStore.Views.Pages
     public class BackupItem : INotifyPropertyChanged
     {
         private bool _isSelected;
+        private static readonly Brush _recentBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
+        private static readonly Brush _archivedBrush = new SolidColorBrush(Color.FromRgb(107, 114, 128));
 
         public string Directory { get; set; } = "";
         public string Path { get; set; } = "";
@@ -29,9 +31,7 @@ namespace ReStore.Views.Pages
         public string TypeLabel => IsDiff ? "Differential" : "Full";
         public string SizeLabel => FormatBytes(SizeBytes);
         public string StatusText => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? "Recent" : "Archived";
-        public Brush StatusColor => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) 
-            ? new SolidColorBrush(Color.FromRgb(16, 185, 129)) 
-            : new SolidColorBrush(Color.FromRgb(107, 114, 128));
+        public Brush StatusColor => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? _recentBrush : _archivedBrush;
 
         public bool IsSelected
         {

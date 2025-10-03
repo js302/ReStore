@@ -53,7 +53,7 @@
                                 </StackPanel>
                                 <TextBlock x:Name="TotalBackupsText" Text="0 total" FontSize="16" FontWeight="Medium" Foreground="White" Opacity="0.9"/>
                             </StackPanel>
-                            <Button Grid.Row="1" x:Name="RefreshBtn" Content="↻ Refresh" HorizontalAlignment="Center" Width="100" Cursor="Hand" Margin="0,8,0,0" Padding="8,4" FontSize="12" Background="#30FFFFFF" Foreground="White"/>
+                            <Button Grid.Row="1" x:Name="RefreshBtn" Content="↻ Refresh" HorizontalAlignment="Center" Width="200" Cursor="Hand" Margin="0,8,0,0" Padding="8,4" FontSize="12" Background="#30FFFFFF" Foreground="White"/>
                         </Grid>
                     </Border>
 
@@ -71,7 +71,7 @@
                                 </StackPanel>
                                 <TextBlock x:Name="LastProgramBackupText" Text="Never" FontSize="16" FontWeight="Medium" Foreground="White" Opacity="0.9" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
-                            <Button Grid.Row="1" x:Name="BackupProgramsBtn" Content="💾 Backup" HorizontalAlignment="Center" Width="100" Cursor="Hand" Margin="0,8,0,0" Padding="8,4" FontSize="12" Background="#30FFFFFF" Foreground="White"/>
+                            <Button Grid.Row="1" x:Name="BackupProgramsBtn" Content="💾 Backup" HorizontalAlignment="Center" Width="200" Cursor="Hand" Margin="0,8,0,0" Padding="8,4" FontSize="12" Background="#30FFFFFF" Foreground="White"/>
                         </Grid>
                     </Border>
 
@@ -89,7 +89,7 @@
                                 </StackPanel>
                                 <TextBlock x:Name="LastEnvBackupText" Text="Never" FontSize="16" FontWeight="Medium" Foreground="White" Opacity="0.9" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
-                            <Button Grid.Row="1" x:Name="BackupEnvBtn" Content="💾 Backup" HorizontalAlignment="Center" Width="100" Cursor="Hand" Margin="0,8,0,0" Padding="8,4" FontSize="12" Background="#30FFFFFF" Foreground="White"/>
+                            <Button Grid.Row="1" x:Name="BackupEnvBtn" Content="💾 Backup" HorizontalAlignment="Center" Width="200" Cursor="Hand" Margin="0,8,0,0" Padding="8,4" FontSize="12" Background="#30FFFFFF" Foreground="White"/>
                         </Grid>
                     </Border>
                 </Grid>
@@ -128,7 +128,7 @@
 
                                         <!-- Info -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding TypeLabel}" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{Binding TypeLabel}" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                             <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13">
                                                 <Run Text="Created:"/>
                                                 <Run Text="{Binding Timestamp, StringFormat='{}{0:MMM dd, yyyy HH:mm:ss}'}"/>
