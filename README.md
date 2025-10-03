@@ -104,11 +104,9 @@ After installation, visit the Settings page to:
 - Enable "Run at Windows Startup" to launch ReStore automatically when your computer boots
 - Enable "CLI Access" to add the `restore` command to your system PATH for terminal access
 
-
-
 ## Configuration
 
-You can configure ReStore through the GUI settings page or by editing `config/config.json` directly.
+You can configure ReStore through the GUI settings page or by editing the configuration file directly.
 
 ### Key Settings
 
@@ -126,10 +124,36 @@ You can configure ReStore through the GUI settings page or by editing `config/co
 
 ### Configuration File Location
 
-- GUI: `ReStore/config/config.json`
-- CLI: `ReStore/config/config.json`
+Both the GUI and CLI applications use a **unified configuration** located at:
 
-A sample configuration file is provided as `config.example.json`.
+```
+%USERPROFILE%\ReStore\config.json
+```
+
+This is typically: `C:\Users\YourName\ReStore\config.json`
+
+**First Time Setup:**
+
+When you first launch ReStore (GUI or CLI), it will automatically:
+
+1. Create the `%USERPROFILE%\ReStore` directory
+2. Copy `config.example.json` to this location (if not already present)
+3. Prompt you to rename it to `config.json` and configure your settings
+
+### Application Data Location
+
+All application data is stored in a centralized user directory:
+
+```
+%USERPROFILE%\ReStore\
+├── config.json              (Main configuration - shared by GUI and CLI)
+├── config.example.json      (Template - auto-created on first run)
+├── appsettings.json         (GUI-specific settings - auto-generated)
+└── state\
+    └── system_state.json    (Backup metadata and history - auto-generated)
+```
+
+- **Backup Data**: `%USERPROFILE%\ReStoreBackups` (default, configurable)
 
 ### Application Behavior Settings
 
@@ -141,7 +165,7 @@ A sample configuration file is provided as `config.example.json`.
 
 - **Enable**: Adds the ReStore CLI folder to your user PATH environment variable, allowing you to run `restore` commands from anywhere
 - **Disable**: Removes the CLI folder from your PATH
-- **Location**: The CLI executable is bundled with the GUI installation in the `cli\` subdirectory
+- **Location**: The CLI executable is bundled with the GUI installation
 
 ### Example usage after enabling CLI access:
 

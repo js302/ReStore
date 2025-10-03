@@ -156,6 +156,8 @@ public class ConfigValidator
             return;
         }
 
+        var configuredSourcesCount = 0;
+
         foreach (var kvp in storageSources)
         {
             var sourceName = kvp.Key;
@@ -167,7 +169,18 @@ public class ConfigValidator
                 continue;
             }
 
+            var wasConfigured = !IsStorageSourceUnconfigured(sourceName, config);
             ValidateStorageSource(sourceName, config, result);
+            
+            if (wasConfigured)
+            {
+                configuredSourcesCount++;
+            }
+        }
+
+        if (configuredSourcesCount == 0)
+        {
+            result.AddError("No storage sources are properly configured. At least one storage source (e.g., 'local') must be configured.");
         }
     }
 
@@ -182,6 +195,13 @@ public class ConfigValidator
         if (string.IsNullOrWhiteSpace(config.Path))
         {
             result.AddError($"Storage source '{sourceName}' must have a path specified.");
+            return;
+        }
+
+        // Skip validation for storage sources that are not configured (have placeholder values)
+        if (IsStorageSourceUnconfigured(sourceName, config))
+        {
+            result.AddInfo($"Storage source '{sourceName}' is not configured (skipped validation).");
             return;
         }
 
@@ -203,6 +223,21 @@ public class ConfigValidator
                 result.AddWarning($"Unknown storage type '{sourceName}'. Make sure this storage provider is supported.");
                 break;
         }
+    }
+
+    private bool IsStorageSourceUnconfigured(string sourceName, StorageConfig config)
+    {
+        // Check if this is a non-local storage with placeholder values
+        if (sourceName.ToLowerInvariant() == "local")
+        {
+            return false; // Always validate local storage
+        }
+
+        // Check if any option contains placeholder text
+        return config.Options.Any(opt => 
+            string.IsNullOrWhiteSpace(opt.Value) || 
+            opt.Value.StartsWith("your_", StringComparison.OrdinalIgnoreCase) ||
+            opt.Value.Contains("your_", StringComparison.OrdinalIgnoreCase));
     }
 
     private void ValidateLocalStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
@@ -252,7 +287,8 @@ public class ConfigValidator
 
         if (missingOptions.Any())
         {
-            result.AddError($"Google Drive storage '{sourceName}' missing required options: {string.Join(", ", missingOptions)}");
+            result.AddWarning($"Google Drive storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
         }
 
         if (config.Options.ContainsKey("token_folder"))
@@ -284,7 +320,8 @@ public class ConfigValidator
 
         if (missingOptions.Any())
         {
-            result.AddError($"S3 storage '{sourceName}' missing required options: {string.Join(", ", missingOptions)}");
+            result.AddWarning($"S3 storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
         }
 
         // Validate region format
@@ -318,7 +355,8 @@ public class ConfigValidator
 
         if (missingOptions.Any())
         {
-            result.AddError($"GitHub storage '{sourceName}' missing required options: {string.Join(", ", missingOptions)}");
+            result.AddWarning($"GitHub storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
         }
     }
 

@@ -149,7 +149,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Custom Title Bar -->
-        <Grid x:Name="TitleBar" Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource ApplicationBackgroundBrush}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+        <Grid x:Name="TitleBar" Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource TitleBarBackgroundBrush}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -172,7 +172,11 @@
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="1" Grid.Column="0" Margin="0" BorderThickness="0" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <!-- Separator line below title bar -->
+        <Rectangle Grid.Row="1" Grid.ColumnSpan="2" Height="1" VerticalAlignment="Top" Fill="{DynamicResource SeparatorBrush}" Margin="0,0,0,0"/>
+
+        <!-- Sidebar/Navigation -->
+        <Border Grid.Row="1" Grid.Column="0" Margin="0" BorderThickness="0" Background="{DynamicResource SidebarBackgroundBrush}">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Padding="16,12" Margin="12,8,12,16" CornerRadius="8" BorderThickness="0">
                     <!-- <StackPanel> -->
@@ -209,8 +213,12 @@
             </DockPanel>
         </Border>
 
-        <Border Grid.Row="1" Grid.Column="1" CornerRadius="8">
-            <Frame x:Name="ContentFrame" NavigationUIVisibility="Hidden" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <!-- Vertical separator between sidebar and main content -->
+        <Rectangle Grid.Row="1" Grid.Column="1" Width="1" HorizontalAlignment="Left" Fill="{DynamicResource SeparatorBrush}" Margin="0,0,0,0"/>
+
+        <!-- Main Content Area -->
+        <Border Grid.Row="1" Grid.Column="1" CornerRadius="0">
+            <Frame x:Name="ContentFrame" NavigationUIVisibility="Hidden" Background="{DynamicResource MainWindowBackgroundBrush}">
                 <Frame.RenderTransform>
                     <TranslateTransform Y="0"/>
                 </Frame.RenderTransform>

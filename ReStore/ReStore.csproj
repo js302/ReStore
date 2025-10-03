@@ -36,6 +36,7 @@
     </ItemGroup>
     <ItemGroup>
         <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="config\config.example.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <!-- Copy CLI executable and all dependencies to output folder -->

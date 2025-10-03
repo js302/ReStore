@@ -11,6 +11,12 @@
 
             <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
 
+            <!-- Zone Colors -->
+            <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#1E1E1E"/>
+            <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#252526"/>
+            <SolidColorBrush x:Key="MainWindowBackgroundBrush" Color="#2D2D30"/>
+            <SolidColorBrush x:Key="SeparatorBrush" Color="#3E3E42"/>
+
             <!-- Animation Durations -->
             <Duration x:Key="FastAnimation">0:0:0.15</Duration>
             <Duration x:Key="MediumAnimation">0:0:0.25</Duration>
@@ -24,10 +30,6 @@
             <!-- Shadows -->
             <DropShadowEffect x:Key="CardShadow" BlurRadius="12" ShadowDepth="2" Opacity="0.08" Color="Black"/>
             <DropShadowEffect x:Key="ElevatedShadow" BlurRadius="20" ShadowDepth="6" Opacity="0.12" Color="Black"/>
-
-            <!-- Subtle background brushes for better delineation -->
-            <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#08000000"/>
-            <SolidColorBrush x:Key="SidebarBackgroundBrushDark" Color="Transparent"/>
 
             <!-- Fade In Animation -->
             <Storyboard x:Key="FadeInAnimation">

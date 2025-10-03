@@ -51,7 +51,7 @@
       "options": {
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
-        "token_folder": "%USERPROFILE%\\.restore\\tokens",
+        "token_folder": "your_token_folder",
         "backup_folder_name": "ReStore Backups"
       }
     },

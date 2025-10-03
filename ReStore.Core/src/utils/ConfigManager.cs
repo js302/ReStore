@@ -95,9 +95,25 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     public async Task LoadAsync()
     {
-        if (!File.Exists(CONFIG_PATH))
+        var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
+        var configExists = File.Exists(CONFIG_PATH);
+        
+        if (!configExists)
         {
-            await CreateDefaultConfigAsync();
+            var exampleConfigPath = Path.Combine(configDir, "config.example.json");
+            var exampleExists = File.Exists(exampleConfigPath);
+            
+            if (!exampleExists)
+            {
+                await CreateDefaultConfigAsync();
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Configuration file not found at: {CONFIG_PATH}\n" +
+                    $"An example configuration exists at: {exampleConfigPath}\n" +
+                    "Please rename it to 'config.json' and configure your backup settings.");
+            }
         }
 
         var jsonString = await File.ReadAllTextAsync(CONFIG_PATH);
@@ -200,22 +216,28 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     private async Task CreateDefaultConfigAsync()
     {
-        // If an example config exists alongside the target config, prefer copying it
-        try
+        var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
+        Directory.CreateDirectory(configDir);
+
+        // Try to copy config.example.json from the application directory
+        var examplePath = GetExampleConfigPath();
+        if (examplePath != null && File.Exists(examplePath))
         {
-            var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
-            Directory.CreateDirectory(configDir);
-            var examplePath = Path.Combine(configDir, "config.example.json");
-            if (File.Exists(examplePath) && !File.Exists(CONFIG_PATH))
+            try
             {
                 File.Copy(examplePath, CONFIG_PATH, overwrite: false);
-                logger.Log("No config.json found. Seeded from config.example.json", LogLevel.Info);
+                logger.Log($"No config.json found. Created from example config at {CONFIG_PATH}", LogLevel.Info);
+                logger.Log("Please edit the config.json file to configure your backup settings.", LogLevel.Info);
                 return;
             }
+            catch (Exception ex)
+            {
+                logger.Log($"Failed to copy example config: {ex.Message}. Creating minimal config.", LogLevel.Warning);
+            }
         }
-        catch
+        else
         {
-            // Fall back to generating a minimal default config below
+            logger.Log("Example config not found. Creating minimal default config.", LogLevel.Warning);
         }
 
         WatchDirectories =
@@ -279,38 +301,37 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     private static string GetConfigPath()
     {
-        // Get the assembly location
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(userProfile, "ReStore", "config.json");
+    }
+
+    private static string? GetExampleConfigPath()
+    {
         var assemblyLocation = Assembly.GetExecutingAssembly().Location;
         var assemblyDirectory = Path.GetDirectoryName(assemblyLocation);
         
         if (string.IsNullOrEmpty(assemblyDirectory))
         {
-            // Fallback to current directory
-            return Path.Combine(Directory.GetCurrentDirectory(), "config", "config.json");
+            return null;
         }
 
-        // Check if we're running from a bin directory (development mode)
         var currentDir = new DirectoryInfo(assemblyDirectory);
         DirectoryInfo? projectRoot = null;
 
-        // Navigate up to find the project root
-        // Look for indicators like .csproj files or the specific directory structure
         while (currentDir?.Parent != null)
         {
-            // Check if we're in a bin directory and go up to project root
             if ((currentDir.Name == "net9.0" || currentDir.Name == "net9.0-windows")
                 && currentDir.Parent?.Name == "Debug" && currentDir.Parent.Parent?.Name == "bin")
             {
-                projectRoot = currentDir.Parent.Parent.Parent; // Go up from bin/Debug/net9.0 to project root
+                projectRoot = currentDir.Parent.Parent.Parent;
                 break;
             }
             else if ((currentDir.Name == "net9.0" || currentDir.Name == "net9.0-windows")
                 && currentDir.Parent?.Name == "Release" && currentDir.Parent.Parent?.Name == "bin")
             {
-                projectRoot = currentDir.Parent.Parent.Parent; // Go up from bin/Release/net9.0 to project root
+                projectRoot = currentDir.Parent.Parent.Parent;
                 break;
             }
-            // Check if current directory contains .csproj file (project root)
             else if (currentDir.GetFiles("*.csproj").Length > 0)
             {
                 projectRoot = currentDir;
@@ -322,23 +343,24 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
         if (projectRoot != null && projectRoot.Exists)
         {
-            // Prefer the nearest existing 'config' folder from project root upwards (handles solution-level config)
             var probe = projectRoot;
             for (int i = 0; i < 3 && probe != null; i++)
             {
-                var candidate = Path.Combine(probe.FullName, "config", "config.json");
-                if (File.Exists(candidate) || Directory.Exists(Path.GetDirectoryName(candidate)!))
+                var candidate = Path.Combine(probe.FullName, "config", "config.example.json");
+                if (File.Exists(candidate))
                 {
                     return candidate;
                 }
                 probe = probe.Parent;
             }
-
-            // Fallback to project-local config path
-            return Path.Combine(projectRoot.FullName, "config", "config.json");
         }
 
-        // Fallback: use the directory where the executable is located
-        return Path.Combine(assemblyDirectory, "config", "config.json");
+        var inAppConfig = Path.Combine(assemblyDirectory, "config", "config.example.json");
+        if (File.Exists(inAppConfig))
+        {
+            return inAppConfig;
+        }
+
+        return null;
     }
 }

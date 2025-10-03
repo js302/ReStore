@@ -97,13 +97,38 @@ namespace ReStore.Views.Pages
                 _state = new SystemState(this);
                 await _state.LoadStateAsync();
                 
-                StatusText.Text = $"Config loaded: {_configManager.GetConfigFilePath()}";
+                var configPath = _configManager.GetConfigFilePath();
+                StatusText.Text = $"Config loaded: {configPath}";
                 UpdateStatistics();
                 await RefreshBackupHistoryAsync();
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("config.example.json"))
+            {
+                var configDir = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigDirectory();
+                var examplePath = ReStore.Core.src.utils.ConfigInitializer.GetUserExampleConfigPath();
+                
+                Log("Configuration setup required", LogLevel.Warning);
+                Log($"Configuration directory: {configDir}", LogLevel.Info);
+                Log($"Example config: {examplePath}", LogLevel.Info);
+                Log("Please rename config.example.json to config.json and configure your settings", LogLevel.Warning);
+                
+                MessageBox.Show(
+                    $"Welcome to ReStore!\n\n" +
+                    $"First-time setup required:\n\n" +
+                    $"1. Open: {configDir}\n" +
+                    $"2. Rename 'config.example.json' to 'config.json'\n" +
+                    $"3. Edit the file to configure your backup settings\n" +
+                    $"You can also use the Settings page to configure ReStore.",
+                    "Configuration Required",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                
+                StatusText.Text = "Configuration required - see logs";
             }
             catch (Exception ex)
             {
                 Log($"Failed to load config: {ex.Message}", LogLevel.Error);
+                StatusText.Text = "Configuration error - see logs";
             }
         }
 

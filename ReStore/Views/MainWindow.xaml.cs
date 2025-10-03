@@ -298,12 +298,22 @@ namespace ReStore.Views
                 _navHoverBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
                 _navSelectedBrush = new SolidColorBrush(Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF));
                 _captionHoverBrush = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
+                
+                Application.Current.Resources["TitleBarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x23, 0x23, 0x23));
+                Application.Current.Resources["SidebarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x26));
+                Application.Current.Resources["MainWindowBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x30));
+                Application.Current.Resources["SeparatorBrush"] = new SolidColorBrush(Color.FromRgb(0x3E, 0x3E, 0x42));
             }
             else
             {
                 _navHoverBrush = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
                 _navSelectedBrush = new SolidColorBrush(Color.FromArgb(0x4D, 0x00, 0x00, 0x00));
                 _captionHoverBrush = new SolidColorBrush(Color.FromArgb(0x1F, 0x00, 0x00, 0x00));
+                
+                Application.Current.Resources["TitleBarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE5, 0xE5));
+                Application.Current.Resources["SidebarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0));
+                Application.Current.Resources["MainWindowBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+                Application.Current.Resources["SeparatorBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));
             }
             
             UpdateHoverBorders();
