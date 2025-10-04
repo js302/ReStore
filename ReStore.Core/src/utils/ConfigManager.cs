@@ -14,6 +14,7 @@ public interface IConfigManager
     List<string> ExcludedPaths { get; }
     BackupType BackupType { get; }
     int MaxFileSizeMB { get; }
+    SystemBackupConfig SystemBackup { get; }
     Task LoadAsync();
     Task SaveAsync(string configPath = "");
     Task<IStorage> CreateStorageAsync(string storageType);
@@ -32,6 +33,15 @@ public class StorageConfig
 {
     public string Path { get; set; } = string.Empty;
     public Dictionary<string, string> Options { get; set; } = [];
+}
+
+public class SystemBackupConfig
+{
+    public bool Enabled { get; set; } = true;
+    public bool IncludePrograms { get; set; } = true;
+    public bool IncludeEnvironmentVariables { get; set; } = true;
+    public TimeSpan BackupInterval { get; set; } = TimeSpan.FromHours(24);
+    public List<string> ExcludeSystemPrograms { get; set; } = [];
 }
 
 public class ConfigManager(ILogger logger) : IConfigManager
@@ -58,6 +68,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     public List<string> ExcludedPaths { get; private set; } = [];
     public BackupType BackupType { get; private set; } = BackupType.Incremental;
     public int MaxFileSizeMB { get; private set; } = 100;
+    public SystemBackupConfig SystemBackup { get; private set; } = new();
 
     private readonly StorageFactory _storageFactory = new(logger);
 
@@ -171,6 +182,33 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 MaxFileSizeMB = maxFileSizeElement.GetInt32();
             }
 
+            // Load system backup configuration
+            if (root.TryGetProperty("systemBackup", out var systemBackupElement))
+            {
+                SystemBackup = new SystemBackupConfig();
+                
+                if (systemBackupElement.TryGetProperty("enabled", out var enabled))
+                    SystemBackup.Enabled = enabled.GetBoolean();
+                
+                if (systemBackupElement.TryGetProperty("includePrograms", out var includePrograms))
+                    SystemBackup.IncludePrograms = includePrograms.GetBoolean();
+                
+                if (systemBackupElement.TryGetProperty("includeEnvironmentVariables", out var includeEnv))
+                    SystemBackup.IncludeEnvironmentVariables = includeEnv.GetBoolean();
+                
+                if (systemBackupElement.TryGetProperty("backupInterval", out var sysBackupInterval))
+                    SystemBackup.BackupInterval = TimeSpan.Parse(sysBackupInterval.GetString() ?? "24:00:00");
+                
+                if (systemBackupElement.TryGetProperty("excludeSystemPrograms", out var excludePrograms))
+                {
+                    SystemBackup.ExcludeSystemPrograms = JsonSerializer.Deserialize<List<string>>(excludePrograms, _readOptions) ?? [];
+                }
+            }
+            else
+            {
+                SetDefaultSystemBackupConfig();
+            }
+
             logger.Log("Configuration loaded successfully", LogLevel.Info);
         }
         catch (Exception ex)
@@ -195,11 +233,19 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 watchDirectories = WatchDirectories,
                 backupInterval = BackupInterval.ToString(),
                 sizeThresholdMB = SizeThresholdMB,
-                storageSources = StorageSources,
+                maxFileSizeMB = MaxFileSizeMB,
+                backupType = BackupType.ToString(),
+                systemBackup = new
+                {
+                    enabled = SystemBackup.Enabled,
+                    includePrograms = SystemBackup.IncludePrograms,
+                    includeEnvironmentVariables = SystemBackup.IncludeEnvironmentVariables,
+                    backupInterval = SystemBackup.BackupInterval.ToString(),
+                    excludeSystemPrograms = SystemBackup.ExcludeSystemPrograms
+                },
                 excludedPatterns = ExcludedPatterns,
                 excludedPaths = ExcludedPaths,
-                backupType = BackupType.ToString(),
-                maxFileSizeMB = MaxFileSizeMB
+                storageSources = StorageSources
             };
 
             var jsonString = JsonSerializer.Serialize(configObject, _writeOptions);
@@ -297,6 +343,26 @@ public class ConfigManager(ILogger logger) : IConfigManager
             Environment.ExpandEnvironmentVariables("%ProgramFiles%"),
             Environment.ExpandEnvironmentVariables("%ProgramFiles(x86)%")
         ];
+    }
+
+    private void SetDefaultSystemBackupConfig()
+    {
+        SystemBackup = new SystemBackupConfig
+        {
+            Enabled = false,
+            IncludePrograms = false,
+            IncludeEnvironmentVariables = false,
+            BackupInterval = TimeSpan.FromHours(24),
+            ExcludeSystemPrograms =
+            [
+                "Microsoft Visual C++",
+                "Microsoft .NET",
+                "Windows SDK",
+                "KB[0-9]+",
+                "Update for",
+                "Security Update"
+            ]
+        };
     }
 
     private static string GetConfigPath()

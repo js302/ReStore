@@ -20,29 +20,27 @@ public static class ConfigInitializer
             Directory.CreateDirectory(USER_STATE_DIR);
             logger?.Log($"Ensured ReStore directories exist at: {USER_CONFIG_DIR}", LogLevel.Debug);
 
-            var exampleExists = File.Exists(USER_EXAMPLE_CONFIG_PATH);
             var configExists = File.Exists(USER_CONFIG_PATH);
 
-            if (!exampleExists)
+            if (!configExists)
             {
                 var appExamplePath = GetApplicationExampleConfigPath();
                 if (appExamplePath != null && File.Exists(appExamplePath))
                 {
-                    File.Copy(appExamplePath, USER_EXAMPLE_CONFIG_PATH, overwrite: false);
-                    logger?.Log($"Copied example configuration to: {USER_EXAMPLE_CONFIG_PATH}", LogLevel.Info);
+                    File.Copy(appExamplePath, USER_CONFIG_PATH, overwrite: false);
+                    logger?.Log($"Created initial configuration at: {USER_CONFIG_PATH}", LogLevel.Info);
+                    logger?.Log("You can modify the configuration through the GUI settings or by editing the config.json file.", LogLevel.Info);
+                }
+                else
+                {
+                    logger?.Log($"Configuration directory created at: {USER_CONFIG_DIR}", LogLevel.Warning);
+                    logger?.Log("Warning: Could not find example configuration file to initialize config.json.", LogLevel.Warning);
+                    logger?.Log("Please ensure the application is installed correctly.", LogLevel.Warning);
                 }
             }
-
-            if (!configExists && !exampleExists)
+            else
             {
-                logger?.Log($"Configuration directory created at: {USER_CONFIG_DIR}", LogLevel.Info);
-                logger?.Log("Example configuration will be created on first run.", LogLevel.Info);
-            }
-            else if (!configExists && exampleExists)
-            {
-                logger?.Log($"Configuration directory: {USER_CONFIG_DIR}", LogLevel.Info);
-                logger?.Log($"Example configuration found at: {USER_EXAMPLE_CONFIG_PATH}", LogLevel.Info);
-                logger?.Log("Please rename config.example.json to config.json and configure your settings.", LogLevel.Warning);
+                logger?.Log($"Configuration loaded from: {USER_CONFIG_PATH}", LogLevel.Debug);
             }
         }
         catch (Exception ex)
