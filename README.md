@@ -654,8 +654,8 @@ When you perform a system backup, ReStore creates:
 
 ```
 ReStore/
-├── ReStore/                    # Core CLI application
-│   ├── Program.cs             # CLI entry point
+├── ReStore.Core/             # Core CLI application
+│   ├── Program.cs            # CLI entry point
 │   ├── src/
 │   │   ├── core/             # Backup, restore, and state management
 │   │   ├── storage/          # Storage provider implementations
@@ -664,7 +664,7 @@ ReStore/
 │   │   └── backup/           # System backup functionality
 │   └── config/               # Configuration files
 │
-└── ReStore/           # WPF GUI application
+└── ReStore/                  # WPF GUI application
     ├── App.xaml              # Application entry point
     ├── Views/                # UI pages (Dashboard, Backups, Settings)
     ├── Services/             # GUI services (theme, tray, settings)
