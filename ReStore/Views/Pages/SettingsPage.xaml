@@ -46,10 +46,7 @@
 
                             <CheckBox x:Name="ShowConfiguredOnly" Content="Show only configured providers" Margin="0,0,0,16"/>
 
-                            <StackPanel Orientation="Horizontal">
-                                <Button x:Name="OpenConfigBtn" Content="📂 Open Config Location" Cursor="Hand"/>
-                                <Button x:Name="LoadExampleBtn" Content="📄 Load Example Config" Margin="12,0,0,0" Cursor="Hand"/>
-                            </StackPanel>
+                            <Button x:Name="OpenConfigBtn" Content="📂 Open Config Location" Cursor="Hand" HorizontalAlignment="Left"/>
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,20,0,16"/>
 
@@ -272,6 +269,82 @@
                             <TextBlock Text="• Differential: Backs up files changed since last full backup" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
 
                             <Button x:Name="SaveBackupConfigBtn" Content="💾 Save Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- System Backup Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7F8;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="System Backup" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <TextBlock Text="Configure automatic backup of system state (installed programs and environment variables)" Margin="0,0,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="Enable System Backup" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <CheckBox x:Name="SystemBackupEnabledCheckBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,12"/>
+
+                                <TextBlock Grid.Row="1" Text="Include Programs" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <CheckBox x:Name="SystemBackupIncludeProgramsCheckBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12"/>
+
+                                <TextBlock Grid.Row="2" Text="Include Environment Variables" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <CheckBox x:Name="SystemBackupIncludeEnvCheckBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
+
+                                <TextBlock Grid.Row="3" Text="System Backup Interval" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBox x:Name="SystemBackupIntervalHoursBox" Width="60" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="hours" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Exclude System Programs (regex patterns)" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,8,0,8"/>
+                            <TextBlock Text="Patterns to exclude certain system programs from backup (e.g., Microsoft Visual C++, KB[0-9]+)" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="150" Margin="0,0,0,12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="ExcludeSystemProgramsList" Padding="0,0,8,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Padding="6" Margin="0,0,0,4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                        <Button Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemoveSystemProgram_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBox x:Name="NewSystemProgramPatternBox" Width="250" ToolTip="e.g., Microsoft Visual C++, KB[0-9]+"/>
+                                <Button x:Name="AddSystemProgramBtn" Content="➕ Add" Margin="8,0,0,0" Cursor="Hand"/>
+                            </StackPanel>
+
+                            <Button x:Name="SaveSystemBackupConfigBtn" Content="💾 Save System Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                 </Expander>

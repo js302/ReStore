@@ -137,8 +137,10 @@ This is typically: `C:\Users\YourName\ReStore\config.json`
 When you first launch ReStore (GUI or CLI), it will automatically:
 
 1. Create the `%USERPROFILE%\ReStore` directory
-2. Copy `config.example.json` to this location (if not already present)
-3. Prompt you to rename it to `config.json` and configure your settings
+2. Create `config.json` from the template (if not already present)
+3. You can then configure all settings through:
+   - **GUI**: Settings page with intuitive controls for all options
+   - **Manual**: Edit `config.json` directly in a text editor
 
 ### Application Data Location
 
@@ -146,12 +148,22 @@ All application data is stored in a centralized user directory:
 
 ```
 %USERPROFILE%\ReStore\
-├── config.json              (Main configuration - shared by GUI and CLI)
-├── config.example.json      (Template - auto-created on first run)
+├── config.json              (Main configuration - shared by GUI and CLI - auto-created on first run)
 ├── appsettings.json         (GUI-specific settings - auto-generated)
 └── state\
     └── system_state.json    (Backup metadata and history - auto-generated)
 ```
+
+**Settings Available in GUI:**
+
+All configuration options can be managed through the Settings page:
+
+- **General Settings**: Theme, startup options, system tray, CLI access
+- **Storage Providers**: Local, Google Drive, AWS S3, GitHub configuration
+- **Watch Directories**: Add/remove folders to monitor for automatic backups
+- **Backup Configuration**: Type (Full/Incremental/Differential), interval, size limits
+- **System Backup**: Enable/disable system state backups, configure program and environment variable backups
+- **Exclusions**: File patterns and paths to exclude from backups
 
 - **Backup Data**: `%USERPROFILE%\ReStoreBackups` (default, configurable)
 
@@ -188,7 +200,7 @@ In `%USERPROFILE%\ReStore\config.json`, configure the local storage source:
 - The path can be on a local drive, external drive, or network share
 - You can use environment variables like `%USERPROFILE%`, `%APPDATA%`, etc.
 - Ensure the directory has sufficient free space for your backups
-- For network shares, use UNC paths like `\\\\server\\share\\backups`
+- For network shares, use UNC paths like `\\server\share\backups`
 
 ### Google Drive Setup
 
@@ -465,7 +477,7 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 
 **Notes:**
 
-- GitHub has file size limits (recommended max 50MB per file, hard limit 100MB)
+- GitHub has file size limits
 - This storage option is best for configuration files, scripts, and smaller backups
 - For large file backups, consider using Git LFS or another storage provider
 - Keep your token secure - it provides write access to your repository
@@ -474,10 +486,9 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 
 **Storage Limits (Free Plan):**
 
-- **Repository size**: No hard limit, but recommended to keep under 1 GB (soft limit ~5 GB)
+- **Repository size**: No hard limit, but recommended to keep under 1 GB
 - **File size**: 100 MB maximum per file (warning at 50 MB)
-- **Git LFS (Large File Storage)**:
-  - **Free tier**: 2 GB of LFS storage and 1 GB of bandwidth per month
+- **Free tier**: 2 GB of Git LFS storage and 1 GB of bandwidth per month
 - **Best practice**: Use GitHub for configuration backups and smaller files; use Google Drive or S3 for large file backups
 
 ### Using Multiple Storage Providers

@@ -19,6 +19,7 @@ namespace ReStore.Views.Pages
         private readonly ObservableCollection<string> _watchDirectories = new();
         private readonly ObservableCollection<string> _excludedPatterns = new();
         private readonly ObservableCollection<string> _excludedPaths = new();
+        private readonly ObservableCollection<string> _excludeSystemPrograms = new();
 
         public SettingsPage()
         {
@@ -30,6 +31,7 @@ namespace ReStore.Views.Pages
             WatchDirectoriesList.ItemsSource = _watchDirectories;
             ExcludedPatternsList.ItemsSource = _excludedPatterns;
             ExcludedPathsList.ItemsSource = _excludedPaths;
+            ExcludeSystemProgramsList.ItemsSource = _excludeSystemPrograms;
 
             Loaded += async (_, __) =>
             {
@@ -61,6 +63,9 @@ namespace ReStore.Views.Pages
 
                 // Load exclusions
                 LoadExclusions();
+
+                // Load system backup configuration
+                LoadSystemBackupConfiguration();
 
                 _isLoading = false;
             };
@@ -179,47 +184,7 @@ namespace ReStore.Views.Pages
                 }
             };
 
-            LoadExampleBtn.Click += async (_, __) =>
-            {
-                try
-                {
-                    var configPath = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigPath();
-                    var configDir = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigDirectory();
-                    var examplePath = ReStore.Core.src.utils.ConfigInitializer.GetUserExampleConfigPath();
-                    
-                    if (!System.IO.File.Exists(examplePath))
-                    {
-                        MessageBox.Show(
-                            $"No example config found at:\n{examplePath}\n\n" +
-                            "The example configuration should be created automatically on first run.",
-                            "Example Not Found",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning);
-                        return;
-                    }
 
-                    // Backup existing config if present
-                    if (System.IO.File.Exists(configPath))
-                    {
-                        var backupPath = System.IO.Path.Combine(configDir, $"config.backup.{DateTime.Now:yyyyMMddHHmmss}.json");
-                        System.IO.File.Copy(configPath, backupPath, overwrite: false);
-                    }
-
-                    System.IO.File.Copy(examplePath, configPath, overwrite: true);
-                    await ReloadStorageSourcesAsync();
-                    PopulateProviderFields();
-                    MessageBox.Show(
-                        "Example configuration loaded successfully!\n\n" +
-                        "Please review and update the settings as needed.",
-                        "Success",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
-                }
-                catch (System.Exception ex)
-                {
-                    MessageBox.Show($"Failed to load example config: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            };
 
             // Save handlers
             SaveLocalBtn.Click += async (_, __) => await SaveProviderAsync("local", new()
@@ -265,6 +230,10 @@ namespace ReStore.Views.Pages
             // New handlers for exclusions
             AddPatternBtn.Click += (_, __) => AddExcludedPattern();
             AddPathBtn.Click += (_, __) => AddExcludedPath();
+
+            // System Backup handlers
+            AddSystemProgramBtn.Click += (_, __) => AddExcludeSystemProgram();
+            SaveSystemBackupConfigBtn.Click += async (_, __) => await SaveSystemBackupConfigurationAsync();
 
             // CLI Access handler
             EnableCLIBtn.Click += (_, __) => ToggleCLIAccess();
@@ -547,6 +516,90 @@ namespace ReStore.Views.Pages
                 _excludedPaths.Remove(path);
                 _configManager.ExcludedPaths.Remove(path);
                 _ = _configManager.SaveAsync();
+            }
+        }
+
+        private void LoadSystemBackupConfiguration()
+        {
+            try
+            {
+                SystemBackupEnabledCheckBox.IsChecked = _configManager.SystemBackup.Enabled;
+                SystemBackupIncludeProgramsCheckBox.IsChecked = _configManager.SystemBackup.IncludePrograms;
+                SystemBackupIncludeEnvCheckBox.IsChecked = _configManager.SystemBackup.IncludeEnvironmentVariables;
+                SystemBackupIntervalHoursBox.Text = _configManager.SystemBackup.BackupInterval.TotalHours.ToString("F1");
+
+                _excludeSystemPrograms.Clear();
+                foreach (var pattern in _configManager.SystemBackup.ExcludeSystemPrograms)
+                {
+                    _excludeSystemPrograms.Add(pattern);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error loading system backup configuration: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async Task SaveSystemBackupConfigurationAsync()
+        {
+            try
+            {
+                if (!double.TryParse(SystemBackupIntervalHoursBox.Text, out var hours) || hours <= 0)
+                {
+                    MessageBox.Show("Invalid system backup interval. Please enter a valid number of hours.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Update ConfigManager properties
+                _configManager.SystemBackup.Enabled = SystemBackupEnabledCheckBox.IsChecked ?? false;
+                _configManager.SystemBackup.IncludePrograms = SystemBackupIncludeProgramsCheckBox.IsChecked ?? true;
+                _configManager.SystemBackup.IncludeEnvironmentVariables = SystemBackupIncludeEnvCheckBox.IsChecked ?? true;
+                _configManager.SystemBackup.BackupInterval = TimeSpan.FromHours(hours);
+                _configManager.SystemBackup.ExcludeSystemPrograms.Clear();
+                _configManager.SystemBackup.ExcludeSystemPrograms.AddRange(_excludeSystemPrograms);
+
+                // Save through ConfigManager
+                await _configManager.SaveAsync();
+                await _configManager.LoadAsync();
+                LoadSystemBackupConfiguration();
+
+                MessageBox.Show("System backup configuration saved successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error saving system backup configuration: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void AddExcludeSystemProgram()
+        {
+            try
+            {
+                var pattern = NewSystemProgramPatternBox.Text?.Trim();
+                if (!string.IsNullOrEmpty(pattern))
+                {
+                    if (!_excludeSystemPrograms.Contains(pattern))
+                    {
+                        _excludeSystemPrograms.Add(pattern);
+                        NewSystemProgramPatternBox.Text = string.Empty;
+                    }
+                    else
+                    {
+                        MessageBox.Show("This pattern is already in the exclusion list.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error adding system program pattern: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void RemoveSystemProgram_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string pattern)
+            {
+                _excludeSystemPrograms.Remove(pattern);
             }
         }
 
