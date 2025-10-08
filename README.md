@@ -39,7 +39,7 @@ See the [Build from Source](#build-from-source-1) section below.
 
 - **Installed Programs**: Backup your installed software list with automatic Winget restoration scripts
 - **Environment Variables**: Save and restore user and system environment variables
-- **Registry Backup**: Export environment variable registry entries for manual restoration
+- **Windows Settings**: Backup registry-based settings including personalization, themes, taskbar, File Explorer preferences, regional settings, mouse and keyboard configurations, and accessibility options
 
 ### Storage Flexibility
 
@@ -591,12 +591,13 @@ restore restore local "backups/Documents/backup_Documents_20250817120000.zip" "C
 
 #### System Backup
 
-Backup installed programs and environment variables:
+Backup installed programs, environment variables, and Windows settings:
 
 ```bash
 restore system-backup local all
 restore system-backup local programs
 restore system-backup local environment
+restore system-backup local settings
 ```
 
 #### System Restore
@@ -606,11 +607,12 @@ Restore system components:
 ```bash
 restore system-restore local "system_backups/programs/programs_backup_20250906143022.zip" programs
 restore system-restore local "system_backups/environment/env_backup_20250906143022.zip" environment
+restore system-restore local "system_backups/settings/settings_backup_20250906143022.zip" settings
 ```
 
 ## System Backup
 
-ReStore can backup your Windows system configuration, including installed programs and environment variables.
+ReStore can backup your Windows system configuration, including installed programs, environment variables, and Windows settings.
 
 ### Program Backup
 
@@ -624,13 +626,41 @@ ReStore scans for installed programs using Winget and Windows Registry. It creat
 
 Backup both user and system environment variables. The restore process generates PowerShell scripts you can run to restore your environment configuration.
 
+### Windows Settings Backup
+
+ReStore backs up Windows registry settings across multiple categories:
+
+- **Personalization**: Themes, wallpaper, colors, accent colors, transparency effects, and Desktop Window Manager settings
+- **File Explorer**: View settings, folder options, navigation pane configuration, and recently used items preferences
+- **Regional Settings**: Date and time formats, number formats, currency settings, and language preferences
+- **Taskbar**: Taskbar position, size, search box configuration, and system tray settings
+- **Mouse and Keyboard**: Pointer speed, double-click speed, cursor schemes, and keyboard repeat settings
+- **Accessibility**: High contrast themes, screen reader settings, and other accessibility features
+- **System Settings**: Time zone configuration and power management settings (requires administrator privileges)
+
+The backup process exports registry keys to .reg files and generates a PowerShell restore script. Some settings require administrator privileges to restore, and the restore script will automatically detect permission levels and restore what it can.
+
 ### Generated Files
 
 When you perform a system backup, ReStore creates:
 
+**Programs Backup:**
+
 - `restore_winget_programs.ps1` - Automated program installation
 - `manual_install_list.txt` - Programs needing manual installation
+- `installed_programs.json` - Complete program inventory
+
+**Environment Variables Backup:**
+
 - `restore_environment_variables.ps1` - Environment variable restoration
+- `environment_variables.json` - Environment variables data
+- `backup_env_registry.ps1` - Registry backup script
+
+**Windows Settings Backup:**
+
+- `restore_windows_settings.ps1` - Settings restoration script
+- `settings_manifest.json` - Metadata about exported settings
+- Multiple `.reg` files - Registry exports for each setting category
 
 ## Storage Options
 
@@ -688,19 +718,27 @@ To extend storage support, implement the `IStorage` interface and register your 
 
 - Store configuration files securely, especially if they contain cloud storage credentials
 - Environment variables may include sensitive information like API keys
-- Administrator privileges may be required for some restore operations
+- Windows settings backups contain registry exports that can modify system behavior
+- Administrator privileges may be required for some restore operations, particularly for system-level settings
+- Always review restore scripts before executing them, especially when restoring Windows settings
 
 ### Limitations
 
 - System backup is Windows-only
 - Automatic program restoration requires Winget
 - Some programs may install newer versions than what was backed up
+- Windows settings backup captures registry-based settings only; some settings stored in other locations may not be included
+- Hardware-specific settings are backed up but may not be appropriate to restore on different hardware
+- WiFi passwords and network credentials are not included in the settings backup
 
 ### Best Practices
 
 - Test restore procedures before relying on them
 - Run system backups before major system changes
+- Create a Windows system restore point before restoring Windows settings
 - Keep backups in multiple locations for redundancy
+- Review Windows settings restore scripts before running them
+- When restoring to a different computer, selectively restore settings rather than restoring everything
 
 ## License
 

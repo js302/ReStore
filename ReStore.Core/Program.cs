@@ -12,8 +12,8 @@ namespace ReStore
   restore.exe --service <remote-source>
   restore.exe backup <remote-source> <sourceDir>
   restore.exe restore <remote-source> <backupPath> <targetDir>
-  restore.exe system-backup <remote-source> [programs|environment|all]
-  restore.exe system-restore <remote-source> <backupPath> [programs|environment]
+  restore.exe system-backup <remote-source> [programs|environment|settings|all]
+  restore.exe system-restore <remote-source> <backupPath> [programs|environment|settings]
   restore.exe --validate-config
 
 Examples:
@@ -21,7 +21,9 @@ Examples:
   restore.exe backup gdrive %USERPROFILE%\Desktop
   restore.exe system-backup local all
   restore.exe system-backup gdrive programs
+  restore.exe system-backup local settings
   restore.exe system-restore local system_backups/programs/... programs
+  restore.exe system-restore local system_backups/settings/... settings
   restore.exe --validate-config";
 
         public static async Task Main(string[] args)
@@ -147,6 +149,9 @@ Examples:
                                     break;
                                 case "environment":
                                     await systemBackupManager.BackupEnvironmentVariablesAsync();
+                                    break;
+                                case "settings":
+                                    await systemBackupManager.BackupWindowsSettingsAsync();
                                     break;
                                 case "all":
                                 default:
