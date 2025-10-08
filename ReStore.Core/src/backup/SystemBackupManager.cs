@@ -12,6 +12,7 @@ public class SystemBackupManager
     private readonly ILogger _logger;
     private readonly SystemProgramDiscovery _programDiscovery;
     private readonly EnvironmentVariablesManager _envManager;
+    private readonly WindowsSettingsManager _settingsManager;
     private readonly IStorage _storage;
     private readonly SystemState _systemState;
 
@@ -22,6 +23,7 @@ public class SystemBackupManager
         _systemState = systemState;
         _programDiscovery = new SystemProgramDiscovery(logger);
         _envManager = new EnvironmentVariablesManager(logger);
+        _settingsManager = new WindowsSettingsManager(logger);
     }
 
     public async Task BackupSystemAsync()
@@ -32,6 +34,7 @@ public class SystemBackupManager
         {
             await BackupInstalledProgramsAsync();
             await BackupEnvironmentVariablesAsync();
+            await BackupWindowsSettingsAsync();
             
             _logger.Log("System backup completed successfully", LogLevel.Info);
         }
@@ -390,6 +393,10 @@ public class SystemBackupManager
             {
                 await RestoreEnvironmentVariablesAsync(extractDir);
             }
+            else if (backupType == "system_settings")
+            {
+                await RestoreWindowsSettingsAsync(extractDir);
+            }
             
             // Cleanup
             Directory.Delete(tempDir, true);
@@ -435,5 +442,62 @@ public class SystemBackupManager
             _logger.Log("Environment variables restore script available for manual execution.", LogLevel.Info);
             _logger.Log($"Script location: {scriptPath}", LogLevel.Info);
         }
+    }
+
+    public async Task BackupWindowsSettingsAsync()
+    {
+        _logger.Log("Backing up Windows settings...", LogLevel.Info);
+        
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
+            Directory.CreateDirectory(tempDir);
+
+            var export = await _settingsManager.ExportWindowsSettingsAsync(tempDir);
+
+            var scriptPath = Path.Combine(tempDir, "restore_windows_settings.ps1");
+            await _settingsManager.CreateRestoreScriptAsync(export, tempDir, scriptPath);
+
+            var remotePath = $"system_backups/settings/settings_backup_{timestamp}.zip";
+            var zipPath = Path.Combine(Path.GetTempPath(), $"settings_backup_{timestamp}.zip");
+            
+            var compressionUtil = new CompressionUtil();
+            var filesToCompress = Directory.GetFiles(tempDir).ToList();
+            await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
+
+            await _storage.UploadAsync(zipPath, remotePath);
+
+            _systemState.AddBackup("system_settings", remotePath, false);
+
+            File.Delete(zipPath);
+            Directory.Delete(tempDir, true);
+
+            _logger.Log($"Windows settings backup completed: {export.ExportedCategories.Count} categories backed up to {remotePath}", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Failed to backup Windows settings: {ex.Message}", LogLevel.Error);
+            throw;
+        }
+    }
+
+    private Task RestoreWindowsSettingsAsync(string extractDir)
+    {
+        var scriptPath = Path.Combine(extractDir, "restore_windows_settings.ps1");
+        if (File.Exists(scriptPath))
+        {
+            _logger.Log("Windows settings restore script available for manual execution.", LogLevel.Info);
+            _logger.Log($"Script location: {scriptPath}", LogLevel.Info);
+            _logger.Log("IMPORTANT: Review the script before running. Some settings may require administrator privileges.", LogLevel.Warning);
+        }
+        
+        var manifestPath = Path.Combine(extractDir, "settings_manifest.json");
+        if (File.Exists(manifestPath))
+        {
+            _logger.Log($"Settings manifest available at: {manifestPath}", LogLevel.Info);
+        }
+        
+        return Task.CompletedTask;
     }
 }

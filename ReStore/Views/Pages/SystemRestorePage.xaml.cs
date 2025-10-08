@@ -21,11 +21,27 @@ namespace ReStore.Views.Pages
         public string Type { get; set; } = "";
         public string Path { get; set; } = "";
         public DateTime Timestamp { get; set; }
-        public string TypeLabel => Type == "system_programs" ? "Installed Programs" : "Environment Variables";
-        public string Icon => Type == "system_programs" ? "💻" : "⚙️";
-        public Brush IconColor => Type == "system_programs" 
-            ? new SolidColorBrush(Color.FromRgb(16, 185, 129))
-            : new SolidColorBrush(Color.FromRgb(139, 92, 246));
+        public string TypeLabel => Type switch
+        {
+            "system_programs" => "Installed Programs",
+            "system_environment" => "Environment Variables",
+            "system_settings" => "Windows Settings",
+            _ => "Unknown"
+        };
+        public string Icon => Type switch
+        {
+            "system_programs" => "💻",
+            "system_environment" => "⚙️",
+            "system_settings" => "🎨",
+            _ => "📦"
+        };
+        public Brush IconColor => Type switch
+        {
+            "system_programs" => new SolidColorBrush(Color.FromRgb(16, 185, 129)),
+            "system_environment" => new SolidColorBrush(Color.FromRgb(139, 92, 246)),
+            "system_settings" => new SolidColorBrush(Color.FromRgb(245, 158, 11)),
+            _ => new SolidColorBrush(Color.FromRgb(100, 100, 100))
+        };
     }
 
     public partial class SystemRestorePage : Page
@@ -47,6 +63,7 @@ namespace ReStore.Views.Pages
             RefreshBtn.Click += async (_, __) => await LoadSystemBackupsAsync();
             BackupProgramsBtn.Click += async (_, __) => await BackupProgramsAsync();
             BackupEnvBtn.Click += async (_, __) => await BackupEnvironmentAsync();
+            BackupSettingsBtn.Click += async (_, __) => await BackupWindowsSettingsAsync();
             BackupFullSystemBtn.Click += async (_, __) => await BackupFullSystemAsync();
             OpenBackupFolderBtn.Click += (_, __) => OpenBackupFolder();
             FilterTypeCombo.SelectionChanged += (_, __) => ApplyFilters();
@@ -130,6 +147,19 @@ namespace ReStore.Views.Pages
                     }
                 }
 
+                if (_state.BackupHistory.ContainsKey("system_settings"))
+                {
+                    foreach (var backup in _state.BackupHistory["system_settings"])
+                    {
+                        items.Add(new SystemBackupItem
+                        {
+                            Type = "system_settings",
+                            Path = backup.Path,
+                            Timestamp = backup.Timestamp
+                        });
+                    }
+                }
+
                 Dispatcher.Invoke(() =>
                 {
                     _allBackups = items;
@@ -150,6 +180,7 @@ namespace ReStore.Views.Pages
                 {
                     "programs" => filtered.Where(b => b.Type == "system_programs"),
                     "environment" => filtered.Where(b => b.Type == "system_environment"),
+                    "settings" => filtered.Where(b => b.Type == "system_settings"),
                     _ => filtered
                 };
             }
@@ -224,6 +255,28 @@ namespace ReStore.Views.Pages
             {
                 LastEnvBackupText.Text = "Never";
             }
+
+            var lastSettingsBackup = _allBackups
+                .Where(b => b.Type == "system_settings")
+                .OrderByDescending(b => b.Timestamp)
+                .FirstOrDefault();
+
+            if (lastSettingsBackup != null)
+            {
+                var timeSince = DateTime.UtcNow - lastSettingsBackup.Timestamp;
+                if (timeSince.TotalMinutes < 1)
+                    LastSettingsBackupText.Text = "Just now";
+                else if (timeSince.TotalHours < 1)
+                    LastSettingsBackupText.Text = $"{(int)timeSince.TotalMinutes}m ago";
+                else if (timeSince.TotalDays < 1)
+                    LastSettingsBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
+                else
+                    LastSettingsBackupText.Text = lastSettingsBackup.Timestamp.ToLocalTime().ToString("MMM dd");
+            }
+            else
+            {
+                LastSettingsBackupText.Text = "Never";
+            }
         }
 
         private async Task BackupProgramsAsync()
@@ -269,7 +322,7 @@ namespace ReStore.Views.Pages
             finally
             {
                 BackupProgramsBtn.IsEnabled = true;
-                BackupProgramsBtn.Content = "Backup Programs";
+                BackupProgramsBtn.Content = "💾 Backup";
             }
         }
 
@@ -316,7 +369,54 @@ namespace ReStore.Views.Pages
             finally
             {
                 BackupEnvBtn.IsEnabled = true;
-                BackupEnvBtn.Content = "Backup Environment";
+                BackupEnvBtn.Content = "💾 Backup";
+            }
+        }
+
+        private async Task BackupWindowsSettingsAsync()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                MessageBox.Show("System backup is only available on Windows.", "System Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                var result = MessageBox.Show(
+                    "This will backup your Windows settings including:\n• Personalization (themes, colors)\n• File Explorer preferences\n• Taskbar settings\n• Regional settings\n• Mouse and keyboard preferences\n• Accessibility options\n\nContinue?",
+                    "Backup Windows Settings",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    BackupSettingsBtn.IsEnabled = false;
+                    BackupSettingsBtn.Content = "Backing up...";
+
+                    if (_state == null || _storage == null)
+                    {
+                        MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    var systemBackup = new SystemBackupManager(_logger, _storage, _state);
+                    await systemBackup.BackupWindowsSettingsAsync();
+
+                    await _state.SaveStateAsync();
+                    await LoadSystemBackupsAsync();
+
+                    MessageBox.Show("Windows settings backup completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Windows settings backup failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                BackupSettingsBtn.IsEnabled = true;
+                BackupSettingsBtn.Content = "💾 Backup";
             }
         }
 
@@ -331,7 +431,7 @@ namespace ReStore.Views.Pages
             try
             {
                 var result = MessageBox.Show(
-                    "This will backup:\n• Installed programs list\n• Environment variables\n\nContinue?",
+                    "This will backup:\n• Installed programs list\n• Environment variables\n• Windows settings\n\nContinue?",
                     "Full System Backup",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
@@ -385,7 +485,14 @@ namespace ReStore.Views.Pages
 
             try
             {
-                var typeLabel = backup.Type == "system_programs" ? "programs" : "environment variables";
+                var typeLabel = backup.Type switch
+                {
+                    "system_programs" => "programs",
+                    "system_environment" => "environment variables",
+                    "system_settings" => "Windows settings",
+                    _ => "system data"
+                };
+                
                 var result = MessageBox.Show(
                     $"Restore {typeLabel} from backup?\n\nCreated: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\nNote: This will download the backup and provide options for restoration.",
                     "Confirm Restore",
@@ -423,7 +530,14 @@ namespace ReStore.Views.Pages
 
         private async Task DeleteSystemBackupAsync(SystemBackupItem backup)
         {
-            var typeLabel = backup.Type == "system_programs" ? "programs" : "environment variables";
+            var typeLabel = backup.Type switch
+            {
+                "system_programs" => "programs",
+                "system_environment" => "environment variables",
+                "system_settings" => "Windows settings",
+                _ => "system"
+            };
+            
             var result = MessageBox.Show(
                 $"Delete this {typeLabel} backup?\n\nCreated: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\nThis action cannot be undone.",
                 "Confirm Delete",
@@ -472,14 +586,19 @@ namespace ReStore.Views.Pages
         {
             if (sender is Button button && button.Tag is SystemBackupItem backup)
             {
-                var typeLabel = backup.Type == "system_programs" ? "Installed Programs" : "Environment Variables";
+                var typeLabel = backup.TypeLabel;
+                var description = backup.Type switch
+                {
+                    "system_programs" => "a list of installed programs with Winget IDs and restore scripts.",
+                    "system_environment" => "environment variables that can be restored to your system.",
+                    "system_settings" => "Windows registry settings including personalization, File Explorer, taskbar, regional settings, and more.",
+                    _ => "system backup data."
+                };
+
                 var details = $"Type: {typeLabel}\n\n" +
                              $"Created: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\n" +
                              $"Path: {backup.Path}\n\n" +
-                             $"Description: This backup contains " +
-                             (backup.Type == "system_programs" 
-                                ? "a list of installed programs with Winget IDs and restore scripts." 
-                                : "environment variables that can be restored to your system.");
+                             $"Description: This backup contains {description}";
 
                 MessageBox.Show(details, "Backup Details", MessageBoxButton.OK, MessageBoxImage.Information);
             }
