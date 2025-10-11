@@ -21,6 +21,7 @@ namespace ReStore.Views.Pages
         private bool _isSelected;
         private static readonly Brush _recentBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
         private static readonly Brush _archivedBrush = new SolidColorBrush(Color.FromRgb(107, 114, 128));
+        private static string? _storageBasePath;
 
         public string Directory { get; set; } = "";
         public string Path { get; set; } = "";
@@ -32,6 +33,28 @@ namespace ReStore.Views.Pages
         public string SizeLabel => FormatBytes(SizeBytes);
         public string StatusText => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? "Recent" : "Archived";
         public Brush StatusColor => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? _recentBrush : _archivedBrush;
+        
+        public string DisplayPath
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_storageBasePath) || string.IsNullOrEmpty(Path))
+                    return Path;
+                
+                if (Path.StartsWith("./") || Path.StartsWith(".\\"))
+                {
+                    var relativePath = Path.Substring(2);
+                    return System.IO.Path.Combine(_storageBasePath, relativePath);
+                }
+                
+                return System.IO.Path.Combine(_storageBasePath, Path);
+            }
+        }
+        
+        public static void SetStorageBasePath(string? basePath)
+        {
+            _storageBasePath = basePath;
+        }
 
         public bool IsSelected
         {
@@ -103,6 +126,11 @@ namespace ReStore.Views.Pages
                 var appSettings = AppSettings.Load();
                 var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
                 _storage = await _configManager.CreateStorageAsync(remote);
+
+                if (_configManager.StorageSources.TryGetValue(remote, out var storageConfig))
+                {
+                    BackupItem.SetStorageBasePath(storageConfig.Path);
+                }
 
                 await LoadBackupsAsync();
             }
@@ -479,7 +507,7 @@ namespace ReStore.Views.Pages
             if (sender is Button button && button.Tag is BackupItem backup)
             {
                 var details = $"Directory: {backup.Directory}\n\n" +
-                             $"Path: {backup.Path}\n\n" +
+                             $"Path: {backup.DisplayPath}\n\n" +
                              $"Timestamp: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\n" +
                              $"Type: {backup.TypeLabel}\n\n" +
                              $"Size: {backup.SizeLabel}\n\n" +

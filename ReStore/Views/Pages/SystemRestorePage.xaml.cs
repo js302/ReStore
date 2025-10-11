@@ -18,6 +18,8 @@ namespace ReStore.Views.Pages
 {
     public class SystemBackupItem
     {
+        private static string? _storageBasePath;
+        
         public string Type { get; set; } = "";
         public string Path { get; set; } = "";
         public DateTime Timestamp { get; set; }
@@ -42,6 +44,28 @@ namespace ReStore.Views.Pages
             "system_settings" => new SolidColorBrush(Color.FromRgb(245, 158, 11)),
             _ => new SolidColorBrush(Color.FromRgb(100, 100, 100))
         };
+        
+        public string DisplayPath
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_storageBasePath) || string.IsNullOrEmpty(Path))
+                    return Path;
+                
+                if (Path.StartsWith("./") || Path.StartsWith(".\\"))
+                {
+                    var relativePath = Path.Substring(2);
+                    return System.IO.Path.Combine(_storageBasePath, relativePath);
+                }
+                
+                return System.IO.Path.Combine(_storageBasePath, Path);
+            }
+        }
+        
+        public static void SetStorageBasePath(string? basePath)
+        {
+            _storageBasePath = basePath;
+        }
     }
 
     public partial class SystemRestorePage : Page
@@ -82,6 +106,11 @@ namespace ReStore.Views.Pages
                 var appSettings = AppSettings.Load();
                 var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
                 _storage = await _configManager.CreateStorageAsync(remote);
+
+                if (_configManager.StorageSources.TryGetValue(remote, out var storageConfig))
+                {
+                    SystemBackupItem.SetStorageBasePath(storageConfig.Path);
+                }
 
                 await LoadSystemBackupsAsync();
             }
@@ -306,7 +335,7 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state);
+                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
                     await systemBackup.BackupInstalledProgramsAsync();
 
                     await _state.SaveStateAsync();
@@ -353,7 +382,7 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state);
+                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
                     await systemBackup.BackupEnvironmentVariablesAsync();
 
                     await _state.SaveStateAsync();
@@ -400,7 +429,7 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state);
+                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
                     await systemBackup.BackupWindowsSettingsAsync();
 
                     await _state.SaveStateAsync();
@@ -447,7 +476,7 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state);
+                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
                     await systemBackup.BackupSystemAsync();
 
                     await _state.SaveStateAsync();
@@ -597,7 +626,7 @@ namespace ReStore.Views.Pages
 
                 var details = $"Type: {typeLabel}\n\n" +
                              $"Created: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\n" +
-                             $"Path: {backup.Path}\n\n" +
+                             $"Path: {backup.DisplayPath}\n\n" +
                              $"Description: This backup contains {description}";
 
                 MessageBox.Show(details, "Backup Details", MessageBoxButton.OK, MessageBoxImage.Information);

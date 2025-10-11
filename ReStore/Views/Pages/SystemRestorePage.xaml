@@ -153,7 +153,7 @@
                                                 <Run Text="Created:"/>
                                                 <Run Text="{Binding Timestamp, StringFormat='{}{0:MMM dd, yyyy HH:mm:ss}'}"/>
                                             </TextBlock>
-                                            <TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding DisplayPath}" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
 
                                         <!-- Actions -->

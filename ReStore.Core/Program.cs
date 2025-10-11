@@ -140,7 +140,7 @@ Examples:
                                 break;
                             }
                             var backupType = args.Length >= 3 ? args[2] : "all";
-                            var systemBackupManager = new SystemBackupManager(logger, storage, systemState);
+                            var systemBackupManager = new SystemBackupManager(logger, storage, systemState, configManager);
                             
                             switch (backupType.ToLowerInvariant())
                             {
@@ -172,7 +172,7 @@ Examples:
                                 break;
                             }
                             var restoreType = args.Length >= 4 ? args[3] : "all";
-                            var systemRestoreManager = new SystemBackupManager(logger, storage, systemState);
+                            var systemRestoreManager = new SystemBackupManager(logger, storage, systemState, configManager);
                             await systemRestoreManager.RestoreSystemAsync(restoreType, args[2]);
                             break;
                     }

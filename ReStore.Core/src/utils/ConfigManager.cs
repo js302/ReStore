@@ -40,6 +40,7 @@ public class SystemBackupConfig
     public bool Enabled { get; set; } = true;
     public bool IncludePrograms { get; set; } = true;
     public bool IncludeEnvironmentVariables { get; set; } = true;
+    public bool IncludeWindowsSettings { get; set; } = true;
     public TimeSpan BackupInterval { get; set; } = TimeSpan.FromHours(24);
     public List<string> ExcludeSystemPrograms { get; set; } = [];
 }
@@ -196,6 +197,9 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 if (systemBackupElement.TryGetProperty("includeEnvironmentVariables", out var includeEnv))
                     SystemBackup.IncludeEnvironmentVariables = includeEnv.GetBoolean();
                 
+                if (systemBackupElement.TryGetProperty("includeWindowsSettings", out var includeSettings))
+                    SystemBackup.IncludeWindowsSettings = includeSettings.GetBoolean();
+                
                 if (systemBackupElement.TryGetProperty("backupInterval", out var sysBackupInterval))
                     SystemBackup.BackupInterval = TimeSpan.Parse(sysBackupInterval.GetString() ?? "24:00:00");
                 
@@ -240,6 +244,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     enabled = SystemBackup.Enabled,
                     includePrograms = SystemBackup.IncludePrograms,
                     includeEnvironmentVariables = SystemBackup.IncludeEnvironmentVariables,
+                    includeWindowsSettings = SystemBackup.IncludeWindowsSettings,
                     backupInterval = SystemBackup.BackupInterval.ToString(),
                     excludeSystemPrograms = SystemBackup.ExcludeSystemPrograms
                 },
@@ -352,6 +357,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
             Enabled = false,
             IncludePrograms = false,
             IncludeEnvironmentVariables = false,
+            IncludeWindowsSettings = false,
             BackupInterval = TimeSpan.FromHours(24),
             ExcludeSystemPrograms =
             [
