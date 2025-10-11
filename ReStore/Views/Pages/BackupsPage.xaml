@@ -108,7 +108,7 @@
                                                 <Run Text="•"/>
                                                 <Run Text="{Binding SizeLabel, Mode=OneWay}"/>
                                             </TextBlock>
-                                            <TextBlock Text="{Binding Path, Mode=OneWay}" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding DisplayPath, Mode=OneWay}" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
 
                                         <!-- Status Badge -->

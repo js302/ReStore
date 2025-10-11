@@ -5,6 +5,8 @@
 
 A backup and restore solution for Windows that protects your files, programs, and system configuration. ReStore includes both a command-line interface and a modern WPF GUI for managing your backups.
 
+Basically OneDrive but open-source, privacy-focused, highly customizable and with more features.
+
 ## Installation
 
 ### Download Pre-built Installer (Recommended)
@@ -605,9 +607,9 @@ restore system-backup local settings
 Restore system components:
 
 ```bash
-restore system-restore local "system_backups/programs/programs_backup_20250906143022.zip" programs
-restore system-restore local "system_backups/environment/env_backup_20250906143022.zip" environment
-restore system-restore local "system_backups/settings/settings_backup_20250906143022.zip" settings
+restore system-restore local "system_backups/programs/programs_backup_<timestamp>.zip" programs
+restore system-restore local "system_backups/environment/env_backup_<timestamp>.zip" environment
+restore system-restore local "system_backups/settings/settings_backup_<timestamp>.zip" settings
 ```
 
 ## System Backup

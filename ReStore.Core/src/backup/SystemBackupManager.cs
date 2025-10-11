@@ -15,12 +15,14 @@ public class SystemBackupManager
     private readonly WindowsSettingsManager _settingsManager;
     private readonly IStorage _storage;
     private readonly SystemState _systemState;
+    private readonly IConfigManager? _configManager;
 
-    public SystemBackupManager(ILogger logger, IStorage storage, SystemState systemState)
+    public SystemBackupManager(ILogger logger, IStorage storage, SystemState systemState, IConfigManager? configManager = null)
     {
         _logger = logger;
         _storage = storage;
         _systemState = systemState;
+        _configManager = configManager;
         _programDiscovery = new SystemProgramDiscovery(logger);
         _envManager = new EnvironmentVariablesManager(logger);
         _settingsManager = new WindowsSettingsManager(logger);
@@ -32,9 +34,34 @@ public class SystemBackupManager
         
         try
         {
-            await BackupInstalledProgramsAsync();
-            await BackupEnvironmentVariablesAsync();
-            await BackupWindowsSettingsAsync();
+            var config = _configManager?.SystemBackup;
+            
+            if (config?.IncludePrograms ?? true)
+            {
+                await BackupInstalledProgramsAsync();
+            }
+            else
+            {
+                _logger.Log("Skipping programs backup (disabled in config)", LogLevel.Info);
+            }
+            
+            if (config?.IncludeEnvironmentVariables ?? true)
+            {
+                await BackupEnvironmentVariablesAsync();
+            }
+            else
+            {
+                _logger.Log("Skipping environment variables backup (disabled in config)", LogLevel.Info);
+            }
+            
+            if (config?.IncludeWindowsSettings ?? true)
+            {
+                await BackupWindowsSettingsAsync();
+            }
+            else
+            {
+                _logger.Log("Skipping Windows settings backup (disabled in config)", LogLevel.Info);
+            }
             
             _logger.Log("System backup completed successfully", LogLevel.Info);
         }
