@@ -47,7 +47,10 @@ See the [Build from Source](#build-from-source-1) section below.
 
 - **Local Storage**: Backup to local drives, external drives, or network shares
 - **Cloud Platforms**: Support for Google Drive, Amazon S3, and GitHub storage
-- **Multi-destination**: Use different storage backends for different backup types
+- **Per-Path Storage**: Configure different storage destinations for each watched directory
+- **Per-Component Storage**: Use different storage backends for system backups (programs, environment, settings)
+- **Global Fallback**: Set a default storage type that applies when no specific storage is configured
+- **Multi-destination**: Seamlessly use multiple storage providers simultaneously
 
 ### Smart File Handling
 
@@ -112,13 +115,15 @@ You can configure ReStore through the GUI settings page or by editing the config
 
 ### Key Settings
 
-**Watch Directories**: Folders to monitor for automatic backups
+**Watch Directories**: Folders to monitor for automatic backups, each with optional storage override
+
+**Global Storage**: Default storage destination for paths without specific configuration
 
 **Backup Type**: Choose between Full, Incremental, or Differential
 
 **Backup Interval**: How often to check for changes (in hours)
 
-**Storage Providers**: Configure Local, S3, Google Drive, or GitHub storage
+**Storage Providers**: Configure Local, S3, Google Drive, or GitHub storage with per-path and per-component selection
 
 **Exclusions**: File patterns and paths to skip during backup
 
@@ -162,9 +167,10 @@ All configuration options can be managed through the Settings page:
 
 - **General Settings**: Theme, startup options, system tray, CLI access
 - **Storage Providers**: Local, Google Drive, AWS S3, GitHub configuration
-- **Watch Directories**: Add/remove folders to monitor for automatic backups
+- **Global Default Storage**: Set the default storage type for all backups
+- **Watch Directories**: Add/remove folders to monitor with individual storage selection per path
 - **Backup Configuration**: Type (Full/Incremental/Differential), interval, size limits
-- **System Backup**: Enable/disable system state backups, configure program and environment variable backups
+- **System Backup**: Enable/disable system state backups with separate storage selection for programs, environment variables, and settings
 - **Exclusions**: File patterns and paths to exclude from backups
 
 - **Backup Data**: `%USERPROFILE%\ReStoreBackups` (default, configurable)
@@ -495,10 +501,31 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 
 ### Using Multiple Storage Providers
 
-You can configure multiple storage sources in the same `config.json` file. ReStore supports all four storage providers simultaneously:
+You can configure multiple storage sources in the same `config.json` file. ReStore supports all four storage providers simultaneously with flexible per-path and per-component routing:
 
 ```json
 {
+  "globalStorageType": "local",
+  "watchDirectories": [
+    {
+      "path": "C:\\Users\\YourName\\Documents",
+      "storageType": "gdrive"
+    },
+    {
+      "path": "C:\\Users\\YourName\\Desktop",
+      "storageType": "s3"
+    },
+    {
+      "path": "C:\\Users\\YourName\\Pictures",
+      "storageType": null
+    }
+  ],
+  "systemBackup": {
+    "enabled": true,
+    "programsStorageType": "github",
+    "environmentStorageType": "local",
+    "settingsStorageType": "gdrive"
+  },
   "storageSources": {
     "gdrive": {
       "path": "./backups",
@@ -534,24 +561,32 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
 }
 ```
 
-**Usage:**
-When using the CLI, specify which storage provider to use with commands:
+**Storage Selection Logic:**
+- **Per-Path**: Each watched directory can specify its own `storageType`, or use `null` to fall back to global default
+- **Per-Component**: System backups (programs, environment, settings) can each use different storage destinations
+- **Global Fallback**: The `globalStorageType` is used when no specific storage is configured
+
+**CLI Usage:**
+When using the CLI, you can override storage selection with the `--storage` flag:
 
 ```bash
-# Backup to local storage
-restore backup local "C:\Users\YourName\Documents"
+# Backup to configured storage (from config.json)
+restore backup "C:\Users\YourName\Documents"
 
-# Backup to Google Drive
-restore backup gdrive "C:\Users\YourName\Documents"
+# Override storage type for this backup
+restore backup "C:\Users\YourName\Documents" --storage gdrive
 
-# Backup to AWS S3
-restore backup s3 "C:\Users\YourName\Documents"
-
-# Backup to GitHub
-restore backup github "C:\Users\YourName\Documents"
+# System backup with storage override
+restore system-backup all --storage s3
+restore system-backup programs --storage github
 ```
 
-In the GUI, you can select the storage provider from the Settings page.
+**GUI Usage:**
+In the Settings page, you can:
+- Set the global default storage in the "Global Default Storage" dropdown
+- Select storage per watched directory in each directory's storage dropdown
+- Use "Apply Current Global Storage to All Paths" to quickly set all directories
+- Configure system backup storage separately for programs, environment, and settings (coming soon)
 
 ### Application Behavior Settings
 
@@ -572,15 +607,18 @@ In the GUI, you can select the storage provider from the Settings page.
 Monitor directories for changes and backup automatically:
 
 ```bash
-restore --service local
+restore --service
 ```
 
 #### Manual Backup
 
-Backup a specific directory:
+Backup a specific directory (uses configured storage from config.json):
 
 ```bash
-restore backup local "C:\Users\YourName\Documents"
+restore backup "C:\Users\YourName\Documents"
+
+# Or override storage type
+restore backup "C:\Users\YourName\Documents" --storage gdrive
 ```
 
 #### Restore Files
@@ -588,7 +626,7 @@ restore backup local "C:\Users\YourName\Documents"
 Restore from a backup:
 
 ```bash
-restore restore local "backups/Documents/backup_Documents_20250817120000.zip" "C:\Restore\Documents"
+restore restore "backups/Documents/backup_Documents_20250817120000.zip" "C:\Restore\Documents"
 ```
 
 #### System Backup
@@ -596,10 +634,16 @@ restore restore local "backups/Documents/backup_Documents_20250817120000.zip" "C
 Backup installed programs, environment variables, and Windows settings:
 
 ```bash
-restore system-backup local all
-restore system-backup local programs
-restore system-backup local environment
-restore system-backup local settings
+# Backup all components (uses configured storage per component)
+restore system-backup all
+
+# Backup specific components
+restore system-backup programs
+restore system-backup environment
+restore system-backup settings
+
+# Override storage for specific backup
+restore system-backup programs --storage github
 ```
 
 #### System Restore
@@ -607,9 +651,9 @@ restore system-backup local settings
 Restore system components:
 
 ```bash
-restore system-restore local "system_backups/programs/programs_backup_<timestamp>.zip" programs
-restore system-restore local "system_backups/environment/env_backup_<timestamp>.zip" environment
-restore system-restore local "system_backups/settings/settings_backup_<timestamp>.zip" settings
+restore system-restore "system_backups/programs/programs_backup_<timestamp>.zip" programs
+restore system-restore "system_backups/environment/env_backup_<timestamp>.zip" environment
+restore system-restore "system_backups/settings/settings_backup_<timestamp>.zip" settings
 ```
 
 ## System Backup
