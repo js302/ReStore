@@ -6,7 +6,8 @@ namespace ReStore.Core.src.utils;
 
 public interface IConfigManager
 {
-    List<string> WatchDirectories { get; }
+    List<WatchDirectoryConfig> WatchDirectories { get; }
+    string GlobalStorageType { get; }
     TimeSpan BackupInterval { get; }
     long SizeThresholdMB { get; }
     Dictionary<string, StorageConfig> StorageSources { get; }
@@ -29,6 +30,12 @@ public enum BackupType
     Differential
 }
 
+public class WatchDirectoryConfig
+{
+    public string Path { get; set; } = string.Empty;
+    public string? StorageType { get; set; }
+}
+
 public class StorageConfig
 {
     public string Path { get; set; } = string.Empty;
@@ -43,6 +50,10 @@ public class SystemBackupConfig
     public bool IncludeWindowsSettings { get; set; } = true;
     public TimeSpan BackupInterval { get; set; } = TimeSpan.FromHours(24);
     public List<string> ExcludeSystemPrograms { get; set; } = [];
+    public string? StorageType { get; set; }
+    public string? ProgramsStorageType { get; set; }
+    public string? EnvironmentStorageType { get; set; }
+    public string? SettingsStorageType { get; set; }
 }
 
 public class ConfigManager(ILogger logger) : IConfigManager
@@ -61,7 +72,8 @@ public class ConfigManager(ILogger logger) : IConfigManager
         PropertyNameCaseInsensitive = true
     };
 
-    public List<string> WatchDirectories { get; private set; } = [];
+    public List<WatchDirectoryConfig> WatchDirectories { get; private set; } = [];
+    public string GlobalStorageType { get; private set; } = "local";
     public TimeSpan BackupInterval { get; private set; } = TimeSpan.FromHours(1);
     public long SizeThresholdMB { get; private set; } = 500;
     public Dictionary<string, StorageConfig> StorageSources { get; private set; } = [];
@@ -134,9 +146,42 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
         try
         {
-            WatchDirectories = [.. root.GetProperty("watchDirectories")
-                .EnumerateArray()
-                .Select(x => Environment.ExpandEnvironmentVariables(x.GetString() ?? string.Empty))];
+            // Load watch directories with optional per-path storage
+            var watchDirsElement = root.GetProperty("watchDirectories");
+            WatchDirectories = [];
+            
+            foreach (var element in watchDirsElement.EnumerateArray())
+            {
+                if (element.ValueKind == JsonValueKind.String)
+                {
+                    // Legacy format: just a string path
+                    WatchDirectories.Add(new WatchDirectoryConfig
+                    {
+                        Path = Environment.ExpandEnvironmentVariables(element.GetString() ?? string.Empty),
+                        StorageType = null
+                    });
+                }
+                else if (element.ValueKind == JsonValueKind.Object)
+                {
+                    // New format: object with path and storageType
+                    var config = JsonSerializer.Deserialize<WatchDirectoryConfig>(element, _readOptions);
+                    if (config != null)
+                    {
+                        config.Path = Environment.ExpandEnvironmentVariables(config.Path);
+                        WatchDirectories.Add(config);
+                    }
+                }
+            }
+
+            // Load global storage type
+            if (root.TryGetProperty("globalStorageType", out var globalStorageElement))
+            {
+                GlobalStorageType = globalStorageElement.GetString() ?? "local";
+            }
+            else
+            {
+                GlobalStorageType = StorageSources.Keys.FirstOrDefault() ?? "local";
+            }
 
             BackupInterval = TimeSpan.Parse(root.GetProperty("backupInterval").GetString() ?? "01:00:00");
             SizeThresholdMB = root.GetProperty("sizeThresholdMB").GetInt64();
@@ -207,6 +252,18 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 {
                     SystemBackup.ExcludeSystemPrograms = JsonSerializer.Deserialize<List<string>>(excludePrograms, _readOptions) ?? [];
                 }
+
+                if (systemBackupElement.TryGetProperty("storageType", out var storageType))
+                    SystemBackup.StorageType = storageType.GetString();
+
+                if (systemBackupElement.TryGetProperty("programsStorageType", out var programsStorage))
+                    SystemBackup.ProgramsStorageType = programsStorage.GetString();
+
+                if (systemBackupElement.TryGetProperty("environmentStorageType", out var envStorage))
+                    SystemBackup.EnvironmentStorageType = envStorage.GetString();
+
+                if (systemBackupElement.TryGetProperty("settingsStorageType", out var settingsStorage))
+                    SystemBackup.SettingsStorageType = settingsStorage.GetString();
             }
             else
             {
@@ -235,6 +292,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
             var configObject = new
             {
                 watchDirectories = WatchDirectories,
+                globalStorageType = GlobalStorageType,
                 backupInterval = BackupInterval.ToString(),
                 sizeThresholdMB = SizeThresholdMB,
                 maxFileSizeMB = MaxFileSizeMB,
@@ -246,7 +304,11 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     includeEnvironmentVariables = SystemBackup.IncludeEnvironmentVariables,
                     includeWindowsSettings = SystemBackup.IncludeWindowsSettings,
                     backupInterval = SystemBackup.BackupInterval.ToString(),
-                    excludeSystemPrograms = SystemBackup.ExcludeSystemPrograms
+                    excludeSystemPrograms = SystemBackup.ExcludeSystemPrograms,
+                    storageType = SystemBackup.StorageType,
+                    programsStorageType = SystemBackup.ProgramsStorageType,
+                    environmentStorageType = SystemBackup.EnvironmentStorageType,
+                    settingsStorageType = SystemBackup.SettingsStorageType
                 },
                 excludedPatterns = ExcludedPatterns,
                 excludedPaths = ExcludedPaths,
@@ -293,10 +355,24 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
         WatchDirectories =
         [
-            Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Desktop"),
-            Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Documents"),
-            Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Pictures")
+            new WatchDirectoryConfig 
+            { 
+                Path = Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Desktop"),
+                StorageType = null
+            },
+            new WatchDirectoryConfig 
+            { 
+                Path = Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Documents"),
+                StorageType = null
+            },
+            new WatchDirectoryConfig 
+            { 
+                Path = Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Pictures"),
+                StorageType = null
+            }
         ];
+
+        GlobalStorageType = "local";
 
         StorageSources = new Dictionary<string, StorageConfig>
         {

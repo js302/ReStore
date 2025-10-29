@@ -174,29 +174,65 @@
                         <Border Background="Transparent" Padding="0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
-                                <TextBlock Text="Watched Directories" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <TextBlock Text="Watched Directories &amp; Storage" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                             </StackPanel>
                         </Border>
                     </Expander.Header>
                     <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
                         <StackPanel Orientation="Vertical">
-                            <TextBlock Text="These directories will be monitored for changes when the file watcher is active." Margin="0,0,0,12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12"/>
+                            <TextBlock Text="Configure directories to monitor and their backup storage destinations." Margin="0,0,0,12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12"/>
 
-                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="200" Margin="0,0,0,12">
+                            <!-- Global Storage Setting -->
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="🌐 Global Default Storage:" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,12,0"/>
+                                    <ComboBox x:Name="GlobalStorageCombo" Grid.Column="1" MinWidth="150" HorizontalAlignment="Left" VerticalAlignment="Center" SelectionChanged="GlobalStorageCombo_SelectionChanged"/>
+                                    <TextBlock Grid.Column="2" Text="(applies to paths without specific storage)" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="12,0,0,0"/>
+                                </Grid>
+                            </Border>
+
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="300" Margin="0,0,0,12">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl x:Name="WatchDirectoriesList" Padding="0,0,8,0">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Padding="8" Margin="0,0,0,4">
+                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Padding="10" Margin="0,0,0,6">
                                                     <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="Auto"/>
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,8,0"/>
-                                                        <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
-                                                        <Button Grid.Column="2" Content="✕" FontSize="12" Padding="6,2" Tag="{Binding}" Click="RemoveWatchDir_Click" Cursor="Hand" ToolTip="Remove"/>
+
+                                                        <!-- Directory Path Row -->
+                                                        <TextBlock Grid.Row="0" Grid.Column="0" FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Path}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                                                        <Button Grid.Row="0" Grid.Column="2" Content="✕" FontSize="12" Padding="6,2" Tag="{Binding Path}" Click="RemoveWatchDir_Click" Cursor="Hand" ToolTip="Remove"/>
+
+                                                        <!-- Storage Selection Row -->
+                                                        <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="22,6,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="Storage:" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0"/>
+                                                            <ComboBox Grid.Column="1" x:Name="PathStorageCombo" MinWidth="120" HorizontalAlignment="Left" FontSize="11" Tag="{Binding}" SelectionChanged="PathStorageCombo_SelectionChanged" Loaded="PathStorageCombo_Loaded">
+                                                                <ComboBoxItem Content="Use Global Default" Tag=""/>
+                                                                <ComboBoxItem Content="Local" Tag="local"/>
+                                                                <ComboBoxItem Content="Amazon S3" Tag="s3"/>
+                                                                <ComboBoxItem Content="Google Drive" Tag="gdrive"/>
+                                                                <ComboBoxItem Content="GitHub" Tag="github"/>
+                                                            </ComboBox>
+                                                        </Grid>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -206,7 +242,8 @@
                             </Border>
 
                             <StackPanel Orientation="Horizontal">
-                                <Button x:Name="AddWatchDirBtn" Content="➕ Add Directory" Cursor="Hand"/>
+                                <Button x:Name="AddWatchDirBtn" Content="➕ Add Directory" Cursor="Hand" Margin="0,0,8,0"/>
+                                <Button x:Name="ApplyStorageToAllBtn" Content="📋 Apply Current Global Storage to All Paths" Cursor="Hand" Click="ApplyStorageToAll_Click"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>

@@ -10,18 +10,16 @@ public class Backup
     private readonly ILogger _logger;
     private readonly SystemState _state;
     private readonly SizeAnalyzer _sizeAnalyzer;
-    private readonly IStorage _storage;
     private readonly IConfigManager _config;
     private readonly FileSelectionService _fileSelectionService;
     private readonly FileDiffSyncManager? _diffSyncManager;
     private readonly CompressionUtil _compressionUtil;
 
-    public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IStorage storage, IConfigManager? config = null)
+    public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IConfigManager config)
     {
         _logger = logger;
         _state = state;
         _sizeAnalyzer = sizeAnalyzer;
-        _storage = storage;
         _config = config ?? throw new ArgumentNullException(nameof(config), "Config cannot be null");
         _fileSelectionService = new FileSelectionService(logger, _config);
         _compressionUtil = new CompressionUtil();
@@ -30,13 +28,14 @@ public class Backup
         _diffSyncManager = new FileDiffSyncManager(logger, state, backupConfig);
     }
 
-    public async Task BackupDirectoryAsync(string sourceDirectory)
+    public async Task BackupDirectoryAsync(string sourceDirectory, string? storageTypeOverride = null)
     {
         if (string.IsNullOrWhiteSpace(sourceDirectory))
         {
             throw new ArgumentException("Source directory cannot be null or empty", nameof(sourceDirectory));
         }
 
+        IStorage? storage = null;
         try
         {
             sourceDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(sourceDirectory));
@@ -46,7 +45,10 @@ public class Backup
                 throw new DirectoryNotFoundException($"Source directory not found: {sourceDirectory}");
             }
 
-            _logger.Log($"Starting backup of {sourceDirectory}");
+            var storageType = storageTypeOverride ?? GetStorageTypeForDirectory(sourceDirectory);
+            storage = await _config.CreateStorageAsync(storageType);
+
+            _logger.Log($"Starting backup of {sourceDirectory} using {storageType} storage");
 
             _sizeAnalyzer.SizeThreshold = _config.SizeThresholdMB * 1024 * 1024;
             var (size, exceedsThreshold) = await _sizeAnalyzer.AnalyzeDirectoryAsync(sourceDirectory);
@@ -86,7 +88,7 @@ public class Backup
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
 
             _logger.Log("Proceeding with full backup creation for selected files.", LogLevel.Info);
-            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp);
+            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp, storage);
 
             _state.LastBackupTime = DateTime.UtcNow;
 
@@ -96,9 +98,13 @@ public class Backup
         {
             _logger.Log($"Failed to backup directory: {ex.Message}", LogLevel.Error);
         }
+        finally
+        {
+            storage?.Dispose();
+        }
     }
 
-    public async Task BackupFilesAsync(IEnumerable<string> filesToBackup, string baseDirectory)
+    public async Task BackupFilesAsync(IEnumerable<string> filesToBackup, string baseDirectory, string? storageTypeOverride = null)
     {
         if (filesToBackup == null)
         {
@@ -117,10 +123,14 @@ public class Backup
             return;
         }
 
-        _logger.Log($"Starting backup of {fileList.Count} specific files from base directory {baseDirectory}", LogLevel.Info);
-
+        IStorage? storage = null;
         try
         {
+            var storageType = storageTypeOverride ?? GetStorageTypeForDirectory(baseDirectory);
+            storage = await _config.CreateStorageAsync(storageType);
+
+            _logger.Log($"Starting backup of {fileList.Count} specific files from base directory {baseDirectory} using {storageType} storage", LogLevel.Info);
+
             foreach (var file in fileList)
             {
                 if (File.Exists(file))
@@ -151,7 +161,7 @@ public class Backup
             var remotePath = $"backups/{Path.GetFileName(baseDirectory)}/{archiveFileName}";
 
             _logger.Log($"Uploading archive {tempArchive} to {remotePath}", LogLevel.Debug);
-            await _storage.UploadAsync(tempArchive, remotePath);
+            await storage.UploadAsync(tempArchive, remotePath);
 
             _state.AddBackup(baseDirectory, remotePath, false);
 
@@ -165,6 +175,10 @@ public class Backup
         catch (Exception ex)
         {
             _logger.Log($"Failed to backup specific files from {baseDirectory}: {ex.Message}", LogLevel.Error);
+        }
+        finally
+        {
+            storage?.Dispose();
         }
     }
 
@@ -186,7 +200,18 @@ public class Backup
         return files;
     }
 
-    private async Task CreateFullBackupAsync(string sourceDirectory, List<string> filesToInclude, string timestamp)
+    private string GetStorageTypeForDirectory(string directory)
+    {
+        var normalizedDir = Path.GetFullPath(Environment.ExpandEnvironmentVariables(directory));
+        
+        var watchConfig = _config.WatchDirectories.FirstOrDefault(w => 
+            Path.GetFullPath(Environment.ExpandEnvironmentVariables(w.Path))
+                .Equals(normalizedDir, StringComparison.OrdinalIgnoreCase));
+
+        return watchConfig?.StorageType ?? _config.GlobalStorageType;
+    }
+
+    private async Task CreateFullBackupAsync(string sourceDirectory, List<string> filesToInclude, string timestamp, IStorage storage)
     {
         if (!filesToInclude.Any())
         {
@@ -205,7 +230,7 @@ public class Backup
 
             var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{archiveFileName}";
             _logger.Log($"Uploading full backup archive {tempArchive} to {remotePath}", LogLevel.Debug);
-            await _storage.UploadAsync(tempArchive, remotePath);
+            await storage.UploadAsync(tempArchive, remotePath);
 
             _state.AddBackup(sourceDirectory, remotePath, false);
 

@@ -58,7 +58,7 @@ public class ConfigValidator
         return result;
     }
 
-    private void ValidateWatchDirectories(List<string> watchDirectories, ConfigValidationResult result)
+    private void ValidateWatchDirectories(List<WatchDirectoryConfig> watchDirectories, ConfigValidationResult result)
     {
         if (watchDirectories == null || watchDirectories.Count == 0)
         {
@@ -67,9 +67,9 @@ public class ConfigValidator
         }
 
         var validDirectories = 0;
-        foreach (var directory in watchDirectories)
+        foreach (var watchConfig in watchDirectories)
         {
-            if (string.IsNullOrWhiteSpace(directory))
+            if (string.IsNullOrWhiteSpace(watchConfig.Path))
             {
                 result.AddWarning("Empty watch directory entry found and will be ignored.");
                 continue;
@@ -77,11 +77,12 @@ public class ConfigValidator
 
             try
             {
-                var expandedPath = Environment.ExpandEnvironmentVariables(directory);
+                var expandedPath = Environment.ExpandEnvironmentVariables(watchConfig.Path);
                 if (Directory.Exists(expandedPath))
                 {
                     validDirectories++;
-                    result.AddInfo($"Watch directory validated: {expandedPath}");
+                    var storageInfo = watchConfig.StorageType != null ? $" (storage: {watchConfig.StorageType})" : " (using global storage)";
+                    result.AddInfo($"Watch directory validated: {expandedPath}{storageInfo}");
                 }
                 else
                 {
@@ -90,7 +91,7 @@ public class ConfigValidator
             }
             catch (Exception ex)
             {
-                result.AddError($"Invalid watch directory path '{directory}': {ex.Message}");
+                result.AddError($"Invalid watch directory path '{watchConfig.Path}': {ex.Message}");
             }
         }
 
