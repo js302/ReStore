@@ -1,10 +1,23 @@
 {
   "watchDirectories": [
-    "%APPDATA%",
-    "%USERPROFILE%\\Desktop",
-    "%USERPROFILE%\\Documents",
-    "%USERPROFILE%\\Pictures"
+    {
+      "path": "%APPDATA%",
+      "storageType": "gdrive"
+    },
+    {
+      "path": "%USERPROFILE%\\Desktop",
+      "storageType": null
+    },
+    {
+      "path": "%USERPROFILE%\\Documents",
+      "storageType": "local"
+    },
+    {
+      "path": "%USERPROFILE%\\Pictures",
+      "storageType": "s3"
+    }
   ],
+  "globalStorageType": "local",
   "backupInterval": "01:00:00",
   "sizeThresholdMB": 500,
   "maxFileSizeMB": 100,
@@ -15,6 +28,10 @@
     "includeEnvironmentVariables": true,
     "includeWindowsSettings": true,
     "backupInterval": "24:00:00",
+    "storageType": null,
+    "programsStorageType": "local",
+    "environmentStorageType": "gdrive",
+    "settingsStorageType": "s3",
     "excludeSystemPrograms": [
       "Microsoft Visual C++",
       "Microsoft .NET",

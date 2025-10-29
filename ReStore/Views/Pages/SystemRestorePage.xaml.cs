@@ -329,13 +329,13 @@ namespace ReStore.Views.Pages
                     BackupProgramsBtn.IsEnabled = false;
                     BackupProgramsBtn.Content = "Backing up...";
 
-                    if (_state == null || _storage == null)
+                    if (_state == null)
                     {
                         MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
                     await systemBackup.BackupInstalledProgramsAsync();
 
                     await _state.SaveStateAsync();
@@ -376,13 +376,13 @@ namespace ReStore.Views.Pages
                     BackupEnvBtn.IsEnabled = false;
                     BackupEnvBtn.Content = "Backing up...";
 
-                    if (_state == null || _storage == null)
+                    if (_state == null)
                     {
                         MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
                     await systemBackup.BackupEnvironmentVariablesAsync();
 
                     await _state.SaveStateAsync();
@@ -423,13 +423,13 @@ namespace ReStore.Views.Pages
                     BackupSettingsBtn.IsEnabled = false;
                     BackupSettingsBtn.Content = "Backing up...";
 
-                    if (_state == null || _storage == null)
+                    if (_state == null)
                     {
                         MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
                     await systemBackup.BackupWindowsSettingsAsync();
 
                     await _state.SaveStateAsync();
@@ -470,13 +470,13 @@ namespace ReStore.Views.Pages
                     BackupFullSystemBtn.IsEnabled = false;
                     BackupFullSystemBtn.Content = "Backing up...";
 
-                    if (_state == null || _storage == null)
+                    if (_state == null)
                     {
                         MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _storage, _state, _configManager);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
                     await systemBackup.BackupSystemAsync();
 
                     await _state.SaveStateAsync();

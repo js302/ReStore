@@ -9,22 +9,26 @@ namespace ReStore
     public class Program
     {
         private const string USAGE_MESSAGE = @"Usage:
-  restore.exe --service <remote-source>
-  restore.exe backup <remote-source> <sourceDir>
-  restore.exe restore <remote-source> <backupPath> <targetDir>
-  restore.exe system-backup <remote-source> [programs|environment|settings|all]
-  restore.exe system-restore <remote-source> <backupPath> [programs|environment|settings]
+  restore.exe --service
+  restore.exe backup <sourceDir> [--storage <storageType>]
+  restore.exe restore <backupPath> <targetDir> [--storage <storageType>]
+  restore.exe system-backup [programs|environment|settings|all] [--storage <storageType>]
+  restore.exe system-restore <backupPath> [programs|environment|settings] [--storage <storageType>]
   restore.exe --validate-config
 
 Examples:
-  restore.exe --service gdrive
-  restore.exe backup gdrive %USERPROFILE%\Desktop
-  restore.exe system-backup local all
-  restore.exe system-backup gdrive programs
-  restore.exe system-backup local settings
-  restore.exe system-restore local system_backups/programs/... programs
-  restore.exe system-restore local system_backups/settings/... settings
-  restore.exe --validate-config";
+  restore.exe --service
+  restore.exe backup %USERPROFILE%\Desktop
+  restore.exe backup %USERPROFILE%\Documents --storage gdrive
+  restore.exe system-backup all
+  restore.exe system-backup programs --storage local
+  restore.exe system-restore system_backups/programs/... programs
+  restore.exe --validate-config
+
+Notes:
+  - Storage types are configured in config.json
+  - Per-path and per-component storage can be set in configuration
+  - Use --storage flag to override configured storage for a specific operation";
 
         public static async Task Main(string[] args)
         {
@@ -48,13 +52,23 @@ Examples:
                 return;
             }
 
-            var isServiceMode = args.Length == 2 && args[0] == "--service";
-            var commandMode = args.Length >= 2 && (args[0] == "backup" || args[0] == "restore" || args[0] == "system-backup" || args[0] == "system-restore");
+            var isServiceMode = args.Length >= 1 && args[0] == "--service";
+            var commandMode = args.Length >= 1 && (args[0] == "backup" || args[0] == "restore" || args[0] == "system-backup" || args[0] == "system-restore");
 
             if (!isServiceMode && !commandMode)
             {
                 Console.WriteLine(USAGE_MESSAGE);
                 return;
+            }
+
+            string? GetStorageOverride(string[] arguments)
+            {
+                var storageIndex = Array.IndexOf(arguments, "--storage");
+                if (storageIndex >= 0 && storageIndex + 1 < arguments.Length)
+                {
+                    return arguments[storageIndex + 1];
+                }
+                return null;
             }
 
             // Auto-validate configuration for all operations
@@ -71,10 +85,6 @@ Examples:
                 logger.Log("Configuration validation completed with warnings.", LogLevel.Warning);
                 PrintValidationResults(validationResult, logger);
             }
-
-            var remote = args[1];
-            // Use a 'using' statement to ensure storage is disposed
-            using IStorage storage = await configManager.CreateStorageAsync(remote);
 
             var systemState = new SystemState(logger);
             await systemState.LoadStateAsync();
@@ -95,52 +105,52 @@ Examples:
             {
                 if (isServiceMode)
                 {
-                    // Dispose FileWatcher using 'using'
-                    using var watcher = new FileWatcher(configManager, logger, systemState, storage, sizeAnalyzer, compressionUtil);
+                    using var watcher = new FileWatcher(configManager, logger, systemState, sizeAnalyzer, compressionUtil);
                     await watcher.StartAsync();
                     logger.Log("File watcher service running. Press Ctrl+C to stop.", LogLevel.Info);
-                    // Wait for cancellation instead of infinite delay
                     await Task.Delay(Timeout.Infinite, cts.Token);
                     logger.Log("File watcher service stopped.", LogLevel.Info);
                 }
-                else // Command mode
+                else
                 {
                     var command = args[0];
+                    var storageOverride = GetStorageOverride(args);
+
                     switch (command)
                     {
                         case "backup":
-                            if (args.Length < 3)
-                            {
-                                Console.WriteLine(USAGE_MESSAGE);
-                                break;
-                            }
-                            var backup = new Backup(logger, systemState, sizeAnalyzer, storage, configManager);
-                            await backup.BackupDirectoryAsync(args[2]);
-                            break;
-
-                        case "restore":
-                            if (args.Length < 4)
-                            {
-                                Console.WriteLine(USAGE_MESSAGE);
-                                break;
-                            }
-                            var restore = new Restore(logger, systemState, storage);
-                            await restore.RestoreFromBackupAsync(args[2], args[3]);
-                            break;
-
-                        case "system-backup":
                             if (args.Length < 2)
                             {
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
+                            var backup = new Backup(logger, systemState, sizeAnalyzer, configManager);
+                            await backup.BackupDirectoryAsync(args[1], storageOverride);
+                            break;
+
+                        case "restore":
+                            if (args.Length < 3)
+                            {
+                                Console.WriteLine(USAGE_MESSAGE);
+                                break;
+                            }
+                            
+                            var restoreStorageType = storageOverride ?? configManager.GlobalStorageType;
+                            using (var storage = await configManager.CreateStorageAsync(restoreStorageType))
+                            {
+                                var restore = new Restore(logger, systemState, storage);
+                                await restore.RestoreFromBackupAsync(args[1], args[2]);
+                            }
+                            break;
+
+                        case "system-backup":
                             if (!OperatingSystem.IsWindows())
                             {
                                 logger.Log("The 'system-backup' command is only supported on Windows.", LogLevel.Error);
                                 break;
                             }
-                            var backupType = args.Length >= 3 ? args[2] : "all";
-                            var systemBackupManager = new SystemBackupManager(logger, storage, systemState, configManager);
+                            var backupType = args.Length >= 2 && !args[1].StartsWith("--") ? args[1] : "all";
+                            var systemBackupManager = new SystemBackupManager(logger, configManager, systemState);
                             
                             switch (backupType.ToLowerInvariant())
                             {
@@ -161,7 +171,7 @@ Examples:
                             break;
 
                         case "system-restore":
-                            if (args.Length < 4)
+                            if (args.Length < 2)
                             {
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
@@ -171,9 +181,9 @@ Examples:
                                 logger.Log("The 'system-restore' command is only supported on Windows.", LogLevel.Error);
                                 break;
                             }
-                            var restoreType = args.Length >= 4 ? args[3] : "all";
-                            var systemRestoreManager = new SystemBackupManager(logger, storage, systemState, configManager);
-                            await systemRestoreManager.RestoreSystemAsync(restoreType, args[2]);
+                            var restoreType = args.Length >= 3 && !args[2].StartsWith("--") ? args[2] : "all";
+                            var systemRestoreManager = new SystemBackupManager(logger, configManager, systemState);
+                            await systemRestoreManager.RestoreSystemAsync(restoreType, args[1], storageOverride);
                             break;
                     }
                 }

@@ -32,7 +32,7 @@ namespace ReStore.Core.src.backup
             // Initialize from ConfigManager instead of creating new defaults
             _configuration = new BackupConfiguration
             {
-                IncludePaths = [.. _configManager.WatchDirectories],
+                IncludePaths = _configManager.WatchDirectories.Select(w => w.Path).ToList(),
                 ExcludePaths = [.. _configManager.ExcludedPaths],
                 ExcludePatterns = [.. _configManager.ExcludedPatterns],
                 MaxFileSize = _configManager.MaxFileSizeMB * 1024 * 1024,
@@ -52,7 +52,7 @@ namespace ReStore.Core.src.backup
                     _configuration = System.Text.Json.JsonSerializer.Deserialize<BackupConfiguration>(configText)
                         ?? new BackupConfiguration
                         {
-                            IncludePaths = [.. _configManager.WatchDirectories],
+                            IncludePaths = _configManager.WatchDirectories.Select(w => w.Path).ToList(),
                             ExcludePaths = [.. _configManager.ExcludedPaths],
                             ExcludePatterns = [.. _configManager.ExcludedPatterns],
                             MaxFileSize = _configManager.MaxFileSizeMB * 1024 * 1024,

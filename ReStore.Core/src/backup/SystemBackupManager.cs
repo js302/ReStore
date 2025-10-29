@@ -13,16 +13,14 @@ public class SystemBackupManager
     private readonly SystemProgramDiscovery _programDiscovery;
     private readonly EnvironmentVariablesManager _envManager;
     private readonly WindowsSettingsManager _settingsManager;
-    private readonly IStorage _storage;
+    private readonly IConfigManager _config;
     private readonly SystemState _systemState;
-    private readonly IConfigManager? _configManager;
 
-    public SystemBackupManager(ILogger logger, IStorage storage, SystemState systemState, IConfigManager? configManager = null)
+    public SystemBackupManager(ILogger logger, IConfigManager config, SystemState systemState)
     {
         _logger = logger;
-        _storage = storage;
+        _config = config ?? throw new ArgumentNullException(nameof(config));
         _systemState = systemState;
-        _configManager = configManager;
         _programDiscovery = new SystemProgramDiscovery(logger);
         _envManager = new EnvironmentVariablesManager(logger);
         _settingsManager = new WindowsSettingsManager(logger);
@@ -34,34 +32,20 @@ public class SystemBackupManager
         
         try
         {
-            var config = _configManager?.SystemBackup;
-            
-            if (config?.IncludePrograms ?? true)
-            {
+            if (_config.SystemBackup.IncludePrograms)
                 await BackupInstalledProgramsAsync();
-            }
             else
-            {
                 _logger.Log("Skipping programs backup (disabled in config)", LogLevel.Info);
-            }
             
-            if (config?.IncludeEnvironmentVariables ?? true)
-            {
+            if (_config.SystemBackup.IncludeEnvironmentVariables)
                 await BackupEnvironmentVariablesAsync();
-            }
             else
-            {
                 _logger.Log("Skipping environment variables backup (disabled in config)", LogLevel.Info);
-            }
             
-            if (config?.IncludeWindowsSettings ?? true)
-            {
+            if (_config.SystemBackup.IncludeWindowsSettings)
                 await BackupWindowsSettingsAsync();
-            }
             else
-            {
                 _logger.Log("Skipping Windows settings backup (disabled in config)", LogLevel.Info);
-            }
             
             _logger.Log("System backup completed successfully", LogLevel.Info);
         }
@@ -72,12 +56,34 @@ public class SystemBackupManager
         }
     }
 
+    private string GetStorageTypeForComponent(string component)
+    {
+        return component.ToLowerInvariant() switch
+        {
+            "programs" => _config.SystemBackup.ProgramsStorageType 
+                ?? _config.SystemBackup.StorageType 
+                ?? _config.GlobalStorageType,
+            "environment" => _config.SystemBackup.EnvironmentStorageType 
+                ?? _config.SystemBackup.StorageType 
+                ?? _config.GlobalStorageType,
+            "settings" => _config.SystemBackup.SettingsStorageType 
+                ?? _config.SystemBackup.StorageType 
+                ?? _config.GlobalStorageType,
+            _ => _config.GlobalStorageType
+        };
+    }
+
     public async Task BackupInstalledProgramsAsync()
     {
         _logger.Log("Backing up installed programs...", LogLevel.Info);
         
+        IStorage? storage = null;
         try
         {
+            var storageType = GetStorageTypeForComponent("programs");
+            storage = await _config.CreateStorageAsync(storageType);
+            _logger.Log($"Using {storageType} storage for programs backup", LogLevel.Info);
+
             var programs = await _programDiscovery.GetAllInstalledProgramsAsync();
             
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
@@ -93,7 +99,6 @@ public class SystemBackupManager
 
             await CreateFullRestoreScriptAsync(programs, Path.Combine(tempDir, "restore_programs.ps1"));
 
-            // Upload to storage
             var remotePath = $"system_backups/programs/programs_backup_{timestamp}.zip";
             var zipPath = Path.Combine(Path.GetTempPath(), $"programs_backup_{timestamp}.zip");
             
@@ -101,11 +106,10 @@ public class SystemBackupManager
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
-            await _storage.UploadAsync(zipPath, remotePath);
+            await storage.UploadAsync(zipPath, remotePath);
 
             _systemState.AddBackup("system_programs", remotePath, false);
 
-            // Cleanup
             File.Delete(zipPath);
             Directory.Delete(tempDir, true);
 
@@ -116,14 +120,23 @@ public class SystemBackupManager
             _logger.Log($"Failed to backup installed programs: {ex.Message}", LogLevel.Error);
             throw;
         }
+        finally
+        {
+            storage?.Dispose();
+        }
     }
 
     public async Task BackupEnvironmentVariablesAsync()
     {
         _logger.Log("Backing up environment variables...", LogLevel.Info);
         
+        IStorage? storage = null;
         try
         {
+            var storageType = GetStorageTypeForComponent("environment");
+            storage = await _config.CreateStorageAsync(storageType);
+            _logger.Log($"Using {storageType} storage for environment variables backup", LogLevel.Info);
+
             var variables = await _envManager.GetAllEnvironmentVariablesAsync();
             
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
@@ -138,7 +151,6 @@ public class SystemBackupManager
 
             await CreateRegistryBackupScriptAsync(Path.Combine(tempDir, "backup_env_registry.ps1"));
 
-            // Upload to storage
             var remotePath = $"system_backups/environment/env_backup_{timestamp}.zip";
             var zipPath = Path.Combine(Path.GetTempPath(), $"env_backup_{timestamp}.zip");
             
@@ -146,11 +158,10 @@ public class SystemBackupManager
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
-            await _storage.UploadAsync(zipPath, remotePath);
+            await storage.UploadAsync(zipPath, remotePath);
 
             _systemState.AddBackup("system_environment", remotePath, false);
 
-            // Cleanup
             File.Delete(zipPath);
             Directory.Delete(tempDir, true);
 
@@ -160,6 +171,10 @@ public class SystemBackupManager
         {
             _logger.Log($"Failed to backup environment variables: {ex.Message}", LogLevel.Error);
             throw;
+        }
+        finally
+        {
+            storage?.Dispose();
         }
     }
 
@@ -394,20 +409,24 @@ public class SystemBackupManager
         await File.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent));
     }
 
-    public async Task RestoreSystemAsync(string backupType, string backupPath)
+    public async Task RestoreSystemAsync(string backupType, string backupPath, string? storageTypeOverride = null)
     {
         _logger.Log($"Starting system restore of {backupType} from {backupPath}...", LogLevel.Info);
         
+        IStorage? storage = null;
         try
         {
-            // Download backup
+            var component = backupType.Replace("system_", "");
+            var storageType = storageTypeOverride ?? GetStorageTypeForComponent(component);
+            storage = await _config.CreateStorageAsync(storageType);
+            _logger.Log($"Using {storageType} storage for restore", LogLevel.Info);
+
             var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", DateTime.Now.ToString("yyyyMMddHHmmss"));
             Directory.CreateDirectory(tempDir);
             
             var zipPath = Path.Combine(tempDir, "backup.zip");
-            await _storage.DownloadAsync(backupPath, zipPath);
+            await storage.DownloadAsync(backupPath, zipPath);
             
-            // Extract backup
             var extractDir = Path.Combine(tempDir, "extracted");
             var compressionUtil = new CompressionUtil();
             await compressionUtil.DecompressAsync(zipPath, extractDir);
@@ -425,7 +444,6 @@ public class SystemBackupManager
                 await RestoreWindowsSettingsAsync(extractDir);
             }
             
-            // Cleanup
             Directory.Delete(tempDir, true);
             
             _logger.Log($"System restore of {backupType} completed successfully", LogLevel.Info);
@@ -434,6 +452,10 @@ public class SystemBackupManager
         {
             _logger.Log($"System restore failed: {ex.Message}", LogLevel.Error);
             throw;
+        }
+        finally
+        {
+            storage?.Dispose();
         }
     }
 
@@ -475,8 +497,13 @@ public class SystemBackupManager
     {
         _logger.Log("Backing up Windows settings...", LogLevel.Info);
         
+        IStorage? storage = null;
         try
         {
+            var storageType = GetStorageTypeForComponent("settings");
+            storage = await _config.CreateStorageAsync(storageType);
+            _logger.Log($"Using {storageType} storage for Windows settings backup", LogLevel.Info);
+
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
             var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
             Directory.CreateDirectory(tempDir);
@@ -493,7 +520,7 @@ public class SystemBackupManager
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
-            await _storage.UploadAsync(zipPath, remotePath);
+            await storage.UploadAsync(zipPath, remotePath);
 
             _systemState.AddBackup("system_settings", remotePath, false);
 
@@ -506,6 +533,10 @@ public class SystemBackupManager
         {
             _logger.Log($"Failed to backup Windows settings: {ex.Message}", LogLevel.Error);
             throw;
+        }
+        finally
+        {
+            storage?.Dispose();
         }
     }
 

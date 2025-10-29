@@ -16,7 +16,7 @@ namespace ReStore.Views.Pages
         private readonly AppSettings _appSettings;
         private readonly ConfigManager _configManager;
         private bool _isLoading = true;
-        private readonly ObservableCollection<string> _watchDirectories = new();
+        private readonly ObservableCollection<WatchDirectoryConfig> _watchDirectories = new();
         private readonly ObservableCollection<string> _excludedPatterns = new();
         private readonly ObservableCollection<string> _excludedPaths = new();
         private readonly ObservableCollection<string> _excludeSystemPrograms = new();
@@ -60,6 +60,9 @@ namespace ReStore.Views.Pages
 
                 // Load watch directories
                 LoadWatchDirectories();
+                
+                // Load global storage
+                LoadGlobalStorage();
 
                 // Load exclusions
                 LoadExclusions();
@@ -264,9 +267,124 @@ namespace ReStore.Views.Pages
         private void LoadWatchDirectories()
         {
             _watchDirectories.Clear();
-            foreach (var dir in _configManager.WatchDirectories)
+            foreach (var watchConfig in _configManager.WatchDirectories)
             {
-                _watchDirectories.Add(dir);
+                _watchDirectories.Add(watchConfig);
+            }
+        }
+
+        private void LoadGlobalStorage()
+        {
+            GlobalStorageCombo.Items.Clear();
+            foreach (var storage in _configManager.StorageSources.Keys)
+            {
+                GlobalStorageCombo.Items.Add(storage);
+            }
+
+            var currentGlobal = _configManager.GlobalStorageType;
+            if (GlobalStorageCombo.Items.Contains(currentGlobal))
+            {
+                GlobalStorageCombo.SelectedItem = currentGlobal;
+            }
+            else if (GlobalStorageCombo.Items.Count > 0)
+            {
+                GlobalStorageCombo.SelectedIndex = 0;
+            }
+        }
+
+        private async void GlobalStorageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoading || GlobalStorageCombo.SelectedItem is not string storageType)
+                return;
+
+            try
+            {
+                var prop = typeof(ConfigManager).GetProperty("GlobalStorageType");
+                if (prop != null && prop.CanWrite)
+                {
+                    prop.SetValue(_configManager, storageType);
+                    await _configManager.SaveAsync();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error updating global storage: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void PathStorageCombo_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ComboBox combo || combo.Tag is not WatchDirectoryConfig watchConfig)
+                return;
+
+            var storageType = watchConfig.StorageType;
+            if (string.IsNullOrEmpty(storageType))
+            {
+                combo.SelectedIndex = 0; // "Use Global Default"
+            }
+            else
+            {
+                foreach (ComboBoxItem item in combo.Items)
+                {
+                    if (item.Tag?.ToString() == storageType)
+                    {
+                        combo.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+        }
+
+        private async void PathStorageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoading || sender is not ComboBox combo || combo.Tag is not WatchDirectoryConfig watchConfig)
+                return;
+
+            try
+            {
+                if (combo.SelectedItem is ComboBoxItem item)
+                {
+                    var storageTag = item.Tag?.ToString();
+                    watchConfig.StorageType = string.IsNullOrEmpty(storageTag) ? null : storageTag;
+                    await _configManager.SaveAsync();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error updating path storage: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void ApplyStorageToAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (GlobalStorageCombo.SelectedItem is not string globalStorage)
+            {
+                MessageBox.Show("Please select a global storage type first.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                var result = MessageBox.Show(
+                    $"Set all watch directories to use '{globalStorage}' storage?\n\nThis will override individual path storage settings.",
+                    "Confirm Apply to All",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    foreach (var watchConfig in _configManager.WatchDirectories)
+                    {
+                        watchConfig.StorageType = globalStorage;
+                    }
+                    await _configManager.SaveAsync();
+                    LoadWatchDirectories();
+                    MessageBox.Show("Storage settings applied to all paths.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error applying storage to all: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -303,10 +421,15 @@ namespace ReStore.Views.Pages
                     var folderPath = System.IO.Path.GetDirectoryName(dialog.FileName);
                     if (!string.IsNullOrEmpty(folderPath))
                     {
-                        if (!_watchDirectories.Contains(folderPath))
+                        if (!_watchDirectories.Any(w => w.Path == folderPath))
                         {
-                            _watchDirectories.Add(folderPath);
-                            _configManager.WatchDirectories.Add(folderPath);
+                            var newConfig = new WatchDirectoryConfig 
+                            { 
+                                Path = folderPath,
+                                StorageType = null
+                            };
+                            _watchDirectories.Add(newConfig);
+                            _configManager.WatchDirectories.Add(newConfig);
                             await _configManager.SaveAsync();
                             MessageBox.Show("Watch directory added successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                         }
@@ -343,10 +466,14 @@ namespace ReStore.Views.Pages
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    _watchDirectories.Remove(path);
-                    _configManager.WatchDirectories.Remove(path);
-                    await _configManager.SaveAsync();
-                    MessageBox.Show("Watch directory removed successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var watchConfig = _watchDirectories.FirstOrDefault(w => w.Path == path);
+                    if (watchConfig != null)
+                    {
+                        _watchDirectories.Remove(watchConfig);
+                        _configManager.WatchDirectories.Remove(watchConfig);
+                        await _configManager.SaveAsync();
+                        MessageBox.Show("Watch directory removed successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
                 }
             }
             catch (System.Exception ex)

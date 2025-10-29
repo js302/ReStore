@@ -10,7 +10,6 @@ public class FileWatcher : IDisposable
     private readonly IConfigManager _configManager;
     private readonly ILogger _logger;
     private readonly SystemState _systemState;
-    private readonly IStorage _storage;
     private readonly SizeAnalyzer _sizeAnalyzer;
     private readonly CompressionUtil _compressionUtil;
     private readonly Backup _backup;
@@ -21,23 +20,23 @@ public class FileWatcher : IDisposable
     private readonly TimeSpan _bufferTime = TimeSpan.FromSeconds(10);
     private bool _isDisposed = false;
 
-    public FileWatcher(IConfigManager configManager, ILogger logger, SystemState systemState, IStorage storage, SizeAnalyzer sizeAnalyzer, CompressionUtil compressionUtil)
+    public FileWatcher(IConfigManager configManager, ILogger logger, SystemState systemState, SizeAnalyzer sizeAnalyzer, CompressionUtil compressionUtil)
     {
         _configManager = configManager;
         _logger = logger;
         _systemState = systemState;
-        _storage = storage;
         _sizeAnalyzer = sizeAnalyzer;
         _compressionUtil = compressionUtil;
-        _backup = new Backup(_logger, _systemState, _sizeAnalyzer, _storage, _configManager);
+        _backup = new Backup(_logger, _systemState, _sizeAnalyzer, _configManager);
         _fileSelectionService = new FileSelectionService(_logger, _configManager);
     }
 
     public Task StartAsync()
     {
         _logger.Log("Starting file watcher service...");
-        foreach (var dir in _configManager.WatchDirectories)
+        foreach (var watchConfig in _configManager.WatchDirectories)
         {
+            var dir = watchConfig.Path;
             if (Directory.Exists(dir))
             {
                 var watcher = new FileSystemWatcher(dir)
@@ -54,7 +53,8 @@ public class FileWatcher : IDisposable
                 watcher.Error += OnError;
 
                 _watchers.Add(watcher);
-                _logger.Log($"Watching directory: {dir}");
+                var storageInfo = watchConfig.StorageType != null ? $" (using {watchConfig.StorageType} storage)" : " (using global storage)";
+                _logger.Log($"Watching directory: {dir}{storageInfo}");
             }
             else
             {
@@ -140,7 +140,7 @@ public class FileWatcher : IDisposable
         var normalizedPath = Path.GetFullPath(filePath);
 
         return _configManager.WatchDirectories
-            .Select(Path.GetFullPath)
+            .Select(wc => Path.GetFullPath(wc.Path))
             .Where(watchedDir => normalizedPath.StartsWith(watchedDir, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(watchedDir => watchedDir.Length)
             .FirstOrDefault();

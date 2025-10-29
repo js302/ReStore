@@ -272,13 +272,9 @@ namespace ReStore.Views.Pages
                     await _state.LoadStateAsync();
                 }
 
-                var appSettings = AppSettings.Load();
-                var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
-                _storage = await _configManager.CreateStorageAsync(remote);
-
                 var sizeAnalyzer = new SizeAnalyzer();
                 var compression = new CompressionUtil();
-                _watcher = new FileWatcher(_configManager, this, _state, _storage, sizeAnalyzer, compression);
+                _watcher = new FileWatcher(_configManager, this, _state, sizeAnalyzer, compression);
                 await _watcher.StartAsync();
 
                 WatcherService.Instance.SetWatcher(_watcher);
@@ -346,15 +342,8 @@ namespace ReStore.Views.Pages
                         await _state.LoadStateAsync();
                     }
 
-                    if (_storage == null)
-                    {
-                        var appSettings = AppSettings.Load();
-                        var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
-                        _storage = await _configManager.CreateStorageAsync(remote);
-                    }
-
                     var sizeAnalyzer = new SizeAnalyzer();
-                    var backup = new Backup(this, _state, sizeAnalyzer, _storage, _configManager);
+                    var backup = new Backup(this, _state, sizeAnalyzer, _configManager);
                     
                     await backup.BackupDirectoryAsync(folderPath);
                     
@@ -420,14 +409,8 @@ namespace ReStore.Views.Pages
                             await _state.LoadStateAsync();
                         }
 
-                        if (_storage == null)
-                        {
-                            var appSettings = AppSettings.Load();
-                            var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
-                            _storage = await _configManager.CreateStorageAsync(remote);
-                        }
-
-                        var restore = new Restore(this, _state, _storage);
+                        using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
+                        var restore = new Restore(this, _state, storage);
                         await restore.RestoreFromBackupAsync(latestBackup.Path, targetPath);
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
@@ -488,14 +471,8 @@ namespace ReStore.Views.Pages
                             await _state.LoadStateAsync();
                         }
 
-                        if (_storage == null)
-                        {
-                            var appSettings = AppSettings.Load();
-                            var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
-                            _storage = await _configManager.CreateStorageAsync(remote);
-                        }
-
-                        var restore = new Restore(this, _state, _storage);
+                        using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
+                        var restore = new Restore(this, _state, storage);
                         await restore.RestoreFromBackupAsync(backupPath, targetPath);
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
@@ -536,14 +513,7 @@ namespace ReStore.Views.Pages
                         await _state.LoadStateAsync();
                     }
 
-                    if (_storage == null)
-                    {
-                        var appSettings = AppSettings.Load();
-                        var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
-                        _storage = await _configManager.CreateStorageAsync(remote);
-                    }
-
-                    var systemBackup = new SystemBackupManager(this, _storage, _state);
+                    var systemBackup = new SystemBackupManager(this, _configManager, _state);
                     await systemBackup.BackupSystemAsync();
 
                     Log("System backup completed", LogLevel.Info);
