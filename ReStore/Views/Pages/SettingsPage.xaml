@@ -310,6 +310,70 @@
                     </Border>
                 </Expander>
 
+                <!-- Encryption Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE72E;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Encryption" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <TextBlock Text="Configure backup encryption to secure your data with AES-256 encryption." Margin="0,0,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+
+                            <!-- Encryption Status -->
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Status:" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,12,0"/>
+                                <TextBlock x:Name="EncryptionStatusText" Grid.Column="1" Text="Disabled" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+
+                            <!-- Enable/Disable Button -->
+                            <ui:Button x:Name="ToggleEncryptionBtn" Content="Enable Encryption" Appearance="Primary" Click="ToggleEncryption_Click" HorizontalAlignment="Left" Margin="0,0,0,16"/>
+
+                            <!-- Security Warning -->
+                            <Border Background="{DynamicResource SystemFillColorCautionBackgroundBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,16">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7BA;" FontSize="16" VerticalAlignment="Top" Foreground="{DynamicResource SystemFillColorCautionBrush}" Margin="0,0,12,0"/>
+                                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                        <Run FontWeight="Bold" Text="Important:"/>
+                                        <Run Text="Store your encryption password securely. If you lose the password, your backups cannot be recovered."/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Encryption Details -->
+                            <Expander x:Name="EncryptionDetailsExpander" Header="Details" IsExpanded="False" Margin="0,0,0,16">
+                                <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" Margin="0,8,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="• Algorithm: AES-256-GCM" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="• Key Derivation: PBKDF2-SHA256 (100,000 iterations)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="• Each backup uses a unique encryption key" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="• Authenticated encryption prevents tampering" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Expander>
+
+                            <!-- How It Works -->
+                            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="How It Works" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                                    <TextBlock Text="1. When enabled, you'll set a master password" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="2. Each backup is encrypted with a unique key derived from your password" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="3. When restoring, you'll be prompted for your password" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="4. Encrypted backups are stored with .enc extension" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
                 <!-- System Backup Section -->
                 <Expander IsExpanded="False" Margin="0,0,0,16">
                     <Expander.Header>

@@ -1,0 +1,48 @@
+<ui:FluentWindow x:Class="ReStore.Views.Windows.EncryptionSetupWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" Title="Setup Encryption" Width="500" Height="450" WindowStartupLocation="CenterScreen" ResizeMode="NoResize" Background="{ui:ThemeResource ApplicationBackgroundBrush}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Setup Backup Encryption" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10"/>
+
+        <TextBlock Grid.Row="1" TextWrapping="Wrap" Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,20">
+            <Run Text="Enable encryption to secure your backups with AES-256 encryption."/>
+            <LineBreak/>
+            <Run Text="You'll need to enter this password when restoring backups."/>
+            <LineBreak/>
+            <Run FontWeight="Bold" Text="⚠ Important: Store this password securely - it cannot be recovered!"/>
+        </TextBlock>
+
+        <ui:PasswordBox x:Name="PasswordInput" Grid.Row="2" PlaceholderText="Enter encryption password (min 8 characters)..." PasswordChanged="Password_Changed" Margin="0,0,0,10"/>
+
+        <ui:PasswordBox x:Name="ConfirmPasswordInput" Grid.Row="3" PlaceholderText="Confirm password..." PasswordChanged="Password_Changed" KeyDown="ConfirmPasswordInput_KeyDown" Margin="0,0,0,10"/>
+
+        <TextBlock x:Name="ValidationMessage" Grid.Row="4" Foreground="#D32F2F" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
+
+        <Border Grid.Row="5" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock Text="Password Strength" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock x:Name="StrengthIndicator" Text="Enter a password to see strength" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
+
+            <ui:Button Content="Cancel" Appearance="Secondary" Click="Cancel_Click" Margin="0,0,10,0"/>
+
+            <ui:Button x:Name="EnableButton" Content="Enable Encryption" Appearance="Primary" Click="Enable_Click" IsEnabled="False"/>
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>

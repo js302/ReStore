@@ -20,6 +20,8 @@ namespace ReStore
         private const string PIPE_NAME = "ReStore_CommandPipe";
         private Thread? _pipeServerThread;
         private bool _isRunning = true;
+        
+        public static Services.GuiPasswordProvider? GlobalPasswordProvider { get; private set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -43,6 +45,9 @@ namespace ReStore
             base.OnStartup(e);
             
             ReStore.Core.src.utils.ConfigInitializer.EnsureConfigurationSetup();
+            
+            // Initialize global password provider
+            GlobalPasswordProvider = new Services.GuiPasswordProvider();
             
             AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             {

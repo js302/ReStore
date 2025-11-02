@@ -17,7 +17,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
 {
     private DriveService? _driveService;
     private string _backupFolderId = string.Empty;
-    private const string BACKUP_FOLDER_NAME = "ReStore Backups";
+    private const string BACKUP_FOLDER_NAME = "ReStoreBackups";
     private const int MAX_RETRY_ATTEMPTS = 3;
     private readonly Dictionary<string, string> _folderCache = new();
     private bool _disposed = false;

@@ -20,14 +20,16 @@ namespace ReStore.Views.Windows
         private readonly string _backupPath;
         private string? _scriptsFolder;
         private bool _isComplete = false;
+        private readonly IPasswordProvider? _passwordProvider;
 
-        public RestoreProgressWindow(IStorage storage, SystemState state, string backupType, string backupPath)
+        public RestoreProgressWindow(IStorage storage, SystemState state, string backupType, string backupPath, IPasswordProvider? passwordProvider = null)
         {
             InitializeComponent();
             _storage = storage;
             _state = state;
             _backupType = backupType;
             _backupPath = backupPath;
+            _passwordProvider = passwordProvider;
 
             Loaded += async (_, __) => await StartRestoreAsync();
         }
@@ -51,21 +53,64 @@ namespace ReStore.Views.Windows
                 Log("Starting system restore...", LogLevel.Info);
                 DetailText.Text = "Downloading backup archive...";
 
-                // Download and extract
                 var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", DateTime.Now.ToString("yyyyMMddHHmmss"));
                 Directory.CreateDirectory(tempDir);
 
                 Log($"Created temporary directory: {tempDir}", LogLevel.Debug);
                 
-                var zipPath = Path.Combine(tempDir, "backup.zip");
-                await _storage.DownloadAsync(_backupPath, zipPath);
+                var isEncrypted = _backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase);
+                var downloadPath = Path.Combine(tempDir, isEncrypted ? "backup.zip.enc" : "backup.zip");
+                
+                await _storage.DownloadAsync(_backupPath, downloadPath);
+                
+                // If encrypted, also download the metadata file
+                if (isEncrypted)
+                {
+                    var metadataPath = downloadPath + ".meta";
+                    var remoteMetadataPath = _backupPath + ".meta";
+                    Log("Downloading encryption metadata...", LogLevel.Debug);
+                    await _storage.DownloadAsync(remoteMetadataPath, metadataPath);
+                }
                 
                 Log("Download complete. Extracting archive...", LogLevel.Info);
                 DetailText.Text = "Extracting backup files...";
 
                 var extractDir = Path.Combine(tempDir, "extracted");
                 var compressionUtil = new CompressionUtil();
-                await compressionUtil.DecompressAsync(zipPath, extractDir);
+                
+                if (isEncrypted)
+                {
+                    Log("Backup is encrypted, requesting password...", LogLevel.Info);
+                    
+                    if (_passwordProvider == null)
+                    {
+                        throw new InvalidOperationException("This backup is encrypted but no password provider is available.");
+                    }
+                    
+                    var password = await _passwordProvider.GetPasswordAsync();
+                    if (string.IsNullOrEmpty(password))
+                    {
+                        throw new OperationCanceledException("Password required to decrypt backup.");
+                    }
+                    
+                    DetailText.Text = "Decrypting and extracting backup...";
+                    
+                    try
+                    {
+                        await compressionUtil.DecryptAndDecompressAsync(downloadPath, password, extractDir, this);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Clear cached password on decryption failure so user can retry
+                        _passwordProvider.ClearPassword();
+                        Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
+                        throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
+                    }
+                }
+                else
+                {
+                    await compressionUtil.DecompressAsync(downloadPath, extractDir);
+                }
 
                 _scriptsFolder = extractDir;
                 Log($"Extraction complete: {extractDir}", LogLevel.Info);

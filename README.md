@@ -56,6 +56,7 @@ See the [Build from Source](#build-from-source-1) section below.
 
 - **Change Detection**: SHA256 hashing to detect file modifications accurately
 - **Compression**: ZIP compression to save storage space
+- **Encryption**: AES-256-GCM encryption with password protection for secure backups
 - **History Tracking**: Complete backup history with metadata
 
 ### Prerequisites
@@ -129,6 +130,8 @@ You can configure ReStore through the GUI settings page or by editing the config
 
 **Size Limits**: Maximum file size and backup size thresholds
 
+**Encryption**: Password-based AES-256-GCM encryption for secure backups
+
 ### Configuration File Location
 
 Both the GUI and CLI applications use a **unified configuration** located at:
@@ -170,6 +173,7 @@ All configuration options can be managed through the Settings page:
 - **Global Default Storage**: Set the default storage type for all backups
 - **Watch Directories**: Add/remove folders to monitor with individual storage selection per path
 - **Backup Configuration**: Type (Full/Incremental/Differential), interval, size limits
+- **Encryption**: Enable/disable AES-256-GCM encryption with password protection for all backups
 - **System Backup**: Enable/disable system state backups with separate storage selection for programs, environment variables, and settings
 - **Exclusions**: File patterns and paths to exclude from backups
 
@@ -218,7 +222,7 @@ To use Google Drive as your backup destination, you'll need to create a Google C
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Click **"New Project"** (or select an existing project)
-3. Name your project (e.g., "ReStore Backups") and click **Create**
+3. Name your project (e.g., "ReStoreBackups") and click **Create**
 
 #### Step 2: Enable the Google Drive API
 
@@ -256,7 +260,7 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the Google Drive section:
         "client_id": "client_id",
         "client_secret": "client_secret",
         "token_folder": "token_folder",
-        "backup_folder_name": "ReStore Backups"
+        "backup_folder_name": "ReStoreBackups"
       }
     }
   }
@@ -269,7 +273,7 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the Google Drive section:
 - **client_id**: From the downloaded JSON file (`client_id` field)
 - **client_secret**: From the downloaded JSON file (`client_secret` field)
 - **token_folder**: Where ReStore stores authentication tokens (recommended: `C:\Users\YourName\ReStore\tokens`)
-- **backup_folder_name**: The name of the folder in Google Drive where backups will be stored (default: `"ReStore Backups"`)
+- **backup_folder_name**: The name of the folder in Google Drive where backups will be stored (default: `"ReStoreBackups"`)
 
 #### Step 5: First Authentication
 
@@ -533,7 +537,7 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
         "token_folder": "your_token_folder",
-        "backup_folder_name": "ReStore Backups"
+        "backup_folder_name": "ReStoreBackups"
       }
     },
     "s3": {
@@ -562,6 +566,7 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
 ```
 
 **Storage Selection Logic:**
+
 - **Per-Path**: Each watched directory can specify its own `storageType`, or use `null` to fall back to global default
 - **Per-Component**: System backups (programs, environment, settings) can each use different storage destinations
 - **Global Fallback**: The `globalStorageType` is used when no specific storage is configured
@@ -583,6 +588,7 @@ restore system-backup programs --storage github
 
 **GUI Usage:**
 In the Settings page, you can:
+
 - Set the global default storage in the "Global Default Storage" dropdown
 - Select storage per watched directory in each directory's storage dropdown
 - Use "Apply Current Global Storage to All Paths" to quickly set all directories
@@ -726,11 +732,158 @@ When you perform a system backup, ReStore creates:
 
 **Differential**: Backs up files changed since the last full backup
 
+## Backup Encryption
+
+ReStore supports enterprise-grade AES-256-GCM encryption to secure your backups with password protection. This feature is available for both file backups and system backups.
+
+### Encryption Features
+
+- **Algorithm**: AES-256-GCM (Galois/Counter Mode) - provides both confidentiality and authentication
+- **Key Derivation**: PBKDF2-SHA256 with 100,000 iterations for secure password-based key generation
+- **Hybrid Architecture**: Each backup uses a unique Data Encryption Key (DEK) that is encrypted with a Key Encryption Key (KEK) derived from your password
+- **Authenticated Encryption**: Built-in authentication prevents tampering with encrypted backups
+- **File Format**: Encrypted backups are stored with `.enc` extension and include a `.enc.meta` metadata file
+
+### Enabling Encryption
+
+**Via GUI (Recommended):**
+
+1. Open the **Settings** page
+2. Expand the **Encryption** section
+3. Click **Enable Encryption**
+4. Enter a strong password (minimum 8 characters)
+5. Confirm the password
+6. View the password strength indicator (Weak/Medium/Strong with color coding)
+7. Click **Enable Encryption** to save
+
+**Important**: Store your encryption password securely - it **cannot be recovered** if lost!
+
+**Via Configuration File:**
+
+Edit `%USERPROFILE%\ReStore\config.json`:
+
+```json
+{
+  "encryption": {
+    "enabled": true,
+    "salt": "base64_encoded_salt_will_be_generated",
+    "keyDerivationIterations": 100000,
+    "verificationToken": "base64_encoded_verification_token_will_be_generated"
+  }
+}
+```
+
+When you first enable encryption, the application will generate a random salt and a verification token automatically.
+Note: Do NOT change the salt after enabling encryption, as it is required for key derivation.
+
+### How It Works
+
+1. **First Time Setup**: When you enable encryption, you set a master password and a random salt is generated
+2. **During Backup**:
+   - A unique DEK is generated for each backup
+   - Files are compressed into a ZIP archive
+   - The ZIP is encrypted with the DEK using AES-256-GCM
+   - The DEK is encrypted with the KEK (derived from your password + salt)
+   - Encrypted backup (`.enc`) and metadata (`.enc.meta`) files are stored
+3. **During Restore**:
+   - You're prompted for your password
+   - The KEK is derived from your password + stored salt
+   - The DEK is decrypted using the KEK
+   - The backup is decrypted and decompressed to restore your files
+
+### Password Requirements
+
+- Minimum 8 characters
+- Recommended: Mix of uppercase, lowercase, numbers, and special characters
+- The GUI provides real-time strength feedback with color indicators:
+  - **Red (Weak)**: Basic password, easy to crack
+  - **Orange (Medium)**: Decent password, consider adding more complexity
+  - **Green (Strong)**: Excellent password with good complexity
+
+### Encrypted Backup Behavior
+
+**What Gets Encrypted:**
+
+- **All file and directory backups**: Full, Incremental, and Differential backups
+- **System component backups**:
+  - Installed programs list and Winget restore scripts
+  - Environment variables (user and system)
+  - Windows registry settings (personalization, taskbar, File Explorer, etc.)
+- **Everything**: Once encryption is enabled, all new backups (file and system) are automatically encrypted
+
+**Restoration:**
+
+- Encrypted backups (`.enc` files) automatically trigger password prompts
+- Both GUI and CLI support decryption during restore
+- Password is only required when restoring encrypted backups
+
+### CLI Usage with Encryption
+
+When encryption is enabled, the CLI will prompt for your password during restore operations:
+
+```bash
+# Restore encrypted file backup (will prompt for password)
+restore restore "backups/Documents/backup_Documents_20250817120000.zip.enc" "C:\Restore\Documents"
+
+# Restore encrypted system backups (will prompt for password)
+restore system-restore "system_backups/programs/programs_backup_20250817.zip.enc" programs
+restore system-restore "system_backups/environment/env_backup_20250817.zip.enc" environment
+restore system-restore "system_backups/settings/settings_backup_20250817.zip.enc" settings
+```
+
+**Note**: When you create system backups with encryption enabled, they are automatically encrypted with the `.enc` extension. The restore process detects this and prompts for your password.
+
+### Disabling Encryption
+
+To disable encryption:
+
+1. Open **Settings** > **Encryption**
+2. Click **Disable Encryption**
+3. Confirm the action
+
+**Note**: Disabling encryption only affects new backups. Existing encrypted backups will still require the password to restore.
+
+### Security Best Practices
+
+1. **Use a strong, unique password** - Don't reuse passwords from other services
+2. **Store your password securely** - Use a password manager like Bitwarden, 1Password, or KeePass
+3. **Backup your password** - Write it down and store it in a secure physical location
+4. **Test restoration** - Verify you can decrypt and restore backups before you need them
+5. **Multiple storage locations** - Keep encrypted backups in multiple places (local + cloud)
+6. **Regular password updates** - Consider changing your encryption password periodically
+7. **Secure your config** - The salt is stored in `config.json` - keep this file secure
+
+### Encryption Performance
+
+- **Overhead**: Minimal impact on backup speed due to efficient AES-256-GCM implementation
+- **Compression First**: Files are compressed before encryption for optimal storage efficiency
+- **Large Files**: Encryption is performed in-memory, so very large individual files may require more RAM
+
+### Risk Scenarios
+
+**Scenario 1**: Config file lost, but .enc.meta files intact
+
+- Can restore all encrypted backups (metadata has the salt)
+- Cannot create new encrypted backups (no verification token or master salt)
+- Solution: User can disable and then re-enable encryption with the same password (generates new master salt + token)
+
+**Scenario 2**: .enc.meta file lost, but .enc file intact
+
+- Data is PERMANENTLY LOST - no way to decrypt without salt, IV, and EncryptedDEK
+- Solution: No recovery possible
+
+**Scenario 3**: Config salt modified accidentally
+
+- Can still restore old backups (they have their own salt in metadata)
+- New backups will use wrong salt and won't decrypt with original password
+- This is a data corruption scenario
+
 ## Project Structure
 
 ```
 ReStore/
 ├── ReStore.Core/             # Core CLI application
+|   |
 │   ├── Program.cs            # CLI entry point
 │   ├── src/
 │   │   ├── core/             # Backup, restore, and state management
@@ -741,7 +894,10 @@ ReStore/
 │   └── config/               # Configuration files
 │
 └── ReStore/                  # WPF GUI application
+    |
     ├── App.xaml              # Application entry point
+    ├── Assets/               # Icons, images, and resources
+    ├── Interop/              # Interop services (tray, notifications)
     ├── Views/                # UI pages (Dashboard, Backups, Settings)
     ├── Services/             # GUI services (theme, tray, settings)
     └── config/               # GUI configuration files
@@ -762,11 +918,14 @@ To extend storage support, implement the `IStorage` interface and register your 
 
 ### Security
 
-- Store configuration files securely, especially if they contain cloud storage credentials
-- Environment variables may include sensitive information like API keys
-- Windows settings backups contain registry exports that can modify system behavior
-- Administrator privileges may be required for some restore operations, particularly for system-level settings
-- Always review restore scripts before executing them, especially when restoring Windows settings
+- **Encryption**: Enable AES-256-GCM encryption to protect sensitive backups with password protection
+- **Password Storage**: Your encryption password is never stored - only the salt is saved in `config.json`
+- **Credentials**: Store configuration files securely, especially if they contain cloud storage credentials
+- **Environment Variables**: May include sensitive information like API keys - consider enabling encryption
+- **Windows Settings**: Backups contain registry exports that can modify system behavior
+- **Administrator Privileges**: May be required for some restore operations, particularly for system-level settings
+- **Script Review**: Always review restore scripts before executing them, especially when restoring Windows settings
+- **Lost Passwords**: There is no password recovery mechanism - encrypted backups are unrecoverable without the password
 
 ### Limitations
 
@@ -779,12 +938,14 @@ To extend storage support, implement the `IStorage` interface and register your 
 
 ### Best Practices
 
-- Test restore procedures before relying on them
-- Run system backups before major system changes
-- Create a Windows system restore point before restoring Windows settings
-- Keep backups in multiple locations for redundancy
-- Review Windows settings restore scripts before running them
-- When restoring to a different computer, selectively restore settings rather than restoring everything
+- **Enable Encryption**: Protect sensitive data with AES-256-GCM encryption and a strong password
+- **Secure Your Password**: Store your encryption password in a password manager and write it down in a secure location
+- **Test Restores**: Verify you can restore and decrypt backups before you need them in an emergency
+- **System Backups**: Run before major system changes
+- **Multiple Locations**: Keep backups in multiple locations for redundancy (local + cloud)
+- **System Restore Points**: Create a Windows system restore point before restoring Windows settings
+- **Review Scripts**: Review Windows settings restore scripts before running them
+- **Selective Restoration**: When restoring to a different computer, selectively restore settings rather than restoring everything
 
 ## License
 

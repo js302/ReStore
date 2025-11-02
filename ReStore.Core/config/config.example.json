@@ -27,7 +27,7 @@
     "includePrograms": true,
     "includeEnvironmentVariables": true,
     "includeWindowsSettings": true,
-    "backupInterval": "24:00:00",
+    "backupInterval": "1.00:00:00",
     "storageType": null,
     "programsStorageType": "local",
     "environmentStorageType": "gdrive",
@@ -40,6 +40,12 @@
       "Update for",
       "Security Update"
     ]
+  },
+  "encryption": {
+    "enabled": false,
+    "salt": null,
+    "keyDerivationIterations": 100000,
+    "verificationToken": null
   },
   "excludedPatterns": [
     "*.tmp",
@@ -70,7 +76,7 @@
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
         "token_folder": "your_token_folder",
-        "backup_folder_name": "ReStore Backups"
+        "backup_folder_name": "ReStoreBackups"
       }
     },
     "s3": {

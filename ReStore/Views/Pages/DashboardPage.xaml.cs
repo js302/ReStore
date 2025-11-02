@@ -410,7 +410,9 @@ namespace ReStore.Views.Pages
                         }
 
                         using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
-                        var restore = new Restore(this, _state, storage);
+                        var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                        passwordProvider.SetEncryptionMode(false);
+                        var restore = new Restore(this, _state, storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(latestBackup.Path, targetPath);
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
@@ -472,7 +474,9 @@ namespace ReStore.Views.Pages
                         }
 
                         using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
-                        var restore = new Restore(this, _state, storage);
+                        var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                        passwordProvider.SetEncryptionMode(false);
+                        var restore = new Restore(this, _state, storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(backupPath, targetPath);
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
@@ -513,7 +517,9 @@ namespace ReStore.Views.Pages
                         await _state.LoadStateAsync();
                     }
 
-                    var systemBackup = new SystemBackupManager(this, _configManager, _state);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(true); // Prompt for encryption password
+                    var systemBackup = new SystemBackupManager(this, _configManager, _state, passwordProvider);
                     await systemBackup.BackupSystemAsync();
 
                     Log("System backup completed", LogLevel.Info);

@@ -150,7 +150,8 @@ Notes:
                                 break;
                             }
                             var backupType = args.Length >= 2 && !args[1].StartsWith("--") ? args[1] : "all";
-                            var systemBackupManager = new SystemBackupManager(logger, configManager, systemState);
+                            var passwordProvider = new StaticPasswordProvider("your_password_here");
+                            var systemBackupManager = new SystemBackupManager(logger, configManager, systemState, passwordProvider);
                             
                             switch (backupType.ToLowerInvariant())
                             {
@@ -182,7 +183,8 @@ Notes:
                                 break;
                             }
                             var restoreType = args.Length >= 3 && !args[2].StartsWith("--") ? args[2] : "all";
-                            var systemRestoreManager = new SystemBackupManager(logger, configManager, systemState);
+                            var restorePasswordProvider = new StaticPasswordProvider("your_password_here");
+                            var systemRestoreManager = new SystemBackupManager(logger, configManager, systemState, restorePasswordProvider);
                             await systemRestoreManager.RestoreSystemAsync(restoreType, args[1], storageOverride);
                             break;
                     }

@@ -62,4 +62,35 @@ public class CompressionUtil
             }
         });
     }
+
+    public async Task<string> CompressAndEncryptAsync(string sourceZip, string password, string salt, ILogger logger)
+    {
+        var encryptedPath = sourceZip + ".enc";
+        var metadataPath = encryptedPath + ".meta";
+        
+        var saltBytes = Convert.FromBase64String(salt);
+        var encryptionService = new EncryptionService(logger);
+        var metadata = await encryptionService.EncryptFileAsync(sourceZip, encryptedPath, password, saltBytes);
+        await encryptionService.SaveMetadataAsync(metadata, metadataPath);
+        
+        File.Delete(sourceZip);
+        
+        return encryptedPath;
+    }
+
+    public async Task<string> DecryptAndDecompressAsync(string encryptedZip, string password, string outputDirectory, ILogger logger)
+    {
+        var decryptedZip = encryptedZip.Replace(".enc", "");
+        var metadataPath = encryptedZip + ".meta";
+        
+        var encryptionService = new EncryptionService(logger);
+        var metadata = await encryptionService.LoadMetadataAsync(metadataPath);
+        await encryptionService.DecryptFileAsync(encryptedZip, decryptedZip, password, metadata);
+        
+        await DecompressAsync(decryptedZip, outputDirectory);
+        
+        File.Delete(decryptedZip);
+        
+        return outputDirectory;
+    }
 }

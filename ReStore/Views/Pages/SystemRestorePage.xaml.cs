@@ -335,7 +335,9 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(true); // For encryption during backup
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
                     await systemBackup.BackupInstalledProgramsAsync();
 
                     await _state.SaveStateAsync();
@@ -382,7 +384,9 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(true);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
                     await systemBackup.BackupEnvironmentVariablesAsync();
 
                     await _state.SaveStateAsync();
@@ -429,7 +433,9 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(true);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
                     await systemBackup.BackupWindowsSettingsAsync();
 
                     await _state.SaveStateAsync();
@@ -476,7 +482,9 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(true);
+                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
                     await systemBackup.BackupSystemAsync();
 
                     await _state.SaveStateAsync();
@@ -536,7 +544,9 @@ namespace ReStore.Views.Pages
                         return Task.CompletedTask;
                     }
 
-                    var progressWindow = new Windows.RestoreProgressWindow(_storage, _state, backup.Type, backup.Path);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(false);
+                    var progressWindow = new Windows.RestoreProgressWindow(_storage, _state, backup.Type, backup.Path, passwordProvider);
                     progressWindow.Owner = Window.GetWindow(this);
                     progressWindow.ShowDialog();
                 }
@@ -580,6 +590,20 @@ namespace ReStore.Views.Pages
                     if (_storage != null)
                     {
                         await _storage.DeleteAsync(backup.Path);
+                        
+                        // If encrypted, also delete the metadata file
+                        if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var metadataPath = backup.Path + ".meta";
+                            try
+                            {
+                                await _storage.DeleteAsync(metadataPath);
+                            }
+                            catch (Exception metaEx)
+                            {
+                                _logger.Log($"Warning: Failed to delete metadata file: {metaEx.Message}", LogLevel.Warning);
+                            }
+                        }
                     }
 
                     if (_state != null && _state.BackupHistory.ContainsKey(backup.Type))

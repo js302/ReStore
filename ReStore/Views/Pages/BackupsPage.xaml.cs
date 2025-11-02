@@ -353,7 +353,9 @@ namespace ReStore.Views.Pages
                     {
                         if (_state == null || _storage == null) return;
 
-                        var restore = new Restore(_logger, _state, _storage);
+                        var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                        passwordProvider.SetEncryptionMode(false);
+                        var restore = new Restore(_logger, _state, _storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(backup.Path, targetPath);
 
                         MessageBox.Show("Restore completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -409,6 +411,20 @@ namespace ReStore.Views.Pages
                     if (_storage != null)
                     {
                         await _storage.DeleteAsync(backup.Path);
+                        
+                        // If encrypted, also delete the metadata file
+                        if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var metadataPath = backup.Path + ".meta";
+                            try
+                            {
+                                await _storage.DeleteAsync(metadataPath);
+                            }
+                            catch (Exception metaEx)
+                            {
+                                _logger.Log($"Warning: Failed to delete metadata file: {metaEx.Message}", LogLevel.Warning);
+                            }
+                        }
                     }
 
                     if (_state != null)
@@ -460,6 +476,20 @@ namespace ReStore.Views.Pages
                         if (_storage != null)
                         {
                             await _storage.DeleteAsync(backup.Path);
+                            
+                            // If encrypted, also delete the metadata file
+                            if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var metadataPath = backup.Path + ".meta";
+                                try
+                                {
+                                    await _storage.DeleteAsync(metadataPath);
+                                }
+                                catch
+                                {
+                                    // Silently ignore metadata deletion errors in batch operations
+                                }
+                            }
                         }
 
                         if (_state != null)

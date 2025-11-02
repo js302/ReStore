@@ -15,8 +15,9 @@ public class SystemBackupManager
     private readonly WindowsSettingsManager _settingsManager;
     private readonly IConfigManager _config;
     private readonly SystemState _systemState;
+    private readonly IPasswordProvider? _passwordProvider;
 
-    public SystemBackupManager(ILogger logger, IConfigManager config, SystemState systemState)
+    public SystemBackupManager(ILogger logger, IConfigManager config, SystemState systemState, IPasswordProvider? passwordProvider = null)
     {
         _logger = logger;
         _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -24,6 +25,7 @@ public class SystemBackupManager
         _programDiscovery = new SystemProgramDiscovery(logger);
         _envManager = new EnvironmentVariablesManager(logger);
         _settingsManager = new WindowsSettingsManager(logger);
+        _passwordProvider = passwordProvider;
     }
 
     public async Task BackupSystemAsync()
@@ -106,11 +108,40 @@ public class SystemBackupManager
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
-            await storage.UploadAsync(zipPath, remotePath);
+            string fileToUpload = zipPath;
+            if (_config.Encryption.Enabled && _passwordProvider != null)
+            {
+                _logger.Log("Encrypting programs backup...", LogLevel.Info);
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Encryption is enabled but no password was provided");
+                }
+
+                var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                fileToUpload = encryptedPath;
+                remotePath = remotePath.Replace(".zip", ".zip.enc");
+                
+                // Upload metadata file
+                var metadataPath = encryptedPath + ".meta";
+                var remoteMetadataPath = remotePath + ".meta";
+                await storage.UploadAsync(metadataPath, remoteMetadataPath);
+                _logger.Log($"Uploaded encryption metadata: {remoteMetadataPath}", LogLevel.Debug);
+            }
+
+            await storage.UploadAsync(fileToUpload, remotePath);
 
             _systemState.AddBackup("system_programs", remotePath, false);
 
-            File.Delete(zipPath);
+            File.Delete(fileToUpload);
+            if (_config.Encryption.Enabled)
+            {
+                var metadataPath = fileToUpload + ".meta";
+                if (File.Exists(metadataPath))
+                {
+                    File.Delete(metadataPath);
+                }
+            }
             Directory.Delete(tempDir, true);
 
             _logger.Log($"Programs backup completed: {programs.Count} programs backed up to {remotePath}", LogLevel.Info);
@@ -158,11 +189,40 @@ public class SystemBackupManager
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
-            await storage.UploadAsync(zipPath, remotePath);
+            string fileToUpload = zipPath;
+            if (_config.Encryption.Enabled && _passwordProvider != null)
+            {
+                _logger.Log("Encrypting environment backup...", LogLevel.Info);
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Encryption is enabled but no password was provided");
+                }
+
+                var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                fileToUpload = encryptedPath;
+                remotePath = remotePath.Replace(".zip", ".zip.enc");
+                
+                // Upload metadata file
+                var metadataPath = encryptedPath + ".meta";
+                var remoteMetadataPath = remotePath + ".meta";
+                await storage.UploadAsync(metadataPath, remoteMetadataPath);
+                _logger.Log($"Uploaded encryption metadata: {remoteMetadataPath}", LogLevel.Debug);
+            }
+
+            await storage.UploadAsync(fileToUpload, remotePath);
 
             _systemState.AddBackup("system_environment", remotePath, false);
 
-            File.Delete(zipPath);
+            File.Delete(fileToUpload);
+            if (_config.Encryption.Enabled)
+            {
+                var metadataPath = fileToUpload + ".meta";
+                if (File.Exists(metadataPath))
+                {
+                    File.Delete(metadataPath);
+                }
+            }
             Directory.Delete(tempDir, true);
 
             _logger.Log($"Environment variables backup completed: {variables.Count} variables backed up to {remotePath}", LogLevel.Info);
@@ -429,7 +489,27 @@ public class SystemBackupManager
             
             var extractDir = Path.Combine(tempDir, "extracted");
             var compressionUtil = new CompressionUtil();
-            await compressionUtil.DecompressAsync(zipPath, extractDir);
+            
+            if (backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
+                if (_passwordProvider == null)
+                {
+                    throw new InvalidOperationException("Encrypted backup detected but no password provider available");
+                }
+                
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Password required to decrypt backup");
+                }
+                
+                await compressionUtil.DecryptAndDecompressAsync(zipPath, password, extractDir, _logger);
+            }
+            else
+            {
+                await compressionUtil.DecompressAsync(zipPath, extractDir);
+            }
             
             if (backupType == "system_programs")
             {
@@ -520,11 +600,40 @@ public class SystemBackupManager
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
-            await storage.UploadAsync(zipPath, remotePath);
+            string fileToUpload = zipPath;
+            if (_config.Encryption.Enabled && _passwordProvider != null)
+            {
+                _logger.Log("Encrypting settings backup...", LogLevel.Info);
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Encryption is enabled but no password was provided");
+                }
+
+                var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                fileToUpload = encryptedPath;
+                remotePath = remotePath.Replace(".zip", ".zip.enc");
+                
+                // Upload metadata file
+                var metadataPath = encryptedPath + ".meta";
+                var remoteMetadataPath = remotePath + ".meta";
+                await storage.UploadAsync(metadataPath, remoteMetadataPath);
+                _logger.Log($"Uploaded encryption metadata: {remoteMetadataPath}", LogLevel.Debug);
+            }
+
+            await storage.UploadAsync(fileToUpload, remotePath);
 
             _systemState.AddBackup("system_settings", remotePath, false);
 
-            File.Delete(zipPath);
+            File.Delete(fileToUpload);
+            if (_config.Encryption.Enabled)
+            {
+                var metadataPath = fileToUpload + ".meta";
+                if (File.Exists(metadataPath))
+                {
+                    File.Delete(metadataPath);
+                }
+            }
             Directory.Delete(tempDir, true);
 
             _logger.Log($"Windows settings backup completed: {export.ExportedCategories.Count} categories backed up to {remotePath}", LogLevel.Info);

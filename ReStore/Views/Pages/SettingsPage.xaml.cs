@@ -70,6 +70,9 @@ namespace ReStore.Views.Pages
                 // Load system backup configuration
                 LoadSystemBackupConfiguration();
 
+                // Load encryption configuration
+                LoadEncryptionConfiguration();
+
                 _isLoading = false;
             };
 
@@ -1065,6 +1068,87 @@ namespace ReStore.Views.Pages
             catch (System.Exception ex)
             {
                 MessageBox.Show($"Failed to remove CLI from PATH: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void LoadEncryptionConfiguration()
+        {
+            var isEnabled = _configManager.Encryption.Enabled;
+            
+            EncryptionStatusText.Text = isEnabled ? "Enabled" : "Disabled";
+            EncryptionStatusText.Foreground = isEnabled 
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Green)
+                : (System.Windows.Media.Brush)FindResource("TextFillColorSecondaryBrush");
+            
+            ToggleEncryptionBtn.Content = isEnabled ? "Disable Encryption" : "Enable Encryption";
+            EncryptionDetailsExpander.Visibility = isEnabled ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private async void ToggleEncryption_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_configManager.Encryption.Enabled)
+                {
+                    var result = MessageBox.Show(
+                        "Are you sure you want to disable encryption?\n\n" +
+                        "New backups will no longer be encrypted.\n" +
+                        "Existing encrypted backups will still require the password to restore.",
+                        "Disable Encryption",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        _configManager.Encryption.Enabled = false;
+                        await _configManager.SaveAsync();
+                        LoadEncryptionConfiguration();
+                        
+                        MessageBox.Show(
+                            "Encryption has been disabled.\n\n" +
+                            "New backups will not be encrypted.",
+                            "Encryption Disabled",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
+                }
+                else
+                {
+                    var setupWindow = new Windows.EncryptionSetupWindow();
+                    if (setupWindow.ShowDialog() == true && setupWindow.Password != null && setupWindow.Salt != null)
+                    {
+                        var logger = new Logger();
+                        var encryptionService = new ReStore.Core.src.utils.EncryptionService(logger);
+                        var verificationToken = encryptionService.CreatePasswordVerificationToken(
+                            setupWindow.Password, 
+                            setupWindow.Salt, 
+                            _configManager.Encryption.KeyDerivationIterations);
+                        
+                        _configManager.Encryption.Enabled = true;
+                        _configManager.Encryption.Salt = Convert.ToBase64String(setupWindow.Salt);
+                        _configManager.Encryption.VerificationToken = verificationToken;
+                        await _configManager.SaveAsync();
+                        
+                        if (App.GlobalPasswordProvider != null)
+                        {
+                            App.GlobalPasswordProvider.SetPassword(setupWindow.Password);
+                        }
+                        
+                        LoadEncryptionConfiguration();
+                        
+                        MessageBox.Show(
+                            "Encryption has been enabled successfully!\n\n" +
+                            "All new backups will be encrypted with AES-256-GCM.\n\n" +
+                            "IMPORTANT: Store your password securely - it cannot be recovered if lost!",
+                            "Encryption Enabled",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Failed to toggle encryption: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

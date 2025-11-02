@@ -14,8 +14,9 @@ public class Backup
     private readonly FileSelectionService _fileSelectionService;
     private readonly FileDiffSyncManager? _diffSyncManager;
     private readonly CompressionUtil _compressionUtil;
+    private readonly IPasswordProvider? _passwordProvider;
 
-    public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IConfigManager config)
+    public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IConfigManager config, IPasswordProvider? passwordProvider = null)
     {
         _logger = logger;
         _state = state;
@@ -23,6 +24,7 @@ public class Backup
         _config = config ?? throw new ArgumentNullException(nameof(config), "Config cannot be null");
         _fileSelectionService = new FileSelectionService(logger, _config);
         _compressionUtil = new CompressionUtil();
+        _passwordProvider = passwordProvider;
 
         var backupConfig = new BackupConfigurationManager(logger, _config);
         _diffSyncManager = new FileDiffSyncManager(logger, state, backupConfig);
@@ -158,15 +160,44 @@ public class Backup
 
             await _compressionUtil.CompressFilesAsync(existingFilesToBackup, baseDirectory, tempArchive);
 
+            string fileToUpload = tempArchive;
+            if (_config.Encryption.Enabled && _passwordProvider != null)
+            {
+                _logger.Log("Encrypting backup...", LogLevel.Info);
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Encryption is enabled but no password was provided");
+                }
+
+                var encryptedPath = await _compressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
+                fileToUpload = encryptedPath;
+                archiveFileName = Path.GetFileName(encryptedPath);
+                
+                // Upload metadata file
+                var metadataPath = encryptedPath + ".meta";
+                var remoteMetadataPath = $"backups/{Path.GetFileName(baseDirectory)}/{archiveFileName}.meta";
+                await storage.UploadAsync(metadataPath, remoteMetadataPath);
+                _logger.Log($"Uploaded encryption metadata: {remoteMetadataPath}", LogLevel.Debug);
+            }
+
             var remotePath = $"backups/{Path.GetFileName(baseDirectory)}/{archiveFileName}";
 
-            _logger.Log($"Uploading archive {tempArchive} to {remotePath}", LogLevel.Debug);
-            await storage.UploadAsync(tempArchive, remotePath);
+            _logger.Log($"Uploading archive {fileToUpload} to {remotePath}", LogLevel.Debug);
+            await storage.UploadAsync(fileToUpload, remotePath);
 
             _state.AddBackup(baseDirectory, remotePath, false);
 
-            File.Delete(tempArchive);
-            _logger.Log($"Deleted temporary archive: {tempArchive}", LogLevel.Debug);
+            File.Delete(fileToUpload);
+            if (_config.Encryption.Enabled)
+            {
+                var metadataPath = fileToUpload + ".meta";
+                if (File.Exists(metadataPath))
+                {
+                    File.Delete(metadataPath);
+                }
+            }
+            _logger.Log($"Deleted temporary archive: {fileToUpload}", LogLevel.Debug);
 
             _logger.Log($"Specific file backup completed: {remotePath}", LogLevel.Info);
 
@@ -228,14 +259,43 @@ public class Backup
 
             await _compressionUtil.CompressFilesAsync(filesToInclude, sourceDirectory, tempArchive);
 
+            string fileToUpload = tempArchive;
+            if (_config.Encryption.Enabled && _passwordProvider != null)
+            {
+                _logger.Log("Encrypting backup...", LogLevel.Info);
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Encryption is enabled but no password was provided");
+                }
+
+                var encryptedPath = await _compressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
+                fileToUpload = encryptedPath;
+                archiveFileName = Path.GetFileName(encryptedPath);
+                
+                // Upload metadata file
+                var metadataPath = encryptedPath + ".meta";
+                var remoteMetadataPath = $"backups/{Path.GetFileName(sourceDirectory)}/{archiveFileName}.meta";
+                await storage.UploadAsync(metadataPath, remoteMetadataPath);
+                _logger.Log($"Uploaded encryption metadata: {remoteMetadataPath}", LogLevel.Debug);
+            }
+
             var remotePath = $"backups/{Path.GetFileName(sourceDirectory)}/{archiveFileName}";
-            _logger.Log($"Uploading full backup archive {tempArchive} to {remotePath}", LogLevel.Debug);
-            await storage.UploadAsync(tempArchive, remotePath);
+            _logger.Log($"Uploading full backup archive {fileToUpload} to {remotePath}", LogLevel.Debug);
+            await storage.UploadAsync(fileToUpload, remotePath);
 
             _state.AddBackup(sourceDirectory, remotePath, false);
 
-            File.Delete(tempArchive);
-            _logger.Log($"Deleted temporary archive: {tempArchive}", LogLevel.Debug);
+            File.Delete(fileToUpload);
+            if (_config.Encryption.Enabled)
+            {
+                var metadataPath = fileToUpload + ".meta";
+                if (File.Exists(metadataPath))
+                {
+                    File.Delete(metadataPath);
+                }
+            }
+            _logger.Log($"Deleted temporary archive: {fileToUpload}", LogLevel.Debug);
             _logger.Log($"Full backup completed: {remotePath}", LogLevel.Info);
         }
         catch (Exception ex)

@@ -16,6 +16,7 @@ public interface IConfigManager
     BackupType BackupType { get; }
     int MaxFileSizeMB { get; }
     SystemBackupConfig SystemBackup { get; }
+    EncryptionConfig Encryption { get; }
     Task LoadAsync();
     Task SaveAsync(string configPath = "");
     Task<IStorage> CreateStorageAsync(string storageType);
@@ -56,6 +57,14 @@ public class SystemBackupConfig
     public string? SettingsStorageType { get; set; }
 }
 
+public class EncryptionConfig
+{
+    public bool Enabled { get; set; } = false;
+    public string? Salt { get; set; }
+    public int KeyDerivationIterations { get; set; } = 100000;
+    public string? VerificationToken { get; set; }
+}
+
 public class ConfigManager(ILogger logger) : IConfigManager
 {
     private static readonly string CONFIG_PATH = GetConfigPath();
@@ -82,6 +91,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     public BackupType BackupType { get; private set; } = BackupType.Incremental;
     public int MaxFileSizeMB { get; private set; } = 100;
     public SystemBackupConfig SystemBackup { get; private set; } = new();
+    public EncryptionConfig Encryption { get; private set; } = new();
 
     private readonly StorageFactory _storageFactory = new(logger);
 
@@ -270,6 +280,24 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 SetDefaultSystemBackupConfig();
             }
 
+            // Load encryption configuration
+            if (root.TryGetProperty("encryption", out var encryptionElement))
+            {
+                Encryption = new EncryptionConfig();
+                
+                if (encryptionElement.TryGetProperty("enabled", out var encEnabled))
+                    Encryption.Enabled = encEnabled.GetBoolean();
+                
+                if (encryptionElement.TryGetProperty("salt", out var salt))
+                    Encryption.Salt = salt.GetString();
+                
+                if (encryptionElement.TryGetProperty("keyDerivationIterations", out var iterations))
+                    Encryption.KeyDerivationIterations = iterations.GetInt32();
+                
+                if (encryptionElement.TryGetProperty("verificationToken", out var verificationToken))
+                    Encryption.VerificationToken = verificationToken.GetString();
+            }
+
             logger.Log("Configuration loaded successfully", LogLevel.Info);
         }
         catch (Exception ex)
@@ -309,6 +337,13 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     programsStorageType = SystemBackup.ProgramsStorageType,
                     environmentStorageType = SystemBackup.EnvironmentStorageType,
                     settingsStorageType = SystemBackup.SettingsStorageType
+                },
+                encryption = new
+                {
+                    enabled = Encryption.Enabled,
+                    salt = Encryption.Salt,
+                    keyDerivationIterations = Encryption.KeyDerivationIterations,
+                    verificationToken = Encryption.VerificationToken
                 },
                 excludedPatterns = ExcludedPatterns,
                 excludedPaths = ExcludedPaths,

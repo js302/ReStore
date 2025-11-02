@@ -9,13 +9,15 @@ public class Restore
     private readonly SystemState _state;
     private readonly IStorage _storage;
     private readonly CompressionUtil _compressionUtil;
+    private readonly IPasswordProvider? _passwordProvider;
 
-    public Restore(ILogger logger, SystemState state, IStorage storage)
+    public Restore(ILogger logger, SystemState state, IStorage storage, IPasswordProvider? passwordProvider = null)
     {
         _logger = logger;
         _state = state;
         _storage = storage;
         _compressionUtil = new CompressionUtil();
+        _passwordProvider = passwordProvider;
     }
 
     public async Task RestoreFromBackupAsync(string backupPath, string targetDirectory)
@@ -57,8 +59,38 @@ public class Restore
                 Directory.CreateDirectory(targetDirectory);
                 _logger.Log($"Ensured target directory exists: {targetDirectory}", LogLevel.Debug);
 
-                _logger.Log($"Decompressing {tempDownloadPath} to {targetDirectory}", LogLevel.Info);
-                await _compressionUtil.DecompressAsync(tempDownloadPath, targetDirectory);
+                if (backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
+                    if (_passwordProvider == null)
+                    {
+                        throw new InvalidOperationException("Encrypted backup detected but no password provider available");
+                    }
+                    
+                    var password = await _passwordProvider.GetPasswordAsync();
+                    if (string.IsNullOrEmpty(password))
+                    {
+                        throw new InvalidOperationException("Password required to decrypt backup");
+                    }
+                    
+                    _logger.Log($"Decrypting and decompressing {tempDownloadPath} to {targetDirectory}", LogLevel.Info);
+                    
+                    try
+                    {
+                        await _compressionUtil.DecryptAndDecompressAsync(tempDownloadPath, password, targetDirectory, _logger);
+                    }
+                    catch (Exception ex)
+                    {
+                        _passwordProvider.ClearPassword();
+                        _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
+                        throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
+                    }
+                }
+                else
+                {
+                    _logger.Log($"Decompressing {tempDownloadPath} to {targetDirectory}", LogLevel.Info);
+                    await _compressionUtil.DecompressAsync(tempDownloadPath, targetDirectory);
+                }
 
                 _logger.Log("Restore completed successfully.", LogLevel.Info);
             }
@@ -108,7 +140,36 @@ public class Restore
 
             _logger.Log("Extracting base backup...", LogLevel.Info);
             Directory.CreateDirectory(tempBaseExtracted);
-            await _compressionUtil.DecompressAsync(tempBasePath, tempBaseExtracted);
+            
+            if (baseBackupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Log("Base backup is encrypted, decrypting...", LogLevel.Info);
+                if (_passwordProvider == null)
+                {
+                    throw new InvalidOperationException("Encrypted backup detected but no password provider available");
+                }
+                
+                var password = await _passwordProvider.GetPasswordAsync();
+                if (string.IsNullOrEmpty(password))
+                {
+                    throw new InvalidOperationException("Password required to decrypt backup");
+                }
+                
+                try
+                {
+                    await _compressionUtil.DecryptAndDecompressAsync(tempBasePath, password, tempBaseExtracted, _logger);
+                }
+                catch (Exception ex)
+                {
+                    _passwordProvider.ClearPassword();
+                    _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
+                    throw new InvalidOperationException($"Failed to decrypt base backup: {ex.Message}", ex);
+                }
+            }
+            else
+            {
+                await _compressionUtil.DecompressAsync(tempBasePath, tempBaseExtracted);
+            }
 
             _logger.Log("Applying differential changes...", LogLevel.Info);
             var diffManager = new DiffManager();
