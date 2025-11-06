@@ -546,7 +546,10 @@
                             <StackPanel Margin="0,0,0,12">
                                 <TextBlock Text="Command Line Interface (CLI)" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
                                 <TextBlock Text="The 'restore' command is automatically available in all terminals after installation." FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
-                                <TextBlock Text="Usage examples: restore backup &lt;directory&gt;, restore list, restore --help" Margin="0,0,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" LineHeight="18"/>
+                                <TextBlock Text="Usage examples: restore backup &lt;directory&gt;, restore list, restore --help" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" LineHeight="18"/>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" LineHeight="16">
+                                    <Run Text="To disable: Settings → Apps → Advanced app settings → App execution aliases → Toggle 'restore.exe' off" FontStyle="Italic"/>
+                                </TextBlock>
                             </StackPanel>
                         </StackPanel>
                     </Border>

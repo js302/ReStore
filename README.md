@@ -600,13 +600,17 @@ In the Settings page, you can:
 
 **System Tray Integration**: When minimized, ReStore can run in the system tray, allowing you to keep the file watcher active in the background without cluttering your taskbar.
 
-**CLI Access Management**: Enable or disable command-line access to ReStore from any terminal:
+**CLI Access**: The `restore` command is automatically available system-wide after installation. See the [CLI Usage](#cli-usage) section below for details.
 
-- **Enable**: Adds the ReStore CLI folder to your user PATH environment variable, allowing you to run `restore` commands from anywhere
-- **Disable**: Removes the CLI folder from your PATH
-- **Location**: The CLI executable is bundled with the GUI installation
+### CLI Usage
 
-### Example usage after enabling CLI access:
+The `restore` command is automatically available system-wide after installing ReStore through the MSIX package.
+
+**To disable the CLI** (if needed):
+
+1. Open Windows **Settings** → **Apps** → **Advanced app settings** → **App execution aliases**
+2. Find **restore.exe** in the list
+3. Toggle it **Off**
 
 #### Start File Watcher
 
