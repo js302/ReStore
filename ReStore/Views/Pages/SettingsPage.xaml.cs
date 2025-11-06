@@ -49,7 +49,6 @@ namespace ReStore.Views.Pages
                 ShowConfiguredOnly.IsChecked = _appSettings.ShowOnlyConfiguredProviders;
                 MinimizeToTrayCheckBox.IsChecked = _appSettings.MinimizeToTray;
                 RunAtStartupCheckBox.IsChecked = IsRunAtStartupEnabled();
-                UpdateCLIStatus();
                 await ReloadStorageSourcesAsync();
 
                 // Populate provider fields from config (if present)
@@ -240,9 +239,6 @@ namespace ReStore.Views.Pages
             // System Backup handlers
             AddSystemProgramBtn.Click += (_, __) => AddExcludeSystemProgram();
             SaveSystemBackupConfigBtn.Click += async (_, __) => await SaveSystemBackupConfigurationAsync();
-
-            // CLI Access handler
-            EnableCLIBtn.Click += (_, __) => ToggleCLIAccess();
         }
 
         private void LoadBackupConfiguration()
@@ -914,160 +910,6 @@ namespace ReStore.Views.Pages
             {
                 MessageBox.Show($"Failed to update startup setting: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 RunAtStartupCheckBox.IsChecked = IsRunAtStartupEnabled();
-            }
-        }
-
-        private void UpdateCLIStatus()
-        {
-            bool isInPath = IsCLIInPath();
-            CLIStatusText.Text = isInPath 
-                ? "CLI is accessible from terminal (type 'restore' in any command prompt)" 
-                : "CLI is not accessible from terminal";
-            CLIStatusText.Foreground = isInPath 
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129))
-                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
-            EnableCLIBtn.Content = isInPath ? "Disable CLI Access" : "Enable CLI Access";
-        }
-
-        private bool IsCLIInPath()
-        {
-            try
-            {
-                if (!OperatingSystem.IsWindows()) return false;
-
-                var cliPath = GetCLIInstallPath();
-                if (string.IsNullOrEmpty(cliPath)) return false;
-
-                var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
-                return userPath.Split(';').Any(p => p.Trim().Equals(cliPath, StringComparison.OrdinalIgnoreCase));
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private string GetCLIInstallPath()
-        {
-            try
-            {
-                var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-                if (string.IsNullOrEmpty(exePath)) return string.Empty;
-
-                var installDir = System.IO.Path.GetDirectoryName(exePath);
-                if (string.IsNullOrEmpty(installDir)) return string.Empty;
-
-                var cliDir = System.IO.Path.Combine(installDir, "cli");
-                return cliDir;
-            }
-            catch
-            {
-                return string.Empty;
-            }
-        }
-
-        private void ToggleCLIAccess()
-        {
-            try
-            {
-                if (!OperatingSystem.IsWindows())
-                {
-                    MessageBox.Show("CLI access management is only supported on Windows.", "Not Supported", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                bool currentlyInPath = IsCLIInPath();
-                
-                if (currentlyInPath)
-                {
-                    RemoveCLIFromPath();
-                }
-                else
-                {
-                    AddCLIToPath();
-                }
-
-                UpdateCLIStatus();
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show($"Failed to update CLI access: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void AddCLIToPath()
-        {
-            try
-            {
-                var cliPath = GetCLIInstallPath();
-                if (string.IsNullOrEmpty(cliPath))
-                {
-                    MessageBox.Show("Unable to determine CLI installation path.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
-                // Check if restore.exe exists
-                var restoreExe = System.IO.Path.Combine(cliPath, "restore.exe");
-                if (!System.IO.File.Exists(restoreExe))
-                {
-                    MessageBox.Show($"CLI executable not found at: {restoreExe}\n\nPlease reinstall the application.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
-                var currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
-                
-                // Check if already in path
-                if (currentPath.Split(';').Any(p => p.Trim().Equals(cliPath, StringComparison.OrdinalIgnoreCase)))
-                {
-                    MessageBox.Show("CLI path is already configured.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                var newPath = string.IsNullOrEmpty(currentPath) ? cliPath : $"{currentPath};{cliPath}";
-                Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.User);
-
-                MessageBox.Show(
-                    "CLI access enabled!\n\n" +
-                    "You can now use 'restore' command from any terminal.\n\n" +
-                    "Example commands:\n" +
-                    "  restore backup <directory>\n" +
-                    "  restore list\n" +
-                    "  restore restore <backup-id>\n\n" +
-                    "Note: You may need to restart any open terminal windows for changes to take effect.",
-                    "Success",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show($"Failed to add CLI to PATH: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void RemoveCLIFromPath()
-        {
-            try
-            {
-                var cliPath = GetCLIInstallPath();
-                if (string.IsNullOrEmpty(cliPath)) return;
-
-                var currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
-                var paths = currentPath.Split(';').Where(p => !p.Trim().Equals(cliPath, StringComparison.OrdinalIgnoreCase)).ToArray();
-                var newPath = string.Join(";", paths);
-
-                Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.User);
-
-                MessageBox.Show(
-                    "CLI access has been disabled.\n\n" +
-                    "The 'restore' command will no longer be available from terminals.\n\n" +
-                    "Note: You may need to restart any open terminal windows for changes to take effect.",
-                    "Success",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show($"Failed to remove CLI from PATH: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

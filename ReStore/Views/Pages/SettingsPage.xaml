@@ -543,19 +543,11 @@
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,4,0,16"/>
 
-                            <Grid Margin="0,0,0,12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Command Line Interface (CLI)" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
-                                    <TextBlock x:Name="CLIStatusText" Text="CLI is not accessible from terminal" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                                </StackPanel>
-                                <Button x:Name="EnableCLIBtn" Grid.Column="1" Content="Enable CLI Access" Cursor="Hand" VerticalAlignment="Center"/>
-                            </Grid>
-
-                            <TextBlock Text="Enable this to use ReStore commands from any terminal window. You'll be able to use commands like 'restore backup', 'restore list', etc." Margin="0,0,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Command Line Interface (CLI)" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
+                                <TextBlock Text="The 'restore' command is automatically available in all terminals after installation." FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                                <TextBlock Text="Usage examples: restore backup &lt;directory&gt;, restore list, restore --help" Margin="0,0,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="12" LineHeight="18"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </Expander>

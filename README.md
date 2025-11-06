@@ -25,7 +25,7 @@ See the [Build from Source](#build-from-source-1) section below.
 - **Modern Dashboard**: Real-time statistics, backup history, and quick actions
 - **Settings Management**: Configure watch directories, backup types, storage providers, and exclusions through an intuitive interface
 - **Backup Browser**: View and manage your backup history with one-click restore
-- **CLI Integration**: Enable/disable command-line access from the settings menu
+- **Automatic CLI Access**: The `restore` command is automatically available in all terminals after installation
 - **Run at Startup**: Option to automatically launch ReStore when Windows starts
 - **System Tray Integration**: Minimize to tray and control the file watcher in the background
 - **Theme Support**: Light, dark, and system theme options
@@ -108,7 +108,7 @@ The GUI provides:
 After installation, visit the Settings page to:
 
 - Enable "Run at Windows Startup" to launch ReStore automatically when your computer boots
-- Enable "CLI Access" to add the `restore` command to your system PATH for terminal access
+- The `restore` CLI command is automatically available in all terminals - no configuration needed
 
 ## Configuration
 
@@ -168,7 +168,7 @@ All application data is stored in a centralized user directory:
 
 All configuration options can be managed through the Settings page:
 
-- **General Settings**: Theme, startup options, system tray, CLI access
+- **General Settings**: Theme, startup options, system tray integration
 - **Storage Providers**: Local, Google Drive, AWS S3, GitHub configuration
 - **Global Default Storage**: Set the default storage type for all backups
 - **Watch Directories**: Add/remove folders to monitor with individual storage selection per path
