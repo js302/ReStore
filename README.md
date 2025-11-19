@@ -592,7 +592,7 @@ In the Settings page, you can:
 - Set the global default storage in the "Global Default Storage" dropdown
 - Select storage per watched directory in each directory's storage dropdown
 - Use "Apply Current Global Storage to All Paths" to quickly set all directories
-- Configure system backup storage separately for programs, environment, and settings (coming soon)
+- Configure system backup storage separately for programs, environment, and settings
 
 ### Application Behavior Settings
 
@@ -861,7 +861,7 @@ To disable encryption:
 
 - **Overhead**: Minimal impact on backup speed due to efficient AES-256-GCM implementation
 - **Compression First**: Files are compressed before encryption for optimal storage efficiency
-- **Large Files**: Encryption is performed in-memory, so very large individual files may require more RAM
+- **Large Files**: Encryption uses streaming with small chunks, ensuring low memory usage even for very large files
 
 ### Risk Scenarios
 

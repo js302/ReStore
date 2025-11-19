@@ -35,6 +35,7 @@ public class SystemState
     );
     [JsonIgnore]
     private readonly ILogger? _logger;
+    private readonly SemaphoreSlim _lock = new(1, 1);
 
     public SystemState(ILogger? logger = null)
     {
@@ -50,49 +51,89 @@ public class SystemState
 
     public bool HasFileChanged(string path, string currentHash)
     {
-        return !FileMetadata.TryGetValue(path, out var storedMetadata) || storedMetadata.Hash != currentHash;
+        _lock.Wait();
+        try
+        {
+            return !FileMetadata.TryGetValue(path, out var storedMetadata) || storedMetadata.Hash != currentHash;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public string? GetPreviousBackupPath(string directory)
     {
-        if (!BackupHistory.TryGetValue(directory, out var backups) || backups.Count == 0)
-            return null;
+        _lock.Wait();
+        try
+        {
+            if (!BackupHistory.TryGetValue(directory, out var backups) || backups.Count == 0)
+                return null;
 
-        return backups.OrderByDescending(b => b.Timestamp).First().Path;
+            return backups.OrderByDescending(b => b.Timestamp).First().Path;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public string? GetBaseBackupPath(string diffPath)
     {
-        foreach (var history in BackupHistory.Values)
+        _lock.Wait();
+        try
         {
-            var baseBackup = history
-                .OrderByDescending(b => b.Timestamp)
-                .FirstOrDefault(b => !b.Path.EndsWith(".diff") && b.Timestamp < GetTimestampFromPath(diffPath));
+            foreach (var history in BackupHistory.Values)
+            {
+                var baseBackup = history
+                    .OrderByDescending(b => b.Timestamp)
+                    .FirstOrDefault(b => !b.Path.EndsWith(".diff") && b.Timestamp < GetTimestampFromPath(diffPath));
 
-            if (baseBackup != null)
-                return baseBackup.Path;
+                if (baseBackup != null)
+                    return baseBackup.Path;
+            }
+            return null;
         }
-        return null;
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     private DateTime GetTimestampFromPath(string path)
     {
-        var fileName = Path.GetFileNameWithoutExtension(path);
-        var timestampStr = fileName.Split('_').Last();
-        return DateTime.ParseExact(timestampStr, "yyyyMMddHHmmss", null);
+        try
+        {
+            var fileName = Path.GetFileNameWithoutExtension(path);
+            var timestampStr = fileName.Split('_').Last();
+            return DateTime.ParseExact(timestampStr, "yyyyMMddHHmmss", null);
+        }
+        catch (Exception)
+        {
+            _logger?.Log($"Failed to parse timestamp from path: {path}", LogLevel.Warning);
+            return DateTime.MinValue;
+        }
     }
 
     public void AddBackup(string directory, string path, bool isDiff)
     {
-        if (!BackupHistory.ContainsKey(directory))
-            BackupHistory[directory] = new List<BackupInfo>();
-
-        BackupHistory[directory].Add(new BackupInfo
+        _lock.Wait();
+        try
         {
-            Path = path,
-            Timestamp = DateTime.Now,
-            IsDiff = isDiff
-        });
+            if (!BackupHistory.ContainsKey(directory))
+                BackupHistory[directory] = new List<BackupInfo>();
+
+            BackupHistory[directory].Add(new BackupInfo
+            {
+                Path = path,
+                Timestamp = DateTime.Now,
+                IsDiff = isDiff
+            });
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public async Task AddOrUpdateFileMetadataAsync(string filePath)
@@ -102,23 +143,41 @@ public class SystemState
             var fileInfo = new FileInfo(filePath);
             if (!fileInfo.Exists)
             {
-                if (FileMetadata.ContainsKey(filePath))
+                await _lock.WaitAsync();
+                try
                 {
-                    FileMetadata.Remove(filePath);
-                    _logger?.Log($"Removed metadata for deleted file: {filePath}", LogLevel.Debug);
+                    if (FileMetadata.ContainsKey(filePath))
+                    {
+                        FileMetadata.Remove(filePath);
+                        _logger?.Log($"Removed metadata for deleted file: {filePath}", LogLevel.Debug);
+                    }
+                }
+                finally
+                {
+                    _lock.Release();
                 }
                 return;
             }
 
-            var metadata = new FileMetadata
+            var hash = await CalculateFileHashAsync(filePath);
+            
+            await _lock.WaitAsync();
+            try
             {
-                FilePath = filePath,
-                Size = fileInfo.Length,
-                LastModified = fileInfo.LastWriteTimeUtc,
-                Hash = await CalculateFileHashAsync(filePath)
-            };
+                var metadata = new FileMetadata
+                {
+                    FilePath = filePath,
+                    Size = fileInfo.Length,
+                    LastModified = fileInfo.LastWriteTimeUtc,
+                    Hash = hash
+                };
 
-            FileMetadata[filePath] = metadata;
+                FileMetadata[filePath] = metadata;
+            }
+            finally
+            {
+                _lock.Release();
+            }
         }
         catch (IOException ioEx)
         {
@@ -136,6 +195,7 @@ public class SystemState
 
     public async Task SaveStateAsync()
     {
+        await _lock.WaitAsync();
         try
         {
             var stateData = new PersistentStateData
@@ -148,17 +208,26 @@ public class SystemState
             Directory.CreateDirectory(Path.GetDirectoryName(_stateFilePath)!);
             var options = new JsonSerializerOptions { WriteIndented = true };
             var json = JsonSerializer.Serialize(stateData, options);
-            await File.WriteAllTextAsync(_stateFilePath, json);
+            
+            var tempPath = _stateFilePath + ".tmp";
+            await File.WriteAllTextAsync(tempPath, json);
+            File.Move(tempPath, _stateFilePath, overwrite: true);
+
             _logger?.Log($"System state saved to {_stateFilePath}", LogLevel.Info);
         }
         catch (Exception ex)
         {
             _logger?.Log($"Error saving system state to {_stateFilePath}: {ex.Message}", LogLevel.Error);
         }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public async Task LoadStateAsync()
     {
+        await _lock.WaitAsync();
         try
         {
             if (File.Exists(_stateFilePath))
@@ -195,6 +264,10 @@ public class SystemState
             _logger?.Log($"Error loading system state from {_stateFilePath}: {ex.Message}. Initializing empty state.", LogLevel.Error);
             InitializeEmptyState();
         }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     private void InitializeEmptyState()
@@ -213,53 +286,62 @@ public class SystemState
         }
 
         var filesToBackup = new List<string>();
-        DateTime lastFullBackupTime = GetLastFullBackupTime();
-
-        foreach (var filePath in allFiles)
+        
+        _lock.Wait();
+        try
         {
-            try
+            DateTime lastFullBackupTime = GetLastFullBackupTime();
+
+            foreach (var filePath in allFiles)
             {
-                var fileInfo = new FileInfo(filePath);
-                if (!fileInfo.Exists)
-                    continue;
-
-                bool shouldBackup = false;
-
-                if (!FileMetadata.TryGetValue(filePath, out var previousMetadata))
+                try
                 {
-                    _logger?.Log($"New file detected: {filePath}", LogLevel.Debug);
-                    shouldBackup = true;
-                }
-                else
-                {
-                    if (backupType == BackupType.Incremental)
+                    var fileInfo = new FileInfo(filePath);
+                    if (!fileInfo.Exists)
+                        continue;
+
+                    bool shouldBackup = false;
+
+                    if (!FileMetadata.TryGetValue(filePath, out var previousMetadata))
                     {
-                        if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified || fileInfo.Length != previousMetadata.Size)
+                        _logger?.Log($"New file detected: {filePath}", LogLevel.Debug);
+                        shouldBackup = true;
+                    }
+                    else
+                    {
+                        if (backupType == BackupType.Incremental)
                         {
-                            _logger?.Log($"File changed (Incremental): {filePath}", LogLevel.Debug);
-                            shouldBackup = true;
+                            if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified || fileInfo.Length != previousMetadata.Size)
+                            {
+                                _logger?.Log($"File changed (Incremental): {filePath}", LogLevel.Debug);
+                                shouldBackup = true;
+                            }
+                        }
+                        else if (backupType == BackupType.Differential)
+                        {
+                            if (fileInfo.LastWriteTimeUtc > lastFullBackupTime)
+                            {
+                                _logger?.Log($"File changed (Differential): {filePath}", LogLevel.Debug);
+                                shouldBackup = true;
+                            }
                         }
                     }
-                    else if (backupType == BackupType.Differential)
+
+                    if (shouldBackup)
                     {
-                        if (fileInfo.LastWriteTimeUtc > lastFullBackupTime)
-                        {
-                            _logger?.Log($"File changed (Differential): {filePath}", LogLevel.Debug);
-                            shouldBackup = true;
-                        }
+                        filesToBackup.Add(filePath);
                     }
                 }
-
-                if (shouldBackup)
+                catch (Exception ex)
                 {
+                    _logger?.Log($"Error checking file {filePath}: {ex.Message}. Including in backup.", LogLevel.Warning);
                     filesToBackup.Add(filePath);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger?.Log($"Error checking file {filePath}: {ex.Message}. Including in backup.", LogLevel.Warning);
-                filesToBackup.Add(filePath);
-            }
+        }
+        finally
+        {
+            _lock.Release();
         }
 
         _logger?.Log($"Found {filesToBackup.Count} changed files out of {allFiles.Count} total files for {backupType} backup.", LogLevel.Info);

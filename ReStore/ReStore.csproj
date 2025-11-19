@@ -18,9 +18,16 @@
         <PublishSingleFile>false</PublishSingleFile>
         <PublishReadyToRun>false</PublishReadyToRun>
 
+        <!-- Optimization Properties -->
+        <Optimize>true</Optimize>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <DebuggerSupport>false</DebuggerSupport>
+        <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+        <EventSourceSupport>false</EventSourceSupport>
+
         <!-- Application Identity -->
         <PackageId>ReStore</PackageId>
-        <Version>1.3.1</Version>
+        <Version>1.3.2</Version>
         <Authors>Jaskaran Singh</Authors>
         <Company>Jaskaran Singh</Company>
         <Product>ReStore</Product>

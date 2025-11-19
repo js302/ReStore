@@ -351,7 +351,10 @@ public class ConfigManager(ILogger logger) : IConfigManager
             };
 
             var jsonString = JsonSerializer.Serialize(configObject, _writeOptions);
-            await File.WriteAllTextAsync(configPath, jsonString);
+            
+            var tempPath = configPath + ".tmp";
+            await File.WriteAllTextAsync(tempPath, jsonString);
+            File.Move(tempPath, configPath, overwrite: true);
 
             logger.Log("Configuration saved successfully", LogLevel.Info);
         }

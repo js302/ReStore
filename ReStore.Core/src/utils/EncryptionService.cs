@@ -78,21 +78,45 @@ public class EncryptionService
         _logger.Log($"File decrypted successfully: {Path.GetFileName(outputPath)}", LogLevel.Info);
     }
 
+    private const int CHUNK_SIZE = 1024 * 1024; // 1MB
+
     private async Task EncryptFileWithDEKAsync(string inputPath, string outputPath, byte[] key, byte[] iv)
     {
         await Task.Run(() =>
         {
             using var aesGcm = new AesGcm(key, TAG_SIZE_BYTES);
-            var plaintext = File.ReadAllBytes(inputPath);
-            var ciphertext = new byte[plaintext.Length];
-            var tag = new byte[TAG_SIZE_BYTES];
-
-            aesGcm.Encrypt(iv, plaintext, ciphertext, tag);
-
+            using var inputStream = File.OpenRead(inputPath);
             using var outputStream = File.Create(outputPath);
+
+            // Write initial IV (base IV)
             outputStream.Write(iv, 0, iv.Length);
-            outputStream.Write(tag, 0, tag.Length);
-            outputStream.Write(ciphertext, 0, ciphertext.Length);
+
+            var buffer = new byte[CHUNK_SIZE];
+            var chunkIV = new byte[IV_SIZE_BYTES];
+            var tag = new byte[TAG_SIZE_BYTES];
+            int bytesRead;
+            long chunkIndex = 0;
+
+            while ((bytesRead = inputStream.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                // Derive IV for this chunk: BaseIV + ChunkIndex
+                Array.Copy(iv, chunkIV, IV_SIZE_BYTES);
+                IncrementIV(chunkIV, chunkIndex);
+
+                var ciphertext = new byte[bytesRead];
+                var plaintextSpan = buffer.AsSpan(0, bytesRead);
+                
+                aesGcm.Encrypt(chunkIV, plaintextSpan, ciphertext, tag);
+
+                // Write Chunk Length (4 bytes)
+                outputStream.Write(BitConverter.GetBytes(bytesRead));
+                // Write Tag (16 bytes)
+                outputStream.Write(tag);
+                // Write Ciphertext
+                outputStream.Write(ciphertext);
+
+                chunkIndex++;
+            }
         });
     }
 
@@ -102,29 +126,75 @@ public class EncryptionService
         {
             using var aesGcm = new AesGcm(key, TAG_SIZE_BYTES);
             using var inputStream = File.OpenRead(inputPath);
+            using var outputStream = File.Create(outputPath);
 
             var storedIV = new byte[IV_SIZE_BYTES];
-            var tag = new byte[TAG_SIZE_BYTES];
-            
-            inputStream.ReadExactly(storedIV);
-            inputStream.ReadExactly(tag);
-
-            var ciphertextLength = (int)(inputStream.Length - IV_SIZE_BYTES - TAG_SIZE_BYTES);
-            var ciphertext = new byte[ciphertextLength];
-            inputStream.ReadExactly(ciphertext);
-
-            var plaintext = new byte[ciphertextLength];
-            
-            try
+            if (inputStream.Read(storedIV, 0, IV_SIZE_BYTES) != IV_SIZE_BYTES)
             {
-                aesGcm.Decrypt(storedIV, ciphertext, tag, plaintext);
-                File.WriteAllBytes(outputPath, plaintext);
+                throw new InvalidOperationException("Invalid encrypted file format (missing IV)");
             }
-            catch (CryptographicException ex)
+
+            var lengthBuffer = new byte[4];
+            var tag = new byte[TAG_SIZE_BYTES];
+            var chunkIV = new byte[IV_SIZE_BYTES];
+            long chunkIndex = 0;
+
+            while (inputStream.Read(lengthBuffer, 0, 4) == 4)
             {
-                throw new InvalidOperationException("Decryption failed. Invalid password or corrupted data.", ex);
+                int chunkLength = BitConverter.ToInt32(lengthBuffer, 0);
+                if (chunkLength < 0 || chunkLength > CHUNK_SIZE)
+                {
+                        throw new InvalidOperationException($"Invalid chunk length: {chunkLength}");
+                }
+
+                if (inputStream.Read(tag, 0, TAG_SIZE_BYTES) != TAG_SIZE_BYTES)
+                {
+                    throw new InvalidOperationException("Unexpected EOF reading tag");
+                }
+
+                var ciphertext = new byte[chunkLength];
+                if (inputStream.Read(ciphertext, 0, chunkLength) != chunkLength)
+                {
+                    throw new InvalidOperationException("Unexpected EOF reading ciphertext");
+                }
+
+                Array.Copy(storedIV, chunkIV, IV_SIZE_BYTES);
+                IncrementIV(chunkIV, chunkIndex);
+
+                var plaintext = new byte[chunkLength];
+                try
+                {
+                    aesGcm.Decrypt(chunkIV, ciphertext, tag, plaintext);
+                    outputStream.Write(plaintext, 0, chunkLength);
+                }
+                catch (CryptographicException ex)
+                {
+                    throw new InvalidOperationException($"Decryption failed at chunk {chunkIndex}.", ex);
+                }
+
+                chunkIndex++;
             }
         });
+    }
+
+    private void IncrementIV(byte[] iv, long counter)
+    {
+        // Increment the last 8 bytes (64 bits) of the 96-bit IV
+        // This treats the last part of the IV as a counter for chunk uniqueness
+        
+        ulong currentLow = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            currentLow = (currentLow << 8) | iv[IV_SIZE_BYTES - 8 + i];
+        }
+        
+        currentLow += (ulong)counter;
+        
+        for (int i = 0; i < 8; i++)
+        {
+            iv[IV_SIZE_BYTES - 1 - i] = (byte)(currentLow & 0xFF);
+            currentLow >>= 8;
+        }
     }
 
     private byte[] EncryptDEK(byte[] dek, byte[] kek)

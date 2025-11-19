@@ -101,8 +101,14 @@ public class FileWatcher : IDisposable
     {
         _backupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
-        var pathsToBackup = _changedFiles.Keys.ToList();
-        _changedFiles.Clear();
+        var pathsToBackup = new List<string>();
+        foreach (var key in _changedFiles.Keys)
+        {
+            if (_changedFiles.TryRemove(key, out _))
+            {
+                pathsToBackup.Add(key);
+            }
+        }
 
         if (!pathsToBackup.Any())
         {
