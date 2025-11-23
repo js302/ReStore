@@ -72,32 +72,75 @@
     "gdrive": {
       "path": "./backups",
       "options": {
-        "client_id": "your_client_id",
-        "client_secret": "your_client_secret",
-        "token_folder": "your_token_folder",
+        "client_id": "",
+        "client_secret": "",
+        "token_folder": "",
         "backup_folder_name": "ReStoreBackups"
       }
     },
     "s3": {
       "path": "./backups",
       "options": {
-        "accessKeyId": "your_access_key_id",
-        "secretAccessKey": "your_secret_access_key",
-        "region": "your_aws_region",
-        "bucketName": "your_bucket_name"
+        "accessKeyId": "",
+        "secretAccessKey": "",
+        "region": "",
+        "bucketName": ""
       }
     },
     "github": {
       "path": "./backups",
       "options": {
-        "token": "your_token",
-        "repo": "your_repo",
-        "owner": "your_github_username"
+        "token": "",
+        "repo": "",
+        "owner": ""
       }
     },
     "local": {
       "path": "%USERPROFILE%\\ReStoreBackups",
       "options": {}
+    },
+    "azure": {
+      "path": "my-container",
+      "options": {
+        "connectionString": "",
+        "containerName": "my-container"
+      }
+    },
+    "gcp": {
+      "path": "my-bucket",
+      "options": {
+        "bucketName": "my-bucket",
+        "credentialPath": "C:\\path\\to\\key.json"
+      }
+    },
+    "dropbox": {
+      "path": "/Backups",
+      "options": {
+        "accessToken": "your-access-token",
+        "refreshToken": "optional-refresh-token",
+        "appKey": "optional-app-key",
+        "appSecret": "optional-app-secret"
+      }
+    },
+    "sftp": {
+      "path": "/home/user/backups",
+      "options": {
+        "host": "sftp.example.com",
+        "port": "22",
+        "username": "user",
+        "password": "",
+        "privateKeyPath": "C:\\path\\to\\private_key",
+        "passphrase": "optional-passphrase"
+      }
+    },
+    "b2": {
+      "path": "my-bucket",
+      "options": {
+        "keyId": "your-key-id",
+        "applicationKey": "your-app-key",
+        "serviceUrl": "https://s3.us-west-000.backblazeb2.com",
+        "bucketName": "my-bucket"
+      }
     }
   }
 }

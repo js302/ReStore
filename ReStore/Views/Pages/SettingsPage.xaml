@@ -164,6 +164,163 @@
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
+
+                            <Expander Header="Azure Blob Storage" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Connection String" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="AzureConnectionString" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Container Name" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox x:Name="AzureContainerName" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveAzureBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestAzureBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Google Cloud Storage (GCP)" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Bucket Name" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="GcpBucketName" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Credential Path" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox x:Name="GcpCredentialPath" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12" ToolTip="Path to JSON key file (optional if using env vars)"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveGcpBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestGcpBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Dropbox" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Access Token" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="DropboxAccessToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Refresh Token" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="DropboxRefreshToken" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="App Key" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="DropboxAppKey" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="App Secret" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <PasswordBox x:Name="DropboxAppSecret" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveDropboxBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestDropboxBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="SFTP" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Host" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="SftpHost" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Port" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="SftpPort" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="22"/>
+
+                                        <TextBlock Text="Username" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="SftpUsername" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Password" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="SftpPassword" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Private Key Path" Grid.Row="4" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="SftpKeyPath" Grid.Row="4" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Passphrase" Grid.Row="5" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <PasswordBox x:Name="SftpPassphrase" Grid.Row="5" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveSftpBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestSftpBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Backblaze B2" Margin="0,0,0,12" IsExpanded="False">
+                                <StackPanel Margin="12,12,12,8">
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Key ID" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="B2KeyId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Application Key" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="B2AppKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Service URL" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <TextBox x:Name="B2ServiceUrl" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" ToolTip="e.g., https://s3.us-west-000.backblazeb2.com"/>
+
+                                        <TextBlock Text="Bucket Name" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox x:Name="B2BucketName" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SaveB2Btn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button x:Name="TestB2Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
                         </StackPanel>
                     </Border>
                 </Expander>
@@ -231,6 +388,11 @@
                                                                 <ComboBoxItem Content="Amazon S3" Tag="s3"/>
                                                                 <ComboBoxItem Content="Google Drive" Tag="gdrive"/>
                                                                 <ComboBoxItem Content="GitHub" Tag="github"/>
+                                                                <ComboBoxItem Content="Azure Blob" Tag="azure"/>
+                                                                <ComboBoxItem Content="Google Cloud" Tag="gcp"/>
+                                                                <ComboBoxItem Content="Dropbox" Tag="dropbox"/>
+                                                                <ComboBoxItem Content="SFTP" Tag="sftp"/>
+                                                                <ComboBoxItem Content="Backblaze B2" Tag="b2"/>
                                                             </ComboBox>
                                                         </Grid>
                                                     </Grid>

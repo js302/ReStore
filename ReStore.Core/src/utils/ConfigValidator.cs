@@ -220,6 +220,21 @@ public class ConfigValidator
             case "github":
                 ValidateGitHubStorage(sourceName, config, result);
                 break;
+            case "azure":
+                ValidateAzureStorage(sourceName, config, result);
+                break;
+            case "gcp":
+                ValidateGcpStorage(sourceName, config, result);
+                break;
+            case "dropbox":
+                ValidateDropboxStorage(sourceName, config, result);
+                break;
+            case "sftp":
+                ValidateSftpStorage(sourceName, config, result);
+                break;
+            case "b2":
+                ValidateB2Storage(sourceName, config, result);
+                break;
             default:
                 result.AddWarning($"Unknown storage type '{sourceName}'. Make sure this storage provider is supported.");
                 break;
@@ -357,6 +372,103 @@ public class ConfigValidator
         if (missingOptions.Any())
         {
             result.AddWarning($"GitHub storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
+        }
+    }
+
+    private void ValidateAzureStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    {
+        var requiredOptions = new[] { "connectionString", "containerName" };
+        var missingOptions = requiredOptions.Where(opt => 
+            !config.Options.ContainsKey(opt) || 
+            string.IsNullOrWhiteSpace(config.Options[opt]) ||
+            config.Options[opt].Contains("your_")).ToList();
+
+        if (missingOptions.Any())
+        {
+            result.AddWarning($"Azure storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
+        }
+    }
+
+    private void ValidateGcpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    {
+        var requiredOptions = new[] { "bucketName" };
+        var missingOptions = requiredOptions.Where(opt => 
+            !config.Options.ContainsKey(opt) || 
+            string.IsNullOrWhiteSpace(config.Options[opt]) ||
+            config.Options[opt].Contains("your_")).ToList();
+
+        if (missingOptions.Any())
+        {
+            result.AddWarning($"GCP storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
+        }
+
+        if (config.Options.ContainsKey("credentialPath"))
+        {
+            var path = config.Options["credentialPath"];
+            if (!string.IsNullOrWhiteSpace(path) && !File.Exists(path))
+            {
+                result.AddWarning($"GCP credential file not found: {path}");
+            }
+        }
+    }
+
+    private void ValidateDropboxStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    {
+        // Dropbox needs either accessToken OR (appKey + appSecret + refreshToken)
+        var hasAccessToken = config.Options.ContainsKey("accessToken") && !string.IsNullOrWhiteSpace(config.Options["accessToken"]);
+        var hasRefreshToken = config.Options.ContainsKey("refreshToken") && !string.IsNullOrWhiteSpace(config.Options["refreshToken"]);
+        var hasAppKey = config.Options.ContainsKey("appKey") && !string.IsNullOrWhiteSpace(config.Options["appKey"]);
+        var hasAppSecret = config.Options.ContainsKey("appSecret") && !string.IsNullOrWhiteSpace(config.Options["appSecret"]);
+
+        if (!hasAccessToken && !(hasRefreshToken && hasAppKey && hasAppSecret))
+        {
+            result.AddWarning($"Dropbox storage '{sourceName}' is not configured correctly. Requires either 'accessToken' OR ('refreshToken', 'appKey', and 'appSecret').");
+        }
+    }
+
+    private void ValidateSftpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    {
+        var requiredOptions = new[] { "host", "username" };
+        var missingOptions = requiredOptions.Where(opt => 
+            !config.Options.ContainsKey(opt) || 
+            string.IsNullOrWhiteSpace(config.Options[opt]) ||
+            config.Options[opt].Contains("your_")).ToList();
+
+        if (missingOptions.Any())
+        {
+            result.AddWarning($"SFTP storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
+            return;
+        }
+
+        // Needs password OR privateKeyPath
+        var hasPassword = config.Options.ContainsKey("password") && !string.IsNullOrWhiteSpace(config.Options["password"]);
+        var hasKey = config.Options.ContainsKey("privateKeyPath") && !string.IsNullOrWhiteSpace(config.Options["privateKeyPath"]);
+
+        if (!hasPassword && !hasKey)
+        {
+            result.AddWarning($"SFTP storage '{sourceName}' requires either 'password' or 'privateKeyPath'.");
+        }
+
+        if (hasKey && !File.Exists(config.Options["privateKeyPath"]))
+        {
+            result.AddWarning($"SFTP private key file not found: {config.Options["privateKeyPath"]}");
+        }
+    }
+
+    private void ValidateB2Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    {
+        var requiredOptions = new[] { "keyId", "applicationKey", "bucketName" };
+        var missingOptions = requiredOptions.Where(opt => 
+            !config.Options.ContainsKey(opt) || 
+            string.IsNullOrWhiteSpace(config.Options[opt]) ||
+            config.Options[opt].Contains("your_")).ToList();
+
+        if (missingOptions.Any())
+        {
+            result.AddWarning($"Backblaze B2 storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
     }

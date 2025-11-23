@@ -46,7 +46,7 @@ See the [Build from Source](#build-from-source-1) section below.
 ### Storage Flexibility
 
 - **Local Storage**: Backup to local drives, external drives, or network shares
-- **Cloud Platforms**: Support for Google Drive, Amazon S3, and GitHub storage
+- **Cloud Platforms**: Support for Google Drive, Google Cloud Storage, Amazon S3, Azure Blob Storage, Dropbox, Backblaze B2, SFTP, and GitHub storage
 - **Per-Path Storage**: Configure different storage destinations for each watched directory
 - **Per-Component Storage**: Use different storage backends for system backups (programs, environment, settings)
 - **Global Fallback**: Set a default storage type that applies when no specific storage is configured
@@ -124,7 +124,7 @@ You can configure ReStore through the GUI settings page or by editing the config
 
 **Backup Interval**: How often to check for changes (in hours)
 
-**Storage Providers**: Configure Local, S3, Google Drive, or GitHub storage with per-path and per-component selection
+**Storage Providers**: Configure Local, S3, Google Drive, GCP, Azure, Dropbox, B2, SFTP, or GitHub storage with per-path and per-component selection
 
 **Exclusions**: File patterns and paths to skip during backup
 
@@ -503,9 +503,234 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 - **Free tier**: 2 GB of Git LFS storage and 1 GB of bandwidth per month
 - **Best practice**: Use GitHub for configuration backups and smaller files; use Google Drive or S3 for large file backups
 
+### Azure Blob Storage Setup
+
+Backup to Microsoft Azure Blob Storage.
+
+#### Step 1: Create a Storage Account
+
+1. Go to the [Azure Portal](https://portal.azure.com/)
+2. Create a new **Storage account**
+3. Go to **Access keys** under "Security + networking"
+4. Copy the **Connection string**
+
+#### Step 2: Configure ReStore
+
+Open `%USERPROFILE%\ReStore\config.json`:
+
+```json
+{
+  "storageSources": {
+    "azure": {
+      "path": "backups",
+      "options": {
+        "connectionString": "DefaultEndpointsProtocol=https;AccountName=...",
+        "containerName": "restore-backups"
+      }
+    }
+  }
+}
+```
+
+**Configuration Parameters:**
+
+- **path**: Prefix for blobs (default: `"backups"`)
+- **connectionString**: The connection string from Step 1
+- **containerName**: The name of the container to use (will be created if it doesn't exist)
+
+### Google Cloud Storage (GCP) Setup
+
+Backup to Google Cloud Storage buckets.
+
+#### Step 1: Create a Service Account
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Select your project
+3. Go to **IAM & Admin** > **Service Accounts**
+4. Click **Create Service Account**
+5. Name it (e.g., "restore-backup-sa") and click **Create and Continue**
+6. Grant the role **Storage Object Admin** (allows reading/writing objects)
+7. Click **Done**
+
+#### Step 2: Generate Key File
+
+1. Click on the newly created service account
+2. Go to the **Keys** tab
+3. Click **Add Key** > **Create new key**
+4. Select **JSON** and click **Create**
+5. Save the downloaded JSON file to a secure location (e.g., `C:\Users\YourName\ReStore\gcp-key.json`)
+
+#### Step 3: Create a Bucket
+
+1. Go to **Cloud Storage** > **Buckets**
+2. Click **Create**
+3. Name your bucket (must be globally unique)
+4. Choose region and storage class
+5. Click **Create**
+
+#### Step 4: Configure ReStore
+
+Open `%USERPROFILE%\ReStore\config.json`:
+
+```json
+{
+  "storageSources": {
+    "gcp": {
+      "path": "backups",
+      "options": {
+        "bucketName": "your-bucket-name",
+        "credentialPath": "C:\\Users\\YourName\\ReStore\\gcp-key.json"
+      }
+    }
+  }
+}
+```
+
+**Configuration Parameters:**
+
+- **path**: Prefix for objects (default: `"backups"`)
+- **bucketName**: The name of your GCS bucket
+- **credentialPath**: Absolute path to the service account JSON key file
+
+### Dropbox Setup
+
+Backup to your Dropbox account.
+
+#### Step 1: Create a Dropbox App
+
+1. Go to the [Dropbox App Console](https://www.dropbox.com/developers/apps)
+2. Click **Create app**
+3. Choose **Scoped access**
+4. Choose **App folder** (safer) or **Full Dropbox**
+5. Name your app (e.g., "ReStore Backup")
+6. Go to the **Permissions** tab and enable `files.content.write` and `files.content.read`
+7. Click **Submit** at the bottom
+8. Go to the **Settings** tab
+9. Copy **App key** and **App secret**
+
+#### Step 2: Configure ReStore
+
+Open `%USERPROFILE%\ReStore\config.json`:
+
+```json
+{
+  "storageSources": {
+    "dropbox": {
+      "path": "/backups",
+      "options": {
+        "appKey": "your_app_key",
+        "appSecret": "your_app_secret",
+        "refreshToken": "your_refresh_token"
+      }
+    }
+  }
+}
+```
+
+**To get a Refresh Token:**
+
+1. Go to this URL in your browser (replace `APP_KEY` with your App Key):
+   `https://www.dropbox.com/oauth2/authorize?client_id=APP_KEY&response_type=code&token_access_type=offline`
+2. Click **Continue** and **Allow**
+3. Copy the access code
+4. Use a tool like Postman or curl to exchange the code for a refresh token:
+   ```bash
+   curl https://api.dropbox.com/oauth2/token \
+       -d code=YOUR_ACCESS_CODE \
+       -d grant_type=authorization_code \
+       -d client_id=YOUR_APP_KEY \
+       -d client_secret=YOUR_APP_SECRET
+   ```
+5. Copy the `refresh_token` from the response.
+
+**Configuration Parameters:**
+
+- **path**: Path within Dropbox (default: `"/backups"`)
+- **appKey**: Your Dropbox App Key
+- **appSecret**: Your Dropbox App Secret
+- **refreshToken**: The long-lived refresh token
+
+### SFTP Setup
+
+Backup to any server supporting SFTP (Secure File Transfer Protocol).
+
+#### Step 1: Prepare your SFTP Server
+
+Ensure you have the hostname, username, and either a password or private key file.
+
+#### Step 2: Configure ReStore
+
+Open `%USERPROFILE%\ReStore\config.json`:
+
+```json
+{
+  "storageSources": {
+    "sftp": {
+      "path": "/home/user/backups",
+      "options": {
+        "host": "sftp.example.com",
+        "port": "22",
+        "username": "your_username",
+        "password": "your_password",
+        "privateKeyPath": "C:\\Users\\Name\\.ssh\\id_rsa"
+      }
+    }
+  }
+}
+```
+
+**Configuration Parameters:**
+
+- **path**: Remote directory path
+- **host**: Server hostname or IP
+- **port**: SFTP port (default: `"22"`)
+- **username**: Login username
+- **password**: Login password (optional if using private key)
+- **privateKeyPath**: Path to private key file (optional if using password)
+
+### Backblaze B2 Setup
+
+Backup to Backblaze B2 Cloud Storage (S3 Compatible).
+
+#### Step 1: Create a Bucket
+
+1. Log in to Backblaze B2
+2. Create a Bucket
+3. Create a new **Application Key**
+4. Copy the **keyID** and **applicationKey**
+5. Note your **S3 Endpoint** (e.g., `s3.us-west-000.backblazeb2.com`)
+
+#### Step 2: Configure ReStore
+
+Open `%USERPROFILE%\ReStore\config.json`:
+
+```json
+{
+  "storageSources": {
+    "b2": {
+      "path": "backups",
+      "options": {
+        "accessKeyId": "your_key_id",
+        "secretAccessKey": "your_application_key",
+        "serviceUrl": "https://s3.us-west-000.backblazeb2.com",
+        "bucketName": "your-bucket-name"
+      }
+    }
+  }
+}
+```
+
+**Configuration Parameters:**
+
+- **path**: Prefix for files
+- **accessKeyId**: Your Key ID
+- **secretAccessKey**: Your Application Key
+- **serviceUrl**: The S3 Endpoint URL (must start with `https://`)
+- **bucketName**: Your bucket name
+
 ### Using Multiple Storage Providers
 
-You can configure multiple storage sources in the same `config.json` file. ReStore supports all four storage providers simultaneously with flexible per-path and per-component routing:
+You can configure multiple storage sources in the same `config.json` file. ReStore supports all storage providers simultaneously with flexible per-path and per-component routing:
 
 ```json
 {
@@ -517,18 +742,18 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
     },
     {
       "path": "C:\\Users\\YourName\\Desktop",
-      "storageType": "s3"
+      "storageType": "azure"
     },
     {
       "path": "C:\\Users\\YourName\\Pictures",
-      "storageType": null
+      "storageType": "sftp"
     }
   ],
   "systemBackup": {
     "enabled": true,
     "programsStorageType": "github",
     "environmentStorageType": "local",
-    "settingsStorageType": "gdrive"
+    "settingsStorageType": "dropbox"
   },
   "storageSources": {
     "gdrive": {
@@ -540,21 +765,26 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
         "backup_folder_name": "ReStoreBackups"
       }
     },
-    "s3": {
-      "path": "./backups",
+    "gcp": {
+      "path": "backups",
       "options": {
-        "accessKeyId": "your_access_key_id",
-        "secretAccessKey": "your_secret_access_key",
-        "region": "your_aws_region",
-        "bucketName": "your_bucket_name"
+        "bucketName": "your-bucket-name",
+        "credentialPath": "C:\\Users\\YourName\\ReStore\\gcp-key.json"
       }
     },
-    "github": {
-      "path": "./backups",
+    "azure": {
+      "path": "backups",
       "options": {
-        "token": "your_token",
-        "repo": "your_repo",
-        "owner": "your_github_username"
+        "connectionString": "...",
+        "containerName": "restore-backups"
+      }
+    },
+    "sftp": {
+      "path": "/home/user/backups",
+      "options": {
+        "host": "sftp.example.com",
+        "username": "user",
+        "password": "password"
       }
     },
     "local": {
@@ -722,9 +952,19 @@ When you perform a system backup, ReStore creates:
 
 **Local**: Backup to local drives, external drives, or network shares
 
-**Google Drive**: Cloud storage with OAuth2 authentication (requires API credentials)
+**Google Drive**: Cloud storage with OAuth2 authentication
 
-**AWS S3**: Amazon S3 bucket storage (requires AWS credentials and bucket configuration)
+**Google Cloud Storage**: Enterprise-grade object storage on GCP
+
+**AWS S3**: Amazon S3 bucket storage
+
+**Azure Blob Storage**: Microsoft Azure cloud storage
+
+**Dropbox**: Dropbox cloud storage
+
+**Backblaze B2**: Affordable cloud object storage (S3 compatible)
+
+**SFTP**: Secure File Transfer Protocol for remote servers
 
 **GitHub**: Repository-based storage for version-controlled backups
 

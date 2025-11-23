@@ -220,11 +220,54 @@ namespace ReStore.Views.Pages
                 ["repo"] = GhRepo.Text
             });
 
+            SaveAzureBtn.Click += async (_, __) => await SaveProviderAsync("azure", new()
+            {
+                ["connectionString"] = AzureConnectionString.Password,
+                ["containerName"] = AzureContainerName.Text
+            });
+
+            SaveGcpBtn.Click += async (_, __) => await SaveProviderAsync("gcp", new()
+            {
+                ["bucketName"] = GcpBucketName.Text,
+                ["credentialPath"] = GcpCredentialPath.Text
+            });
+
+            SaveDropboxBtn.Click += async (_, __) => await SaveProviderAsync("dropbox", new()
+            {
+                ["accessToken"] = DropboxAccessToken.Password,
+                ["refreshToken"] = DropboxRefreshToken.Password,
+                ["appKey"] = DropboxAppKey.Text,
+                ["appSecret"] = DropboxAppSecret.Password
+            });
+
+            SaveSftpBtn.Click += async (_, __) => await SaveProviderAsync("sftp", new()
+            {
+                ["host"] = SftpHost.Text,
+                ["port"] = SftpPort.Text,
+                ["username"] = SftpUsername.Text,
+                ["password"] = SftpPassword.Password,
+                ["privateKeyPath"] = SftpKeyPath.Text,
+                ["passphrase"] = SftpPassphrase.Password
+            });
+
+            SaveB2Btn.Click += async (_, __) => await SaveProviderAsync("b2", new()
+            {
+                ["keyId"] = B2KeyId.Text,
+                ["applicationKey"] = B2AppKey.Password,
+                ["serviceUrl"] = B2ServiceUrl.Text,
+                ["bucketName"] = B2BucketName.Text
+            });
+
             // Test handlers
             TestLocalBtn.Click += async (_, __) => await TestProviderAsync("local");
             TestS3Btn.Click += async (_, __) => await TestProviderAsync("s3");
             TestGDriveBtn.Click += async (_, __) => await TestProviderAsync("gdrive");
             TestGitHubBtn.Click += async (_, __) => await TestProviderAsync("github");
+            TestAzureBtn.Click += async (_, __) => await TestProviderAsync("azure");
+            TestGcpBtn.Click += async (_, __) => await TestProviderAsync("gcp");
+            TestDropboxBtn.Click += async (_, __) => await TestProviderAsync("dropbox");
+            TestSftpBtn.Click += async (_, __) => await TestProviderAsync("sftp");
+            TestB2Btn.Click += async (_, __) => await TestProviderAsync("b2");
 
             // New handlers for watch directories
             AddWatchDirBtn.Click += async (_, __) => await AddWatchDirectoryAsync();
@@ -344,7 +387,15 @@ namespace ReStore.Views.Pages
                 if (combo.SelectedItem is ComboBoxItem item)
                 {
                     var storageTag = item.Tag?.ToString();
-                    watchConfig.StorageType = string.IsNullOrEmpty(storageTag) ? null : storageTag;
+                    var newValue = string.IsNullOrEmpty(storageTag) ? null : storageTag;
+
+                    // Only save if the value actually changed
+                    if (watchConfig.StorageType == newValue)
+                    {
+                        return;
+                    }
+
+                    watchConfig.StorageType = newValue;
                     await _configManager.SaveAsync();
                 }
             }
@@ -735,7 +786,7 @@ namespace ReStore.Views.Pages
             {
                 await _configManager.LoadAsync();
                 var configured = _configManager.StorageSources.Keys.ToList();
-                var known = new List<string> { "local", "s3", "gdrive", "github" };
+                var known = new List<string> { "local", "s3", "gdrive", "github", "azure", "gcp", "dropbox", "sftp", "b2" };
                 var sources = _appSettings.ShowOnlyConfiguredProviders
                     ? configured
                     : known.Union(configured).ToList();
@@ -791,6 +842,39 @@ namespace ReStore.Views.Pages
                     gh.Options.TryGetValue("token", out var tk); GhToken.Password = tk ?? string.Empty;
                     gh.Options.TryGetValue("owner", out var ow); GhOwner.Text = ow ?? string.Empty;
                     gh.Options.TryGetValue("repo", out var rp); GhRepo.Text = rp ?? string.Empty;
+                }
+                if (_configManager.StorageSources.TryGetValue("azure", out var az))
+                {
+                    az.Options.TryGetValue("connectionString", out var cs); AzureConnectionString.Password = cs ?? string.Empty;
+                    az.Options.TryGetValue("containerName", out var cn); AzureContainerName.Text = cn ?? string.Empty;
+                }
+                if (_configManager.StorageSources.TryGetValue("gcp", out var gcp))
+                {
+                    gcp.Options.TryGetValue("bucketName", out var bn); GcpBucketName.Text = bn ?? string.Empty;
+                    gcp.Options.TryGetValue("credentialPath", out var cp); GcpCredentialPath.Text = cp ?? string.Empty;
+                }
+                if (_configManager.StorageSources.TryGetValue("dropbox", out var db))
+                {
+                    db.Options.TryGetValue("accessToken", out var at); DropboxAccessToken.Password = at ?? string.Empty;
+                    db.Options.TryGetValue("refreshToken", out var rt); DropboxRefreshToken.Password = rt ?? string.Empty;
+                    db.Options.TryGetValue("appKey", out var ak); DropboxAppKey.Text = ak ?? string.Empty;
+                    db.Options.TryGetValue("appSecret", out var asc); DropboxAppSecret.Password = asc ?? string.Empty;
+                }
+                if (_configManager.StorageSources.TryGetValue("sftp", out var sftp))
+                {
+                    sftp.Options.TryGetValue("host", out var h); SftpHost.Text = h ?? string.Empty;
+                    sftp.Options.TryGetValue("port", out var p); SftpPort.Text = p ?? "22";
+                    sftp.Options.TryGetValue("username", out var u); SftpUsername.Text = u ?? string.Empty;
+                    sftp.Options.TryGetValue("password", out var pw); SftpPassword.Password = pw ?? string.Empty;
+                    sftp.Options.TryGetValue("privateKeyPath", out var pk); SftpKeyPath.Text = pk ?? string.Empty;
+                    sftp.Options.TryGetValue("passphrase", out var pp); SftpPassphrase.Password = pp ?? string.Empty;
+                }
+                if (_configManager.StorageSources.TryGetValue("b2", out var b2))
+                {
+                    b2.Options.TryGetValue("keyId", out var ki); B2KeyId.Text = ki ?? string.Empty;
+                    b2.Options.TryGetValue("applicationKey", out var ak); B2AppKey.Password = ak ?? string.Empty;
+                    b2.Options.TryGetValue("serviceUrl", out var su); B2ServiceUrl.Text = su ?? string.Empty;
+                    b2.Options.TryGetValue("bucketName", out var bn); B2BucketName.Text = bn ?? string.Empty;
                 }
             }
             catch { }

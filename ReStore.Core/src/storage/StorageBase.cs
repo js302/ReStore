@@ -3,6 +3,10 @@ using ReStore.Core.src.storage.aws;
 using ReStore.Core.src.storage.github;
 using ReStore.Core.src.storage.google;
 using ReStore.Core.src.storage.local;
+using ReStore.Core.src.storage.azure;
+using ReStore.Core.src.storage.dropbox;
+using ReStore.Core.src.storage.sftp;
+using ReStore.Core.src.storage.backblaze;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -79,7 +83,12 @@ public class StorageFactory
             ["s3"] = logger => new S3Storage(logger),
             ["github"] = logger => new GitHubStorage(logger),
             ["gdrive"] = logger => new DriveStorage(logger),
-            ["local"] = logger => new LocalStorage(logger)
+            ["local"] = logger => new LocalStorage(logger),
+            ["azure"] = logger => new AzureStorage(logger),
+            ["gcp"] = logger => new GcpStorage(logger),
+            ["dropbox"] = logger => new DropboxStorage(logger),
+            ["sftp"] = logger => new SftpStorage(logger),
+            ["b2"] = logger => new B2Storage(logger)
         };
     }
 

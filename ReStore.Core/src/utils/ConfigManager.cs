@@ -94,6 +94,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     public EncryptionConfig Encryption { get; private set; } = new();
 
     private readonly StorageFactory _storageFactory = new(logger);
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
 
     public ConfigValidationResult ValidateConfiguration()
     {
@@ -308,13 +309,14 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     public async Task SaveAsync(string configPath = "")
     {
-        if (string.IsNullOrEmpty(configPath))
-        {
-            configPath = CONFIG_PATH;
-        }
-
+        await _saveLock.WaitAsync();
         try
         {
+            if (string.IsNullOrEmpty(configPath))
+            {
+                configPath = CONFIG_PATH;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
 
             var configObject = new
@@ -362,6 +364,10 @@ public class ConfigManager(ILogger logger) : IConfigManager
         {
             logger.Log($"Error saving configuration: {ex.Message}", LogLevel.Error);
             throw;
+        }
+        finally
+        {
+            _saveLock.Release();
         }
     }
 
