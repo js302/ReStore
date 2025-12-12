@@ -1158,6 +1158,22 @@ The project is built with .NET 9.0 and uses:
 
 To extend storage support, implement the `IStorage` interface and register your provider in the configuration.
 
+### Testing
+
+The repository includes an automated test project at `ReStore.Tests` (xUnit) that covers core backup/restore behavior (including encryption and fuzz/integration scenarios).
+
+Run the full test suite:
+
+```bash
+dotnet test ReStore.Tests/ReStore.Tests.csproj
+```
+
+Or run tests for the entire solution:
+
+```bash
+dotnet test ReStore.sln
+```
+
 ## Notes
 
 ### Security
