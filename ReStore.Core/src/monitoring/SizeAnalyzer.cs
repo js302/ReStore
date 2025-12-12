@@ -6,7 +6,7 @@ public class SizeAnalyzer
 
     public long SizeThreshold { get; set; } = DEFAULT_SIZE_THRESHOLD;
 
-    public async Task<(long Size, bool ExceedsThreshold)> AnalyzeDirectoryAsync(string path)
+    public virtual async Task<(long Size, bool ExceedsThreshold)> AnalyzeDirectoryAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {

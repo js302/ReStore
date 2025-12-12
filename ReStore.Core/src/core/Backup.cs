@@ -146,7 +146,7 @@ public class Backup
             }
 
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            var archiveFileName = $"backup_{Path.GetFileName(baseDirectory)}_{timestamp}.zip";
+            var archiveFileName = $"backup_{Path.GetFileName(baseDirectory)}_{Guid.NewGuid():N}_{timestamp}.zip";
             var tempArchive = Path.Combine(Path.GetTempPath(), archiveFileName);
 
             _logger.Log($"Creating temporary archive: {tempArchive}", LogLevel.Debug);
@@ -252,7 +252,7 @@ public class Backup
 
         try
         {
-            var archiveFileName = $"backup_{Path.GetFileName(sourceDirectory)}_{timestamp}.zip";
+            var archiveFileName = $"backup_{Path.GetFileName(sourceDirectory)}_{Guid.NewGuid():N}_{timestamp}.zip";
             var tempArchive = Path.Combine(Path.GetTempPath(), archiveFileName);
 
             _logger.Log($"Creating temporary archive for full backup: {tempArchive}", LogLevel.Debug);

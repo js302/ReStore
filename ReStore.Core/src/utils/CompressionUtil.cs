@@ -43,22 +43,25 @@ public class CompressionUtil
                 File.Delete(destinationArchivePath);
             }
 
-            using var archive = ZipFile.Open(destinationArchivePath, ZipArchiveMode.Create);
-            foreach (var filePath in filesToInclude)
+            using (var fs = new FileStream(destinationArchivePath, FileMode.Create))
+            using (var archive = new ZipArchive(fs, ZipArchiveMode.Create))
             {
-                // Ensure the file exists before trying to add it
-                if (!File.Exists(filePath))
+                foreach (var filePath in filesToInclude)
                 {
-                    // Log this?
-                    continue;
+                    // Ensure the file exists before trying to add it
+                    if (!File.Exists(filePath))
+                    {
+                        // Log this?
+                        continue;
+                    }
+
+                    // Calculate the relative path within the archive
+                    var entryName = Path.GetRelativePath(baseDirectory, filePath);
+                    // Normalize directory separators for zip standard
+                    entryName = entryName.Replace(Path.DirectorySeparatorChar, '/');
+
+                    archive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
                 }
-
-                // Calculate the relative path within the archive
-                var entryName = Path.GetRelativePath(baseDirectory, filePath);
-                // Normalize directory separators for zip standard
-                entryName = entryName.Replace(Path.DirectorySeparatorChar, '/');
-
-                archive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
             }
         });
     }

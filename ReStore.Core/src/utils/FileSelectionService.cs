@@ -90,13 +90,18 @@ public class FileSelectionService
                 }
                 else if (Directory.Exists(includePath))
                 {
-                    // If it's a directory
-                    var files = Directory.GetFiles(includePath, "*", SearchOption.AllDirectories);
-                    foreach (var file in files)
+                    foreach (var file in EnumerateFilesRecursivelySafe(includePath))
                     {
-                        if (!ShouldExcludeFile(file))
+                        try
                         {
-                            filesToBackup.Add(file);
+                            if (!ShouldExcludeFile(file))
+                            {
+                                filesToBackup.Add(file);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Log($"Error evaluating file {file}: {ex.Message}", LogLevel.Warning);
                         }
                     }
                 }
@@ -112,6 +117,47 @@ public class FileSelectionService
         }
 
         return filesToBackup;
+    }
+
+    private static IEnumerable<string> EnumerateFilesRecursivelySafe(string rootDirectory)
+    {
+        var directories = new Stack<string>();
+        directories.Push(rootDirectory);
+
+        while (directories.Count > 0)
+        {
+            var current = directories.Pop();
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(current);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                yield return file;
+            }
+
+            IEnumerable<string> subDirectories;
+            try
+            {
+                subDirectories = Directory.EnumerateDirectories(current);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var subDirectory in subDirectories)
+            {
+                directories.Push(subDirectory);
+            }
+        }
     }
 
     // Static utility method that can be used by other classes

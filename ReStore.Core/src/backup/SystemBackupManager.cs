@@ -89,7 +89,8 @@ public class SystemBackupManager
             var programs = await _programDiscovery.GetAllInstalledProgramsAsync();
             
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
+            var uniqueId = Guid.NewGuid().ToString("N");
+            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", $"{timestamp}_{uniqueId}");
             Directory.CreateDirectory(tempDir);
 
             var jsonPath = Path.Combine(tempDir, "installed_programs.json");
@@ -101,8 +102,8 @@ public class SystemBackupManager
 
             await CreateFullRestoreScriptAsync(programs, Path.Combine(tempDir, "restore_programs.ps1"));
 
-            var remotePath = $"system_backups/programs/programs_backup_{timestamp}.zip";
-            var zipPath = Path.Combine(Path.GetTempPath(), $"programs_backup_{timestamp}.zip");
+            var remotePath = $"system_backups/programs/programs_backup_{uniqueId}_{timestamp}.zip";
+            var zipPath = Path.Combine(Path.GetTempPath(), $"programs_backup_{uniqueId}_{timestamp}.zip");
             
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
@@ -171,7 +172,8 @@ public class SystemBackupManager
             var variables = await _envManager.GetAllEnvironmentVariablesAsync();
             
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
+            var uniqueId = Guid.NewGuid().ToString("N");
+            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", $"{timestamp}_{uniqueId}");
             Directory.CreateDirectory(tempDir);
 
             var jsonPath = Path.Combine(tempDir, "environment_variables.json");
@@ -182,8 +184,8 @@ public class SystemBackupManager
 
             await CreateRegistryBackupScriptAsync(Path.Combine(tempDir, "backup_env_registry.ps1"));
 
-            var remotePath = $"system_backups/environment/env_backup_{timestamp}.zip";
-            var zipPath = Path.Combine(Path.GetTempPath(), $"env_backup_{timestamp}.zip");
+            var remotePath = $"system_backups/environment/env_backup_{uniqueId}_{timestamp}.zip";
+            var zipPath = Path.Combine(Path.GetTempPath(), $"env_backup_{uniqueId}_{timestamp}.zip");
             
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
@@ -481,7 +483,9 @@ public class SystemBackupManager
             storage = await _config.CreateStorageAsync(storageType);
             _logger.Log($"Using {storageType} storage for restore", LogLevel.Info);
 
-            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", DateTime.Now.ToString("yyyyMMddHHmmss"));
+            var restoreTimestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+            var restoreUniqueId = Guid.NewGuid().ToString("N");
+            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", $"{restoreTimestamp}_{restoreUniqueId}");
             Directory.CreateDirectory(tempDir);
             
             var zipPath = Path.Combine(tempDir, "backup.zip");
@@ -585,7 +589,8 @@ public class SystemBackupManager
             _logger.Log($"Using {storageType} storage for Windows settings backup", LogLevel.Info);
 
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", timestamp);
+            var uniqueId = Guid.NewGuid().ToString("N");
+            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", $"{timestamp}_{uniqueId}");
             Directory.CreateDirectory(tempDir);
 
             var export = await _settingsManager.ExportWindowsSettingsAsync(tempDir);
@@ -593,8 +598,8 @@ public class SystemBackupManager
             var scriptPath = Path.Combine(tempDir, "restore_windows_settings.ps1");
             await _settingsManager.CreateRestoreScriptAsync(export, tempDir, scriptPath);
 
-            var remotePath = $"system_backups/settings/settings_backup_{timestamp}.zip";
-            var zipPath = Path.Combine(Path.GetTempPath(), $"settings_backup_{timestamp}.zip");
+            var remotePath = $"system_backups/settings/settings_backup_{uniqueId}_{timestamp}.zip";
+            var zipPath = Path.Combine(Path.GetTempPath(), $"settings_backup_{uniqueId}_{timestamp}.zip");
             
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();

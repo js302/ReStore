@@ -49,7 +49,7 @@ public class SystemState
         _logger?.Log($"System state file path set to: {_stateFilePath}", LogLevel.Debug);
     }
 
-    public bool HasFileChanged(string path, string currentHash)
+    public virtual bool HasFileChanged(string path, string currentHash)
     {
         _lock.Wait();
         try
@@ -62,7 +62,7 @@ public class SystemState
         }
     }
 
-    public string? GetPreviousBackupPath(string directory)
+    public virtual string? GetPreviousBackupPath(string directory)
     {
         _lock.Wait();
         try
@@ -78,7 +78,7 @@ public class SystemState
         }
     }
 
-    public string? GetBaseBackupPath(string diffPath)
+    public virtual string? GetBaseBackupPath(string diffPath)
     {
         _lock.Wait();
         try
@@ -115,7 +115,7 @@ public class SystemState
         }
     }
 
-    public void AddBackup(string directory, string path, bool isDiff)
+    public virtual void AddBackup(string directory, string path, bool isDiff)
     {
         _lock.Wait();
         try
@@ -136,7 +136,7 @@ public class SystemState
         }
     }
 
-    public async Task AddOrUpdateFileMetadataAsync(string filePath)
+    public virtual async Task AddOrUpdateFileMetadataAsync(string filePath)
     {
         try
         {
@@ -193,7 +193,7 @@ public class SystemState
         }
     }
 
-    public async Task SaveStateAsync()
+    public virtual async Task SaveStateAsync()
     {
         await _lock.WaitAsync();
         try
@@ -225,7 +225,7 @@ public class SystemState
         }
     }
 
-    public async Task LoadStateAsync()
+    public virtual async Task LoadStateAsync()
     {
         await _lock.WaitAsync();
         try
@@ -277,7 +277,7 @@ public class SystemState
         this.FileMetadata = [];
     }
 
-    public List<string> GetChangedFiles(List<string> allFiles, BackupType backupType)
+    public virtual List<string> GetChangedFiles(List<string> allFiles, BackupType backupType)
     {
         if (backupType == BackupType.Full)
         {

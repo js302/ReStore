@@ -61,7 +61,21 @@ public class Restore
 
                 if (backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
+                    _logger.Log("Backup is encrypted, downloading metadata...", LogLevel.Info);
+                    var metadataPath = backupPath + ".meta";
+                    var tempMetadataPath = tempDownloadPath + ".meta";
+                    
+                    try
+                    {
+                        await _storage.DownloadAsync(metadataPath, tempMetadataPath);
+                        _logger.Log($"Downloaded metadata to: {tempMetadataPath}", LogLevel.Debug);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"Failed to download encryption metadata: {ex.Message}", ex);
+                    }
+
+                    _logger.Log("Decrypting backup...", LogLevel.Info);
                     if (_passwordProvider == null)
                     {
                         throw new InvalidOperationException("Encrypted backup detected but no password provider available");
@@ -84,6 +98,13 @@ public class Restore
                         _passwordProvider.ClearPassword();
                         _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
                         throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
+                    }
+                    finally
+                    {
+                        if (File.Exists(tempMetadataPath))
+                        {
+                            File.Delete(tempMetadataPath);
+                        }
                     }
                 }
                 else
