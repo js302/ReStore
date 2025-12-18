@@ -22,6 +22,11 @@
   "sizeThresholdMB": 500,
   "maxFileSizeMB": 100,
   "backupType": "Incremental",
+  "retention": {
+    "enabled": false,
+    "keepLastPerDirectory": 5,
+    "maxAgeDays": 30
+  },
   "systemBackup": {
     "enabled": true,
     "includePrograms": true,

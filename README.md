@@ -58,6 +58,7 @@ See the [Build from Source](#build-from-source-1) section below.
 - **Compression**: ZIP compression to save storage space
 - **Encryption**: AES-256-GCM encryption with password protection for secure backups
 - **History Tracking**: Complete backup history with metadata
+- **Retention Policies**: Automatic pruning of old backups
 
 ### Prerequisites
 
@@ -132,6 +133,8 @@ You can configure ReStore through the GUI settings page or by editing the config
 
 **Encryption**: Password-based AES-256-GCM encryption for secure backups
 
+**Retention**: Automatic pruning of old backups. Always keeps at least one backup per group (the newest), even if it exceeds max age.
+
 ### Configuration File Location
 
 Both the GUI and CLI applications use a **unified configuration** located at:
@@ -175,7 +178,29 @@ All configuration options can be managed through the Settings page:
 - **Backup Configuration**: Type (Full/Incremental/Differential), interval, size limits
 - **Encryption**: Enable/disable AES-256-GCM encryption with password protection for all backups
 - **System Backup**: Enable/disable system state backups with separate storage selection for programs, environment variables, and settings
+- **Retention**: Configure how many backups to keep and max backup age
 - **Exclusions**: File patterns and paths to exclude from backups
+
+### Retention Policies
+
+Retention policies automatically prune old backups using the backup history in `%USERPROFILE%\ReStore\state\system_state.json`.
+
+Rules:
+
+- Retention applies to all backup groups (file backups per watched directory, and system backups like programs/environment/settings).
+- The newest backup in each group is always kept (so there is always at least one backup), even if it is older than `maxAgeDays`.
+
+Example configuration:
+
+```json
+{
+  "retention": {
+    "enabled": true,
+    "keepLastPerDirectory": 10,
+    "maxAgeDays": 30
+  }
+}
+```
 
 - **Backup Data**: `%USERPROFILE%\ReStoreBackups` (default, configurable)
 

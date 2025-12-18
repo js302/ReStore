@@ -17,6 +17,7 @@ public interface IConfigManager
     int MaxFileSizeMB { get; }
     SystemBackupConfig SystemBackup { get; }
     EncryptionConfig Encryption { get; }
+    RetentionConfig Retention { get; }
     Task LoadAsync();
     Task SaveAsync(string configPath = "");
     Task<IStorage> CreateStorageAsync(string storageType);
@@ -65,6 +66,13 @@ public class EncryptionConfig
     public string? VerificationToken { get; set; }
 }
 
+public class RetentionConfig
+{
+    public bool Enabled { get; set; } = false;
+    public int KeepLastPerDirectory { get; set; } = 10;
+    public int MaxAgeDays { get; set; } = 30;
+}
+
 public class ConfigManager(ILogger logger) : IConfigManager
 {
     private static readonly string CONFIG_PATH = GetConfigPath();
@@ -92,6 +100,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     public int MaxFileSizeMB { get; private set; } = 100;
     public SystemBackupConfig SystemBackup { get; private set; } = new();
     public EncryptionConfig Encryption { get; private set; } = new();
+    public RetentionConfig Retention { get; private set; } = new();
 
     private readonly StorageFactory _storageFactory = new(logger);
     private readonly SemaphoreSlim _saveLock = new(1, 1);
@@ -299,6 +308,21 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     Encryption.VerificationToken = verificationToken.GetString();
             }
 
+            // Load retention configuration
+            if (root.TryGetProperty("retention", out var retentionElement))
+            {
+                Retention = new RetentionConfig();
+
+                if (retentionElement.TryGetProperty("enabled", out var retentionEnabled))
+                    Retention.Enabled = retentionEnabled.GetBoolean();
+
+                if (retentionElement.TryGetProperty("keepLastPerDirectory", out var keepLast))
+                    Retention.KeepLastPerDirectory = keepLast.GetInt32();
+
+                if (retentionElement.TryGetProperty("maxAgeDays", out var maxAgeDays))
+                    Retention.MaxAgeDays = maxAgeDays.GetInt32();
+            }
+
             logger.Log("Configuration loaded successfully", LogLevel.Info);
         }
         catch (Exception ex)
@@ -327,6 +351,12 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 sizeThresholdMB = SizeThresholdMB,
                 maxFileSizeMB = MaxFileSizeMB,
                 backupType = BackupType.ToString(),
+                retention = new
+                {
+                    enabled = Retention.Enabled,
+                    keepLastPerDirectory = Retention.KeepLastPerDirectory,
+                    maxAgeDays = Retention.MaxAgeDays
+                },
                 systemBackup = new
                 {
                     enabled = SystemBackup.Enabled,

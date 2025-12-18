@@ -127,8 +127,100 @@ public class SystemState
             {
                 Path = path,
                 Timestamp = DateTime.Now,
-                IsDiff = isDiff
+                IsDiff = isDiff,
+                StorageType = null
             });
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public virtual void AddBackup(string directory, string path, bool isDiff, string? storageType)
+    {
+        _lock.Wait();
+        try
+        {
+            if (!BackupHistory.ContainsKey(directory))
+                BackupHistory[directory] = new List<BackupInfo>();
+
+            BackupHistory[directory].Add(new BackupInfo
+            {
+                Path = path,
+                Timestamp = DateTime.Now,
+                IsDiff = isDiff,
+                StorageType = storageType
+            });
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public virtual List<string> GetBackupGroups()
+    {
+        _lock.Wait();
+        try
+        {
+            return BackupHistory.Keys.ToList();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public virtual List<BackupInfo> GetBackupsForGroup(string group)
+    {
+        _lock.Wait();
+        try
+        {
+            if (!BackupHistory.TryGetValue(group, out var backups))
+            {
+                return new List<BackupInfo>();
+            }
+
+            return backups
+                .OrderByDescending(b => b.Timestamp)
+                .Select(b => new BackupInfo
+                {
+                    Path = b.Path,
+                    Timestamp = b.Timestamp,
+                    IsDiff = b.IsDiff,
+                    StorageType = b.StorageType
+                })
+                .ToList();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public virtual void RemoveBackupsFromGroup(string group, IEnumerable<string> backupPaths)
+    {
+        var paths = backupPaths.Where(p => !string.IsNullOrWhiteSpace(p)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        _lock.Wait();
+        try
+        {
+            if (!BackupHistory.TryGetValue(group, out var backups) || backups.Count == 0)
+            {
+                return;
+            }
+
+            backups.RemoveAll(b => paths.Contains(b.Path));
+
+            if (backups.Count == 0)
+            {
+                BackupHistory.Remove(group);
+            }
         }
         finally
         {
@@ -392,4 +484,5 @@ public class BackupInfo
     public string Path { get; set; } = "";
     public DateTime Timestamp { get; set; }
     public bool IsDiff { get; set; }
+    public string? StorageType { get; set; }
 }

@@ -72,6 +72,8 @@ public class FuzzTests : IDisposable
 
         // Setup Config
         var configMock = new Mock<IConfigManager>();
+        configMock.Setup(c => c.Retention)
+            .Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 10, MaxAgeDays = 30 });
         configMock.Setup(c => c.GlobalStorageType).Returns("local");
         configMock.Setup(c => c.SizeThresholdMB).Returns(100);
         configMock.Setup(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });

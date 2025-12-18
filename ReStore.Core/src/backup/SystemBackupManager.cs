@@ -16,6 +16,7 @@ public class SystemBackupManager
     private readonly IConfigManager _config;
     private readonly SystemState _systemState;
     private readonly IPasswordProvider? _passwordProvider;
+    private readonly RetentionManager _retentionManager;
 
     public SystemBackupManager(ILogger logger, IConfigManager config, SystemState systemState, IPasswordProvider? passwordProvider = null)
     {
@@ -26,6 +27,7 @@ public class SystemBackupManager
         _envManager = new EnvironmentVariablesManager(logger);
         _settingsManager = new WindowsSettingsManager(logger);
         _passwordProvider = passwordProvider;
+        _retentionManager = new RetentionManager(_logger, _config, _systemState);
     }
 
     public async Task BackupSystemAsync()
@@ -132,7 +134,8 @@ public class SystemBackupManager
 
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _systemState.AddBackup("system_programs", remotePath, false);
+            _systemState.AddBackup("system_programs", remotePath, false, storageType);
+            await _retentionManager.ApplyGroupAsync("system_programs");
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
@@ -214,7 +217,8 @@ public class SystemBackupManager
 
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _systemState.AddBackup("system_environment", remotePath, false);
+            _systemState.AddBackup("system_environment", remotePath, false, storageType);
+            await _retentionManager.ApplyGroupAsync("system_environment");
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
@@ -628,7 +632,8 @@ public class SystemBackupManager
 
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _systemState.AddBackup("system_settings", remotePath, false);
+            _systemState.AddBackup("system_settings", remotePath, false, storageType);
+            await _retentionManager.ApplyGroupAsync("system_settings");
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)

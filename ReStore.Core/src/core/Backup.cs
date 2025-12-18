@@ -15,6 +15,7 @@ public class Backup
     private readonly FileDiffSyncManager? _diffSyncManager;
     private readonly CompressionUtil _compressionUtil;
     private readonly IPasswordProvider? _passwordProvider;
+    private readonly RetentionManager _retentionManager;
 
     public Backup(ILogger logger, SystemState state, SizeAnalyzer sizeAnalyzer, IConfigManager config, IPasswordProvider? passwordProvider = null)
     {
@@ -28,6 +29,8 @@ public class Backup
 
         var backupConfig = new BackupConfigurationManager(logger, _config);
         _diffSyncManager = new FileDiffSyncManager(logger, state, backupConfig);
+
+        _retentionManager = new RetentionManager(_logger, _config, _state);
     }
 
     public async Task BackupDirectoryAsync(string sourceDirectory, string? storageTypeOverride = null)
@@ -90,7 +93,7 @@ public class Backup
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
 
             _logger.Log("Proceeding with full backup creation for selected files.", LogLevel.Info);
-            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp, storage);
+            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp, storage, storageType);
 
             _state.LastBackupTime = DateTime.UtcNow;
 
@@ -186,7 +189,8 @@ public class Backup
             _logger.Log($"Uploading archive {fileToUpload} to {remotePath}", LogLevel.Debug);
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _state.AddBackup(baseDirectory, remotePath, false);
+            _state.AddBackup(baseDirectory, remotePath, false, storageType);
+            await _retentionManager.ApplyGroupAsync(baseDirectory);
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
@@ -242,7 +246,7 @@ public class Backup
         return watchConfig?.StorageType ?? _config.GlobalStorageType;
     }
 
-    private async Task CreateFullBackupAsync(string sourceDirectory, List<string> filesToInclude, string timestamp, IStorage storage)
+    private async Task CreateFullBackupAsync(string sourceDirectory, List<string> filesToInclude, string timestamp, IStorage storage, string storageType)
     {
         if (!filesToInclude.Any())
         {
@@ -272,7 +276,7 @@ public class Backup
                 var encryptedPath = await _compressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 archiveFileName = Path.GetFileName(encryptedPath);
-                
+
                 // Upload metadata file
                 var metadataPath = encryptedPath + ".meta";
                 var remoteMetadataPath = $"backups/{Path.GetFileName(sourceDirectory)}/{archiveFileName}.meta";
@@ -284,7 +288,8 @@ public class Backup
             _logger.Log($"Uploading full backup archive {fileToUpload} to {remotePath}", LogLevel.Debug);
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _state.AddBackup(sourceDirectory, remotePath, false);
+            _state.AddBackup(sourceDirectory, remotePath, false, storageType);
+            await _retentionManager.ApplyGroupAsync(sourceDirectory);
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)

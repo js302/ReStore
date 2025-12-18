@@ -18,6 +18,8 @@ public class FileSelectionServiceTests : IDisposable
     {
         _loggerMock = new Mock<ILogger>();
         _configMock = new Mock<IConfigManager>();
+        _configMock.Setup(c => c.Retention)
+            .Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 10, MaxAgeDays = 30 });
         _testDir = Path.Combine(Path.GetTempPath(), "ReStoreSelectionTests_" + Guid.NewGuid());
         Directory.CreateDirectory(_testDir);
     }

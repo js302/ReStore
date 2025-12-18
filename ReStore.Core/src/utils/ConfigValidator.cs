@@ -147,6 +147,25 @@ public class ConfigValidator
         {
             result.AddError($"Invalid backup type: {config.BackupType}");
         }
+
+        // Validate retention settings
+        if (config.Retention.Enabled)
+        {
+            if (config.Retention.KeepLastPerDirectory < 1)
+            {
+                result.AddError("Retention is enabled but keepLastPerDirectory is < 1. At least one backup must be kept.");
+            }
+
+            if (config.Retention.MaxAgeDays < 0)
+            {
+                result.AddError("Retention maxAgeDays cannot be negative.");
+            }
+
+            if (config.Retention.MaxAgeDays == 0)
+            {
+                result.AddInfo("Retention is enabled with maxAgeDays=0 (age-based deletion disabled). Only keepLastPerDirectory will apply.");
+            }
+        }
     }
 
     private void ValidateStorageSources(Dictionary<string, StorageConfig> storageSources, ConfigValidationResult result)

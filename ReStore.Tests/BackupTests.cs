@@ -29,6 +29,9 @@ public class BackupTests : IDisposable
         _sizeAnalyzerMock = new Mock<SizeAnalyzer>();
         _storageMock = new Mock<IStorage>();
 
+        _configMock.Setup(c => c.Retention)
+            .Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 10, MaxAgeDays = 30 });
+
         _testDir = Path.Combine(Path.GetTempPath(), "ReStoreTests_" + Guid.NewGuid());
         Directory.CreateDirectory(_testDir);
     }

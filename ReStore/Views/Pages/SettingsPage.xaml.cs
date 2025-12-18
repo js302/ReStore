@@ -299,6 +299,10 @@ namespace ReStore.Views.Pages
                 BackupIntervalHoursBox.Text = _configManager.BackupInterval.TotalHours.ToString("F1");
                 SizeThresholdBox.Text = _configManager.SizeThresholdMB.ToString();
                 MaxFileSizeBox.Text = _configManager.MaxFileSizeMB.ToString();
+
+                RetentionEnabledCheckBox.IsChecked = _configManager.Retention.Enabled;
+                RetentionKeepLastBox.Text = _configManager.Retention.KeepLastPerDirectory.ToString();
+                RetentionMaxAgeDaysBox.Text = _configManager.Retention.MaxAgeDays.ToString();
             }
             catch (System.Exception ex)
             {
@@ -565,12 +569,33 @@ namespace ReStore.Views.Pages
                     return;
                 }
 
+                var retentionEnabled = RetentionEnabledCheckBox.IsChecked == true;
+                if (!int.TryParse(RetentionKeepLastBox.Text, out var keepLast) || keepLast < 0)
+                {
+                    MessageBox.Show("Invalid retention keep-last value. Use a number >= 0.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (!int.TryParse(RetentionMaxAgeDaysBox.Text, out var maxAgeDays) || maxAgeDays < 0)
+                {
+                    MessageBox.Show("Invalid retention max-age value. Use a number >= 0.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (retentionEnabled && keepLast < 1)
+                {
+                    MessageBox.Show("Retention is enabled but Keep Last is < 1. At least one backup must be kept.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
                 var configPath = _configManager.GetConfigFilePath();
                 var jsonString = await System.IO.File.ReadAllTextAsync(configPath);
                 
                 using var doc = System.Text.Json.JsonDocument.Parse(jsonString);
                 using var stream = new System.IO.MemoryStream();
                 using var writer = new System.Text.Json.Utf8JsonWriter(stream, new System.Text.Json.JsonWriterOptions { Indented = true });
+
+                var wroteRetention = false;
 
                 writer.WriteStartObject();
                 foreach (var property in doc.RootElement.EnumerateObject())
@@ -591,10 +616,30 @@ namespace ReStore.Views.Pages
                     {
                         writer.WriteNumber("maxFileSizeMB", maxFileSize);
                     }
+                    else if (property.Name == "retention")
+                    {
+                        writer.WritePropertyName("retention");
+                        writer.WriteStartObject();
+                        writer.WriteBoolean("enabled", retentionEnabled);
+                        writer.WriteNumber("keepLastPerDirectory", keepLast);
+                        writer.WriteNumber("maxAgeDays", maxAgeDays);
+                        writer.WriteEndObject();
+                        wroteRetention = true;
+                    }
                     else
                     {
                         property.WriteTo(writer);
                     }
+                }
+
+                if (!wroteRetention)
+                {
+                    writer.WritePropertyName("retention");
+                    writer.WriteStartObject();
+                    writer.WriteBoolean("enabled", retentionEnabled);
+                    writer.WriteNumber("keepLastPerDirectory", keepLast);
+                    writer.WriteNumber("maxAgeDays", maxAgeDays);
+                    writer.WriteEndObject();
                 }
                 writer.WriteEndObject();
                 writer.Flush();
