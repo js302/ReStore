@@ -52,6 +52,12 @@ See the [Build from Source](#build-from-source-1) section below.
 - **Global Fallback**: Set a default storage type that applies when no specific storage is configured
 - **Multi-destination**: Seamlessly use multiple storage providers simultaneously
 
+### File Sharing
+
+- **Secure Sharing**: Generate temporary, shareable links for your files directly from your storage provider
+- **Context Menu Integration**: Right-click any file in Windows Explorer to "Share with ReStore"
+- **Supported Providers**: Works with Amazon S3, Azure Blob Storage, Google Cloud Storage, Dropbox, and Backblaze B2
+
 ### Smart File Handling
 
 - **Change Detection**: SHA256 hashing to detect file modifications accurately
@@ -103,6 +109,19 @@ The GUI provides:
 - Backup history browser with one-click restore
 - Settings page for configuring watch directories, storage providers, and backup options
 - System tray support for background operation
+
+### File Sharing & Context Menu
+
+ReStore integrates with Windows Explorer to allow quick file sharing. To enable this feature:
+
+1. **Download the `register-context-menu.ps1` script** (available alongside the installer in the release).
+2. Right-click the script and select **"Run with PowerShell"**.
+
+Once enabled, you can **right-click any file** in Explorer and select **"Share with ReStore"**. This opens a dialog to upload the file to your chosen cloud provider (S3, Azure, GCP, Dropbox, B2) and generates a shareable link.
+
+The script automatically detects your ReStore installation. If you installed via MSIX, it uses the system-wide alias. If you are running from source, it uses your local build.
+
+**NOTE**: You must have at least one cloud storage provider configured in ReStore for sharing to work. The files will be **unencrypted** when shared. If you get any error, ensure that the storage provider is correctly set up.
 
 **Post-Installation Configuration**:
 

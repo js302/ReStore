@@ -15,8 +15,24 @@ public enum LogLevel
 
 public class Logger : ILogger
 {
-    private const string LOG_FILE = "restore.log";
+    private readonly string _logFilePath;
     private readonly Lock _lockObject = new();
+
+    public Logger()
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var logDir = Path.Combine(userProfile, "ReStore", "logs");
+        try 
+        {
+            Directory.CreateDirectory(logDir);
+            _logFilePath = Path.Combine(logDir, "restore.log");
+        }
+        catch
+        {
+            // Fallback to temp if we can't create the directory
+            _logFilePath = Path.Combine(Path.GetTempPath(), "restore.log");
+        }
+    }
 
     public void Log(string message, LogLevel level = LogLevel.Info)
     {
@@ -28,7 +44,7 @@ public class Logger : ILogger
             
             try
             {
-                File.AppendAllText(LOG_FILE, logMessage + Environment.NewLine);
+                File.AppendAllText(_logFilePath, logMessage + Environment.NewLine);
             }
             catch (IOException)
             {

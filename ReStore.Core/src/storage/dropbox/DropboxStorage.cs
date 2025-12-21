@@ -1,5 +1,6 @@
 using Dropbox.Api;
 using Dropbox.Api.Files;
+using Dropbox.Api.Sharing;
 using ReStore.Core.src.utils;
 
 namespace ReStore.Core.src.storage.dropbox;
@@ -124,6 +125,35 @@ public class DropboxStorage(ILogger logger) : StorageBase(logger)
             throw;
         }
     }
+
+    public override async Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    {
+        var path = NormalizePath(remotePath);
+
+        try 
+        {
+            // Note: Expiration is only supported on Professional/Business plans
+            var settings = new SharedLinkSettings(
+                requestedVisibility: RequestedVisibility.Public.Instance,
+                audience: LinkAudience.Public.Instance,
+                access: RequestedLinkAccessLevel.Viewer.Instance
+            );
+
+            var link = await _dropboxClient!.Sharing.CreateSharedLinkWithSettingsAsync(path, settings);
+            return link.Url;
+        }
+        catch (ApiException<CreateSharedLinkWithSettingsError> ex)
+        {
+            if (ex.ErrorResponse.IsSharedLinkAlreadyExists)
+            {
+                var links = await _dropboxClient!.Sharing.ListSharedLinksAsync(path);
+                return links.Links.First().Url;
+            }
+            throw;
+        }
+    }
+
+    public override bool SupportsSharing => true;
 
     protected override void Dispose(bool disposing)
     {

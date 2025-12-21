@@ -21,6 +21,8 @@ public interface IStorage : IDisposable
     Task DownloadAsync(string remotePath, string localPath);
     Task<bool> ExistsAsync(string remotePath);
     Task DeleteAsync(string remotePath);
+    Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration);
+    bool SupportsSharing { get; }
 }
 
 public abstract class StorageBase : IStorage
@@ -38,6 +40,13 @@ public abstract class StorageBase : IStorage
     public abstract Task DownloadAsync(string remotePath, string localPath);
     public abstract Task<bool> ExistsAsync(string remotePath);
     public abstract Task DeleteAsync(string remotePath);
+
+    public virtual Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    {
+        throw new NotSupportedException("Sharing is not supported by this storage provider.");
+    }
+
+    public virtual bool SupportsSharing => false;
 
     public void Dispose()
     {
@@ -62,12 +71,6 @@ public abstract class StorageBase : IStorage
 
         _disposed = true;
     }
-
-    // Optional Finalizer (only if the base class directly owns unmanaged resources) Consider if needed
-    // ~StorageBase()
-    // {
-    //     Dispose(false);
-    // }
 }
 
 public class StorageFactory

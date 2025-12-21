@@ -92,6 +92,21 @@ public class S3Storage(ILogger logger) : StorageBase(logger)
         await _s3Client!.DeleteObjectAsync(_bucketName, remotePath);
     }
 
+    public override Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    {
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _bucketName,
+            Key = remotePath,
+            Expires = DateTime.UtcNow.Add(expiration)
+        };
+
+        string url = _s3Client!.GetPreSignedURL(request);
+        return Task.FromResult(url);
+    }
+
+    public override bool SupportsSharing => true;
+
     protected override void Dispose(bool disposing)
     {
         if (_disposed) return;

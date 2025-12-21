@@ -32,7 +32,7 @@ namespace ReStore
             {
                 if (e.Args.Length > 0)
                 {
-                    SendCommandToExistingInstance(e.Args[0]);
+                    SendCommandToExistingInstance(e.Args);
                 }
                 else
                 {
@@ -79,12 +79,19 @@ namespace ReStore
                 WindowEffects.FixMaximizedBounds(mainWindow);
             };
             
-            if (e.Args.Length > 0)
+            if (e.Args.Length > 0 && e.Args[0] == "--share" && e.Args.Length > 1)
             {
-                HandleCommandLineArgs(e.Args, mainWindow);
+                OpenShareWindow(e.Args[1], shutdownOnClose: true);
             }
-            
-            mainWindow.Show();
+            else
+            {
+                if (e.Args.Length > 0)
+                {
+                    HandleCommandLineArgs(e.Args, mainWindow);
+                }
+                
+                mainWindow.Show();
+            }
             
             _pipeServerThread = new Thread(ListenForCommands);
             _pipeServerThread.IsBackground = true;
@@ -122,6 +129,17 @@ namespace ReStore
             }
         }
 
+        private void SendCommandToExistingInstance(string[] args)
+        {
+            var command = "";
+            if (args.Length > 0 && args[0] == "--share" && args.Length > 1) {
+                command = $"--share \"{args[1]}\"";
+            } else {
+                command = string.Join(" ", args);
+            }
+            SendCommandToExistingInstance(command);
+        }
+
         private void SendCommandToExistingInstance(string command)
         {
             try
@@ -150,6 +168,13 @@ namespace ReStore
 
         private void HandleCommand(string command, MainWindow mainWindow)
         {
+            if (command.StartsWith("--share "))
+            {
+                var path = command.Substring(8).Trim('"');
+                OpenShareWindow(path, shutdownOnClose: false);
+                return;
+            }
+
             mainWindow.Show();
             mainWindow.WindowState = WindowState.Normal;
             mainWindow.Activate();
@@ -162,6 +187,32 @@ namespace ReStore
             {
                 ExecuteWatcherAction(mainWindow, false);
             }
+        }
+
+        private void OpenShareWindow(string filePath, bool shutdownOnClose)
+        {
+            var logger = new ReStore.Core.src.utils.Logger();
+            var configManager = new ReStore.Core.src.utils.ConfigManager(logger);
+            System.Threading.Tasks.Task.Run(async () => await configManager.LoadAsync()).Wait();
+            
+            var shareService = new ReStore.Core.src.sharing.ShareService(configManager, logger);
+            
+            Dispatcher.Invoke(() =>
+            {
+                var shareWindow = new ReStore.Views.Windows.ShareWindow(filePath, shareService, configManager);
+                if (shutdownOnClose)
+                {
+                    shareWindow.Closed += (s, e) => 
+                    {
+                        // Only shutdown if the main window hasn't been shown in the meantime
+                        if (MainWindow == null || MainWindow.Visibility != Visibility.Visible)
+                        {
+                            Shutdown();
+                        }
+                    };
+                }
+                shareWindow.Show();
+            });
         }
 
         private void ExecuteWatcherAction(MainWindow mainWindow, bool start)

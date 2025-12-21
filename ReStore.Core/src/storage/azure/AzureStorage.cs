@@ -1,5 +1,6 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Sas;
 using ReStore.Core.src.utils;
 
 namespace ReStore.Core.src.storage.azure;
@@ -71,6 +72,30 @@ public class AzureStorage(ILogger logger) : StorageBase(logger)
         var blobClient = _containerClient!.GetBlobClient(remotePath);
         await blobClient.DeleteIfExistsAsync();
     }
+
+    public override Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    {
+        var blobClient = _containerClient!.GetBlobClient(remotePath);
+        
+        if (!blobClient.CanGenerateSasUri)
+        {
+             throw new NotSupportedException("Blob client cannot generate SAS URI. Check credentials.");
+        }
+
+        var sasBuilder = new BlobSasBuilder
+        {
+            BlobContainerName = _containerClient.Name,
+            BlobName = remotePath,
+            Resource = "b",
+            ExpiresOn = DateTimeOffset.UtcNow.Add(expiration)
+        };
+        sasBuilder.SetPermissions(BlobSasPermissions.Read);
+
+        Uri sasUri = blobClient.GenerateSasUri(sasBuilder);
+        return Task.FromResult(sasUri.ToString());
+    }
+
+    public override bool SupportsSharing => true;
 
     protected override void Dispose(bool disposing)
     {

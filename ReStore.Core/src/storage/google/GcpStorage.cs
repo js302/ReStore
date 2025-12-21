@@ -8,6 +8,7 @@ namespace ReStore.Core.src.storage.google;
 public class GcpStorage(ILogger logger) : StorageBase(logger)
 {
     private StorageClient? _storageClient;
+    private GoogleCredential? _credential;
     private string _bucketName = string.Empty;
     private bool _disposed = false;
 
@@ -23,9 +24,9 @@ public class GcpStorage(ILogger logger) : StorageBase(logger)
             {
                 using var stream = File.OpenRead(credentialPath);
                 #pragma warning disable CS0618 // Type or member is obsolete
-                var credential = GoogleCredential.FromStream(stream);
+                _credential = GoogleCredential.FromStream(stream);
                 #pragma warning restore CS0618 // Type or member is obsolete
-                _storageClient = await StorageClient.CreateAsync(credential);
+                _storageClient = await StorageClient.CreateAsync(_credential);
             }
             else 
             {
@@ -104,6 +105,19 @@ public class GcpStorage(ILogger logger) : StorageBase(logger)
             // Ignore if already deleted
         }
     }
+
+    public override async Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    {
+        if (_credential == null)
+        {
+             throw new NotSupportedException("Cannot generate signed URL without explicit credentials (credentialPath).");
+        }
+
+        var signer = UrlSigner.FromCredential(_credential);
+        return await signer.SignAsync(_bucketName, remotePath, expiration, HttpMethod.Get);
+    }
+
+    public override bool SupportsSharing => true;
 
     protected override void Dispose(bool disposing)
     {
