@@ -53,6 +53,13 @@ public class RetentionManagerTests
             return Task.CompletedTask;
         }
 
+        public bool SupportsSharing => false;
+
+        public Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+        {
+            throw new NotImplementedException();
+        }
+
         public void Dispose()
         {
         }
