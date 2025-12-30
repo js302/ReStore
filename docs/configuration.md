@@ -95,6 +95,6 @@ Example configuration:
 
 **Run at Windows Startup**: Configure ReStore to automatically launch when Windows starts. This feature adds an entry to the Windows Registry (`HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`). By default, this is disabled and can be toggled from the Settings page.
 
-**System Tray Integration**: When minimized, ReStore can run in the system tray, allowing you to keep the file watcher active in the background without cluttering your taskbar.
+**System Tray Integration**: When minimized, ReStore can run in the system tray, allowing you to keep the file watcher active in the background without cluttering your taskbar. By default, this is disabled and can be configured from the Settings page.
 
-**CLI Access**: The `restore` command is automatically available system-wide after installation.
+**CLI Access**: The `restore` command is automatically available system-wide after installation. This can be disabled from Settings → Apps → Advanced app settings → App execution aliases and toggling off `restore.exe`. Uninstalling ReStore will also remove the CLI access.

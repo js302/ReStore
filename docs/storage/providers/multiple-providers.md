@@ -71,6 +71,15 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
 - **Per-Component**: System backups (programs, environment, settings) can each use different storage destinations
 - **Global Fallback**: The `globalStorageType` is used when no specific storage is configured
 
+## GUI Usage
+
+In the Settings page, you can:
+
+- Set the global default storage in the "Global Default Storage" dropdown
+- Select storage per watched directory in each directory's storage dropdown
+- Use "Apply Current Global Storage to All Paths" to quickly set all directories
+- Configure system backup storage separately for programs, environment, and settings
+
 ## CLI Usage
 
 When using the CLI, you can override storage selection with the `--storage` flag:
@@ -86,12 +95,3 @@ restore backup "C:\Users\YourName\Documents" --storage gdrive
 restore system-backup all --storage s3
 restore system-backup programs --storage github
 ```
-
-## GUI Usage
-
-In the Settings page, you can:
-
-- Set the global default storage in the "Global Default Storage" dropdown
-- Select storage per watched directory in each directory's storage dropdown
-- Use "Apply Current Global Storage to All Paths" to quickly set all directories
-- Configure system backup storage separately for programs, environment, and settings

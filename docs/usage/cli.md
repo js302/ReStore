@@ -2,7 +2,7 @@
 
 The `restore` command is automatically available system-wide after installing ReStore through the MSIX package.
 
-**To disable the CLI** (if needed):
+**To disable the CLI usage** (if not needed):
 
 1. Open Windows **Settings** → **Apps** → **Advanced app settings** → **App execution aliases**
 2. Find **restore.exe** in the list

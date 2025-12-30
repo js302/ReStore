@@ -22,4 +22,5 @@ To remove the context menu option, open Registry Editor (`regedit.exe`) and navi
 ```
 HKEY_CLASSES_ROOT\*\shell\ReStoreShare
 ```
+
 Then, right-click the **"ReStoreShare"** key and select **Delete**.

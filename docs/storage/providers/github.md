@@ -82,7 +82,7 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 
 **Storage Limits (Free Plan):**
 
-- **Repository size**: No hard limit, but recommended to keep under 1 GB
+- **Repository size**: Recommended to keep under 5 GB
 - **File size**: 100 MB maximum per file (warning at 50 MB)
-- **Free tier**: 2 GB of Git LFS storage and 1 GB of bandwidth per month
+- **Free tier**: 10 GB of Git LFS storage and bandwidth per month
 - **Best practice**: Use GitHub for configuration backups and smaller files; use Google Drive or S3 for large file backups
