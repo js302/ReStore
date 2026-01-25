@@ -36,26 +36,36 @@ For building from source, see [Installation Docs](docs/installation.md).
 **[Configuration](docs/configuration.md)**: Settings, config files, and retention policies.
 
 **[Storage Providers](docs/storage/README.md)**: Setup guides for all supported storage backends.
-  - [Local](docs/storage/providers/local.md)
-  - [Google Drive](docs/storage/providers/google-drive.md)
-  - [AWS S3](docs/storage/providers/aws-s3.md)
-  - [GitHub](docs/storage/providers/github.md)
-  - [Azure](docs/storage/providers/azure.md)
-  - [GCP](docs/storage/providers/google-cloud-storage.md)
-  - [Dropbox](docs/storage/providers/dropbox.md)
-  - [SFTP](docs/storage/providers/sftp.md)
-  - [Backblaze B2](docs/storage/providers/backblaze-b2.md)
+
+- [Local](docs/storage/providers/local.md)
+- [Google Drive](docs/storage/providers/google-drive.md)
+- [AWS S3](docs/storage/providers/aws-s3.md)
+- [GitHub](docs/storage/providers/github.md)
+- [Azure](docs/storage/providers/azure.md)
+- [GCP](docs/storage/providers/google-cloud-storage.md)
+- [Dropbox](docs/storage/providers/dropbox.md)
+- [SFTP](docs/storage/providers/sftp.md)
+- [Backblaze B2](docs/storage/providers/backblaze-b2.md)
 
 **[Usage](docs/usage/gui.md)**: How to use the GUI and CLI.
-  - [GUI Guide](docs/usage/gui.md)
-  - [CLI Guide](docs/usage/cli.md)
-  - [File Sharing](docs/usage/file-sharing.md)
+
+- [GUI Guide](docs/usage/gui.md)
+- [CLI Guide](docs/usage/cli.md)
+- [File Sharing](docs/usage/file-sharing.md)
 
 **[System Backup](docs/system-backup.md)**: Backup programs, environment variables, and Windows settings.
 
 **[Encryption](docs/encryption.md)**: Security features, password protection, and technical details.
 
 **[Security & Best Practices](docs/security.md)**: Important security notes and recommendations.
+
+**[Architecture](docs/architecture/README.md)**: Technical architecture and component diagrams.
+
+- [Components](docs/architecture/components.md)
+- [Data Flows](docs/architecture/data-flows.md)
+- [Encryption Architecture](docs/architecture/encryption-architecture.md)
+- [Configuration & State](docs/architecture/configuration-state.md)
+- [Technology Stack](docs/architecture/technology-stack.md)
 
 **[Development](docs/development.md)**: Project structure and testing.
 

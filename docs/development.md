@@ -5,25 +5,28 @@
 ```
 ReStore/
 ├── ReStore.Core/             # Core CLI application
-|   |
+│   │
 │   ├── Program.cs            # CLI entry point
 │   ├── src/
 │   │   ├── core/             # Backup, restore, and state management
 │   │   ├── storage/          # Storage provider implementations
-|   |   ├── sharing/          # File sharing functionality
+│   │   ├── sharing/          # File sharing functionality
 │   │   ├── monitoring/       # File watching and change detection
 │   │   ├── utils/            # Configuration, logging, and utilities
 │   │   └── backup/           # System backup functionality
 │   └── config/               # Configuration files
 │
-└── ReStore/                  # WPF GUI application
-    |
-    ├── App.xaml              # Application entry point
-    ├── Assets/               # Icons, images, and resources
-    ├── Interop/              # Interop services (tray, notifications)
-    ├── Views/                # UI pages (Dashboard, Backups, Settings)
-    ├── Services/             # GUI services (theme, tray, settings)
-    └── config/               # GUI configuration files
+├── ReStore/                  # WPF GUI application
+│   │
+│   ├── App.xaml              # Application entry point
+│   ├── Assets/               # Icons, images, and resources
+│   ├── Interop/              # Interop services (tray, notifications)
+│   ├── Views/                # UI pages (Dashboard, Backups, Settings)
+│   │   ├── Pages/            # Navigation pages
+│   │   └── Windows/          # Dialog windows
+│   └── Services/             # GUI services (theme, tray, settings)
+│
+└── ReStore.Tests/            # Unit and integration tests
 ```
 
 ## Development

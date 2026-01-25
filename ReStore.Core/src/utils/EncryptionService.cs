@@ -9,7 +9,7 @@ public class EncryptionMetadata
     public byte[] EncryptedDEK { get; set; } = Array.Empty<byte>();
     public string Algorithm { get; set; } = "AES-256-GCM";
     public int Version { get; set; } = 1;
-    public int KeyDerivationIterations { get; set; } = 100000;
+    public int KeyDerivationIterations { get; set; } = 1_000_000;
 }
 
 public class EncryptionService
@@ -18,7 +18,7 @@ public class EncryptionService
     private const int SALT_SIZE_BYTES = 32;
     private const int IV_SIZE_BYTES = 12;
     private const int TAG_SIZE_BYTES = 16;
-    private const int DEFAULT_ITERATIONS = 100000;
+    private const int DEFAULT_ITERATIONS = 1_000_000;
 
     private readonly ILogger _logger;
 
