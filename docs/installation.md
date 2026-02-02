@@ -4,7 +4,6 @@
 
 1. **[Download the latest MSIX installer](https://github.com/js302/ReStore/releases/latest)**
 2. **Double-click the MSIX file** to install ReStore
-3. **Optional**: To enable file sharing via the context menu in Windows Explorer, download and run the `register-context-menu.ps1` script from the release. See [File Sharing Docs](usage/file-sharing.md) for details.
 
 ## Prerequisites
 

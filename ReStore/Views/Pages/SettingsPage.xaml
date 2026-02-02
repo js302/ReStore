@@ -737,6 +737,24 @@
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,4,0,16"/>
 
+                            <!-- Context Menu Integration -->
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="File Explorer Integration" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Add 'Share with ReStore' to the right-click context menu in Windows Explorer." FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox x:Name="ContextMenuCheckBox" Content="Enable 'Share with ReStore' context menu" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="ContextMenuStatusText" Grid.Column="2" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,4,0,16"/>
+
                             <StackPanel Margin="0,0,0,12">
                                 <TextBlock Text="Command Line Interface (CLI)" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
                                 <TextBlock Text="The 'restore' command is automatically available in all terminals after installation." FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8" TextWrapping="Wrap"/>

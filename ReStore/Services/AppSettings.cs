@@ -15,6 +15,7 @@ namespace ReStore.Services
         public string? DefaultStorage { get; set; }
         public bool ShowOnlyConfiguredProviders { get; set; }
         public bool MinimizeToTray { get; set; } = false;
+        public bool ContextMenuEnabled { get; set; } = false;
 
         public static AppSettings Load()
         {

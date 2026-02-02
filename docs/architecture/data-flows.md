@@ -135,6 +135,10 @@ GUI shows success message
 ## File Sharing Flow
 
 ```
+User enables context menu in Settings → Application Behavior
+  ↓
+FileContextMenuService.RegisterContextMenu() adds registry entry
+  ↓
 User right-clicks file in Explorer → "Share with ReStore"
   ↓
 ReStore.exe --share "path/to/file" launches

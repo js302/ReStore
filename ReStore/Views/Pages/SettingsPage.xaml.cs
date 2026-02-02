@@ -51,26 +51,21 @@ namespace ReStore.Views.Pages
                 RunAtStartupCheckBox.IsChecked = IsRunAtStartupEnabled();
                 await ReloadStorageSourcesAsync();
 
-                // Populate provider fields from config (if present)
                 PopulateProviderFields();
 
-                // Load backup configuration
                 LoadBackupConfiguration();
 
-                // Load watch directories
                 LoadWatchDirectories();
                 
-                // Load global storage
                 LoadGlobalStorage();
 
-                // Load exclusions
                 LoadExclusions();
 
-                // Load system backup configuration
                 LoadSystemBackupConfiguration();
 
-                // Load encryption configuration
                 LoadEncryptionConfiguration();
+
+                LoadContextMenuConfiguration();
 
                 _isLoading = false;
             };
@@ -123,6 +118,18 @@ namespace ReStore.Views.Pages
                 {
                     mainWindow.UpdateTrayManager(false);
                 }
+            };
+
+            ContextMenuCheckBox.Checked += (_, __) =>
+            {
+                if (_isLoading) return;
+                SetContextMenuEnabled(true);
+            };
+
+            ContextMenuCheckBox.Unchecked += (_, __) =>
+            {
+                if (_isLoading) return;
+                SetContextMenuEnabled(false);
             };
 
             StorageCombo.SelectionChanged += (_, __) =>
@@ -1039,6 +1046,61 @@ namespace ReStore.Views.Pages
             {
                 MessageBox.Show($"Failed to update startup setting: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 RunAtStartupCheckBox.IsChecked = IsRunAtStartupEnabled();
+            }
+        }
+
+        private void LoadContextMenuConfiguration()
+        {
+            var isRegistered = FileContextMenuService.IsContextMenuEnabled();
+            
+            _appSettings.ContextMenuEnabled = isRegistered;
+            _appSettings.Save();
+            
+            ContextMenuCheckBox.IsChecked = isRegistered;
+            ContextMenuStatusText.Text = isRegistered ? "✓ Registered" : "";
+        }
+
+        private void SetContextMenuEnabled(bool enabled)
+        {
+            if (enabled)
+            {
+                var (success, errorMessage) = FileContextMenuService.RegisterContextMenu();
+                if (success)
+                {
+                    _appSettings.ContextMenuEnabled = true;
+                    _appSettings.Save();
+                    ContextMenuStatusText.Text = "✓ Registered";
+                    MessageBox.Show(
+                        "Context menu registered successfully!\n\nYou can now right-click any file in Windows Explorer and select 'Share with ReStore'.",
+                        "Success",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    ContextMenuCheckBox.IsChecked = false;
+                    MessageBox.Show(errorMessage ?? "Failed to register context menu.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            else
+            {
+                var (success, errorMessage) = FileContextMenuService.UnregisterContextMenu();
+                if (success)
+                {
+                    _appSettings.ContextMenuEnabled = false;
+                    _appSettings.Save();
+                    ContextMenuStatusText.Text = "";
+                    MessageBox.Show(
+                        "Context menu unregistered successfully.\n\nThe 'Share with ReStore' option has been removed from the Windows Explorer context menu.",
+                        "Success",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    ContextMenuCheckBox.IsChecked = true;
+                    MessageBox.Show(errorMessage ?? "Failed to unregister context menu.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 

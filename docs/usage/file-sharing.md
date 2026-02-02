@@ -4,10 +4,13 @@ ReStore integrates with Windows Explorer to allow quick file sharing.
 
 ## Enable Context Menu
 
-1. **Download the `register-context-menu.ps1` script** (available alongside the installer in the release).
-2. Right-click the script and select **"Run with PowerShell"**.
+The context menu integration is now built into ReStore. To enable it:
 
-The script automatically detects your ReStore installation. If you installed via MSIX, it uses the system-wide alias. If you are running from source, it uses your local build.
+1. Open ReStore
+2. Go to **Settings** → **Application Behavior**
+3. Check **"Enable 'Share with ReStore' context menu"**
+
+That's it! The setting is applied immediately.
 
 ## Usage
 
@@ -17,10 +20,10 @@ Once enabled, you can **right-click any file** in Explorer and select **"Share w
 
 ## Disable Context Menu
 
-To remove the context menu option, open Registry Editor (`regedit.exe`) and navigate to:
+To disable the context menu:
 
-```
-HKEY_CLASSES_ROOT\*\shell\ReStoreShare
-```
+1. Open ReStore
+2. Go to **Settings** → **Application Behavior**
+3. Uncheck **"Enable 'Share with ReStore' context menu"**
 
-Then, right-click the **"ReStoreShare"** key and select **Delete**.
+The context menu entry will be removed immediately.

@@ -35,7 +35,7 @@
 ## File Sharing
 
 - **Secure Sharing**: Generate temporary, shareable links for your files directly from your storage provider
-- **Context Menu Integration**: Right-click any file in Windows Explorer to "Share with ReStore"
+- **Context Menu Integration**: Enable "Share with ReStore" in Settings to add right-click sharing in Windows Explorer
 - **Supported Providers**: Works with Amazon S3, Azure Blob Storage, Google Cloud Storage, Dropbox, and Backblaze B2
 
 ## Smart File Handling

@@ -28,6 +28,7 @@
 │  │ • AppSettings (GUI Settings)                         │                   │
 │  │ • ThemeSettings (Theme Management)                   │                   │
 │  │ • GuiPasswordProvider (Password Management)          │                   │
+│  │ • FileContextMenuService (Explorer Context Menu)     │                   │
 │  └──────────────────────────────────────────────────────┘                   │
 │                             │                                               │
 │  ┌──────────────────────────┴───────────────────────────┐                   │
@@ -184,13 +185,14 @@ The `WatcherService` singleton bridges the GUI and Core library:
 
 ### GUI Services
 
-| Service               | Responsibility                       |
-| --------------------- | ------------------------------------ |
-| `WatcherService`      | File watcher lifecycle management    |
-| `SystemTrayManager`   | System tray icon and notifications   |
-| `AppSettings`         | GUI-specific settings persistence    |
-| `ThemeSettings`       | Light/Dark/System theme management   |
-| `GuiPasswordProvider` | Password caching and prompt handling |
+| Service                  | Responsibility                           |
+| ------------------------ | ---------------------------------------- |
+| `WatcherService`         | File watcher lifecycle management        |
+| `SystemTrayManager`      | System tray icon and notifications       |
+| `AppSettings`            | GUI-specific settings persistence        |
+| `ThemeSettings`          | Light/Dark/System theme management       |
+| `GuiPasswordProvider`    | Password caching and prompt handling     |
+| `FileContextMenuService` | Windows Explorer context menu management |
 
 ### Core Utilities
 
