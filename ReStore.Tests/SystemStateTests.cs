@@ -1,12 +1,7 @@
 using Moq;
-using Xunit;
 using FluentAssertions;
 using ReStore.Core.src.core;
 using ReStore.Core.src.utils;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.IO;
-using System;
 
 namespace ReStore.Tests;
 

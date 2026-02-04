@@ -1,14 +1,9 @@
 using Moq;
-using Xunit;
 using FluentAssertions;
 using ReStore.Core.src.core;
 using ReStore.Core.src.utils;
 using ReStore.Core.src.storage.local;
 using ReStore.Core.src.monitoring;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.IO;
-using System;
 
 namespace ReStore.Tests;
 
@@ -96,13 +91,10 @@ public class IntegrationTests : IDisposable
         var backupFile = backups[0];
 
         // Act - Restore
-        // We need to find the relative path stored in SystemState or just use the known structure
-        // The backup path in storage is backups/{DirName}/{BackupName}
         var relativeBackupPath = Path.GetRelativePath(_backupDir, backupFile).Replace('\\', '/');
 
         var restore = new Restore(
             _loggerMock.Object,
-            state,
             storage
         );
 
@@ -239,7 +231,6 @@ public class IntegrationTests : IDisposable
 
         var restore = new Restore(
             _loggerMock.Object,
-            state,
             storage,
             passwordMock.Object
         );

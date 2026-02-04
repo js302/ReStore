@@ -4,11 +4,6 @@ using ReStore.Core.src.backup;
 using ReStore.Core.src.core;
 using ReStore.Core.src.storage;
 using ReStore.Core.src.utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Xunit;
 
 namespace ReStore.Tests;
 
