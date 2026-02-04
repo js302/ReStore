@@ -9,9 +9,9 @@ namespace ReStore.Core.src.backup
 {
     public class BackupConfiguration
     {
-        public List<string> IncludePaths { get; set; } = new();
-        public List<string> ExcludePaths { get; set; } = new();
-        public List<string> ExcludePatterns { get; set; } = new();
+        public List<string> IncludePaths { get; set; } = [];
+        public List<string> ExcludePaths { get; set; } = [];
+        public List<string> ExcludePatterns { get; set; } = [];
         public int MaxFileSize { get; set; } = 100 * 1024 * 1024; // 100MB by default
         public BackupType Type { get; set; } = BackupType.Incremental;
     }

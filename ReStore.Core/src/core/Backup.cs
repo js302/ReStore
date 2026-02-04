@@ -44,7 +44,7 @@ public class Backup
         try
         {
             sourceDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(sourceDirectory));
-            
+
             if (!Directory.Exists(sourceDirectory))
             {
                 throw new DirectoryNotFoundException($"Source directory not found: {sourceDirectory}");
@@ -176,7 +176,7 @@ public class Backup
                 var encryptedPath = await _compressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 archiveFileName = Path.GetFileName(encryptedPath);
-                
+
                 // Upload metadata file
                 var metadataPath = encryptedPath + ".meta";
                 var remoteMetadataPath = $"backups/{Path.GetFileName(baseDirectory)}/{archiveFileName}.meta";
@@ -238,8 +238,8 @@ public class Backup
     private string GetStorageTypeForDirectory(string directory)
     {
         var normalizedDir = Path.GetFullPath(Environment.ExpandEnvironmentVariables(directory));
-        
-        var watchConfig = _config.WatchDirectories.FirstOrDefault(w => 
+
+        var watchConfig = _config.WatchDirectories.FirstOrDefault(w =>
             Path.GetFullPath(Environment.ExpandEnvironmentVariables(w.Path))
                 .Equals(normalizedDir, StringComparison.OrdinalIgnoreCase));
 
@@ -306,6 +306,7 @@ public class Backup
         catch (Exception ex)
         {
             _logger.Log($"Failed to create full backup: {ex.Message}", LogLevel.Error);
+            throw;
         }
     }
 }

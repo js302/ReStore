@@ -128,24 +128,25 @@ public class RetentionManager
 
     private async Task DeleteBackupFromStorageAsync(IStorage storage, string group, BackupInfo backup)
     {
+        bool backupDeleted = false;
+        
         try
         {
-            var deletedPaths = new List<string>();
-
             var exists = await storage.ExistsAsync(backup.Path);
             if (!exists)
             {
                 _logger.Log($"Retention: backup missing in storage (will drop from state): {backup.Path}", LogLevel.Warning);
-                deletedPaths.Add(backup.Path);
+                backupDeleted = true; // Missing files are considered "deleted" for state cleanup
             }
             else
             {
                 await storage.DeleteAsync(backup.Path);
                 _logger.Log($"Retention: deleted backup: {backup.Path}", LogLevel.Info);
-                deletedPaths.Add(backup.Path);
+                backupDeleted = true;
             }
 
-            if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+            // Only attempt metadata deletion if backup was successfully deleted
+            if (backupDeleted && backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
             {
                 var metadataPath = backup.Path + ".meta";
                 try
@@ -160,17 +161,21 @@ public class RetentionManager
                 catch (Exception ex)
                 {
                     _logger.Log($"Retention: failed deleting metadata for {backup.Path}: {ex.Message}", LogLevel.Warning);
+                    // Continue - main backup was deleted, metadata orphan is acceptable
                 }
-            }
-
-            if (deletedPaths.Count > 0)
-            {
-                _systemState.RemoveBackupsFromGroup(group, deletedPaths);
             }
         }
         catch (Exception ex)
         {
             _logger.Log($"Retention: failed deleting {backup.Path}: {ex.Message}", LogLevel.Warning);
+            // Don't update state if deletion failed
+            return;
+        }
+
+        // Only update state after successful deletion
+        if (backupDeleted)
+        {
+            _systemState.RemoveBackupsFromGroup(group, [backup.Path]);
         }
     }
 }

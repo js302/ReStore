@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Security.Cryptography;
 using ReStore.Core.src.utils;
 using System.Text.Json.Serialization;
@@ -20,7 +21,7 @@ internal class PersistentStateData
     public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
 }
 
-public class SystemState
+public partial class SystemState
 {
     public DateTime LastBackupTime { get; set; }
     public List<string> TrackedDirectories { get; set; } = [];
@@ -105,15 +106,42 @@ public class SystemState
         try
         {
             var fileName = Path.GetFileNameWithoutExtension(path);
-            var timestampStr = fileName.Split('_').Last();
-            return DateTime.ParseExact(timestampStr, "yyyyMMddHHmmss", null);
+            // Handle .enc extension if present
+            if (fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = Path.GetFileNameWithoutExtension(fileName);
+            }
+
+            // Expected format: backup_<name>_<guid>_<timestamp> or similar patterns
+            // Try to find a 14-digit timestamp (yyyyMMddHHmmss) in the filename
+            var match = TimestampRegex().Match(fileName);
+            if (match.Success)
+            {
+                return DateTime.ParseExact(match.Groups[1].Value, "yyyyMMddHHmmss", null);
+            }
+
+            // Fallback: try the last underscore-separated segment
+            var parts = fileName.Split('_');
+            for (int i = parts.Length - 1; i >= 0; i--)
+            {
+                if (parts[i].Length == 14 && long.TryParse(parts[i], out _))
+                {
+                    return DateTime.ParseExact(parts[i], "yyyyMMddHHmmss", null);
+                }
+            }
+
+            _logger?.Log($"No valid timestamp found in filename: {fileName}", LogLevel.Warning);
+            return DateTime.MinValue;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            _logger?.Log($"Failed to parse timestamp from path: {path}", LogLevel.Warning);
+            _logger?.Log($"Failed to parse timestamp from path '{path}': {ex.Message}", LogLevel.Warning);
             return DateTime.MinValue;
         }
     }
+
+    [GeneratedRegex(@"(\d{14})(?:[^\d]|$)")]
+    private static partial Regex TimestampRegex();
 
     public virtual void AddBackup(string directory, string path, bool isDiff)
     {
@@ -252,7 +280,7 @@ public class SystemState
             }
 
             var hash = await CalculateFileHashAsync(filePath);
-            
+
             await _lock.WaitAsync();
             try
             {
@@ -300,7 +328,7 @@ public class SystemState
             Directory.CreateDirectory(Path.GetDirectoryName(_stateFilePath)!);
             var options = new JsonSerializerOptions { WriteIndented = true };
             var json = JsonSerializer.Serialize(stateData, options);
-            
+
             var tempPath = _stateFilePath + ".tmp";
             await File.WriteAllTextAsync(tempPath, json);
             File.Move(tempPath, _stateFilePath, overwrite: true);
@@ -378,7 +406,7 @@ public class SystemState
         }
 
         var filesToBackup = new List<string>();
-        
+
         _lock.Wait();
         try
         {

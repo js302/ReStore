@@ -138,7 +138,7 @@ Notes:
                             var restoreStorageType = storageOverride ?? configManager.GlobalStorageType;
                             using (var storage = await configManager.CreateStorageAsync(restoreStorageType))
                             {
-                                var restore = new Restore(logger, systemState, storage);
+                                var restore = new Restore(logger, storage);
                                 await restore.RestoreFromBackupAsync(args[1], args[2]);
                             }
                             break;

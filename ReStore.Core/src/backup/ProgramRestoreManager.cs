@@ -260,7 +260,7 @@ public class ProgramRestoreResult
     public int ManualPrograms { get; set; }
     public int SuccessfulInstalls { get; set; }
     public int FailedInstalls { get; set; }
-    public List<InstalledProgram> InstalledPrograms { get; set; } = new();
-    public List<InstalledProgram> FailedPrograms { get; set; } = new();
-    public List<InstalledProgram> ManualInstallRequired { get; set; } = new();
+    public List<InstalledProgram> InstalledPrograms { get; set; } = [];
+    public List<InstalledProgram> FailedPrograms { get; set; } = [];
+    public List<InstalledProgram> ManualInstallRequired { get; set; } = [];
 }
