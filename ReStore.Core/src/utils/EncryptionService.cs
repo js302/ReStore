@@ -92,16 +92,14 @@ public class EncryptionService
             outputStream.Write(iv, 0, iv.Length);
 
             var buffer = new byte[CHUNK_SIZE];
-            var chunkIV = new byte[IV_SIZE_BYTES];
             var tag = new byte[TAG_SIZE_BYTES];
             int bytesRead;
             long chunkIndex = 0;
 
             while ((bytesRead = inputStream.Read(buffer, 0, buffer.Length)) > 0)
             {
-                // Derive IV for this chunk: BaseIV + ChunkIndex
-                Array.Copy(iv, chunkIV, IV_SIZE_BYTES);
-                IncrementIV(chunkIV, chunkIndex);
+                // Derive unique IV for this chunk
+                var chunkIV = DeriveChunkIV(iv, chunkIndex);
 
                 var ciphertext = new byte[bytesRead];
                 var plaintextSpan = buffer.AsSpan(0, bytesRead);
@@ -136,7 +134,6 @@ public class EncryptionService
 
             var lengthBuffer = new byte[4];
             var tag = new byte[TAG_SIZE_BYTES];
-            var chunkIV = new byte[IV_SIZE_BYTES];
             long chunkIndex = 0;
 
             while (inputStream.Read(lengthBuffer, 0, 4) == 4)
@@ -158,8 +155,8 @@ public class EncryptionService
                     throw new InvalidOperationException("Unexpected EOF reading ciphertext");
                 }
 
-                Array.Copy(storedIV, chunkIV, IV_SIZE_BYTES);
-                IncrementIV(chunkIV, chunkIndex);
+                // Derive unique IV for this chunk
+                var chunkIV = DeriveChunkIV(storedIV, chunkIndex);
 
                 var plaintext = new byte[chunkLength];
                 try
@@ -177,24 +174,29 @@ public class EncryptionService
         });
     }
 
-    private void IncrementIV(byte[] iv, long counter)
+    private static byte[] DeriveChunkIV(byte[] baseIV, long chunkIndex)
     {
-        // Increment the last 8 bytes (64 bits) of the 96-bit IV
-        // This treats the last part of the IV as a counter for chunk uniqueness
+        // Create a new IV for each chunk by adding the chunk index to the base IV
+        // This avoids modifying the original IV array and ensures unique IVs per chunk
+        var chunkIV = new byte[IV_SIZE_BYTES];
+        Array.Copy(baseIV, chunkIV, IV_SIZE_BYTES);
         
+        // Increment the last 8 bytes (64 bits) of the 96-bit IV
         ulong currentLow = 0;
         for (int i = 0; i < 8; i++)
         {
-            currentLow = (currentLow << 8) | iv[IV_SIZE_BYTES - 8 + i];
+            currentLow = (currentLow << 8) | chunkIV[IV_SIZE_BYTES - 8 + i];
         }
         
-        currentLow += (ulong)counter;
+        currentLow += (ulong)chunkIndex;
         
         for (int i = 0; i < 8; i++)
         {
-            iv[IV_SIZE_BYTES - 1 - i] = (byte)(currentLow & 0xFF);
+            chunkIV[IV_SIZE_BYTES - 1 - i] = (byte)(currentLow & 0xFF);
             currentLow >>= 8;
         }
+        
+        return chunkIV;
     }
 
     private byte[] EncryptDEK(byte[] dek, byte[] kek)

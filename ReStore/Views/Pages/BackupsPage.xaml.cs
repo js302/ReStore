@@ -1,10 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -92,8 +88,8 @@ namespace ReStore.Views.Pages
         private readonly Logger _logger = new();
         private SystemState? _state;
         private IStorage? _storage;
-        private readonly ObservableCollection<BackupItem> _backups = new();
-        private List<BackupItem> _allBackups = new();
+        private readonly ObservableCollection<BackupItem> _backups = [];
+        private List<BackupItem> _allBackups = [];
 
         public BackupsPage()
         {
@@ -211,7 +207,7 @@ namespace ReStore.Views.Pages
             {
                 return await Task.Run(() =>
                 {
-                    var localPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.IO.Path.GetFileName(path));
+                    var localPath = Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
                     
                     if (_storage.GetType().Name.Contains("LocalStorage"))
                     {
@@ -340,7 +336,7 @@ namespace ReStore.Views.Pages
 
                 if (dialog.ShowDialog() == true)
                 {
-                    var targetPath = System.IO.Path.GetDirectoryName(dialog.FileName);
+                    var targetPath = Path.GetDirectoryName(dialog.FileName);
                     if (string.IsNullOrEmpty(targetPath)) return;
 
                     var result = MessageBox.Show(
@@ -351,11 +347,11 @@ namespace ReStore.Views.Pages
 
                     if (result == MessageBoxResult.Yes)
                     {
-                        if (_state == null || _storage == null) return;
+                        if (_storage == null) return;
 
                         var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
-                        var restore = new Restore(_logger, _state, _storage, passwordProvider);
+                        var restore = new Restore(_logger, _storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(backup.Path, targetPath);
 
                         MessageBox.Show("Restore completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);

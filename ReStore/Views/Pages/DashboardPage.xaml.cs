@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -104,8 +100,8 @@ namespace ReStore.Views.Pages
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("config.example.json"))
             {
-                var configDir = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigDirectory();
-                var examplePath = ReStore.Core.src.utils.ConfigInitializer.GetUserExampleConfigPath();
+                var configDir = ConfigInitializer.GetUserConfigDirectory();
+                var examplePath = ConfigInitializer.GetUserExampleConfigPath();
                 
                 Log("Configuration setup required", LogLevel.Warning);
                 Log($"Configuration directory: {configDir}", LogLevel.Info);
@@ -412,7 +408,7 @@ namespace ReStore.Views.Pages
                         using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
                         var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
-                        var restore = new Restore(this, _state, storage, passwordProvider);
+                        var restore = new Restore(this, storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(latestBackup.Path, targetPath);
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
@@ -476,7 +472,7 @@ namespace ReStore.Views.Pages
                         using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
                         var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
-                        var restore = new Restore(this, _state, storage, passwordProvider);
+                        var restore = new Restore(this, storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(backupPath, targetPath);
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
@@ -548,10 +544,7 @@ namespace ReStore.Views.Pages
                 };
                 
                 var brush = StatusIndicator.Fill as System.Windows.Media.SolidColorBrush;
-                if (brush != null)
-                {
-                    brush.BeginAnimation(System.Windows.Media.SolidColorBrush.ColorProperty, colorAnimation);
-                }
+                brush?.BeginAnimation(System.Windows.Media.SolidColorBrush.ColorProperty, colorAnimation);
                 
                 if (StatusIndicator.Effect is System.Windows.Media.Effects.DropShadowEffect effect)
                 {

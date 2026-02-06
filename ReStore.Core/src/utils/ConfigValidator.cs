@@ -3,9 +3,9 @@ namespace ReStore.Core.src.utils;
 public class ConfigValidationResult
 {
     public bool IsValid { get; set; } = true;
-    public List<string> Errors { get; set; } = new();
-    public List<string> Warnings { get; set; } = new();
-    public List<string> Info { get; set; } = new();
+    public List<string> Errors { get; set; } = [];
+    public List<string> Warnings { get; set; } = [];
+    public List<string> Info { get; set; } = [];
 
     public void AddError(string message)
     {

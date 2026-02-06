@@ -90,9 +90,17 @@ public class CompressionUtil
         var metadata = await encryptionService.LoadMetadataAsync(metadataPath);
         await encryptionService.DecryptFileAsync(encryptedZip, decryptedZip, password, metadata);
         
-        await DecompressAsync(decryptedZip, outputDirectory);
-        
-        File.Delete(decryptedZip);
+        try
+        {
+            await DecompressAsync(decryptedZip, outputDirectory);
+        }
+        finally
+        {
+            if (File.Exists(decryptedZip))
+            {
+                File.Delete(decryptedZip);
+            }
+        }
         
         return outputDirectory;
     }

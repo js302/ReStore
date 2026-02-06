@@ -76,7 +76,7 @@ public class RetentionConfig
 public class ConfigManager(ILogger logger) : IConfigManager
 {
     private static readonly string CONFIG_PATH = GetConfigPath();
-    private JsonDocument? _config;
+    private bool _isLoaded = false;
     private ConfigValidator? _validator;
 
     private static readonly JsonSerializerOptions _writeOptions = new()
@@ -113,7 +113,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     public async Task<IStorage> CreateStorageAsync(string storageType)
     {
-        if (_config is null)
+        if (!_isLoaded)
         {
             throw new InvalidOperationException("Configuration not loaded");
         }
@@ -161,8 +161,8 @@ public class ConfigManager(ILogger logger) : IConfigManager
         }
 
         var jsonString = await File.ReadAllTextAsync(CONFIG_PATH);
-        _config = JsonDocument.Parse(jsonString);
-        var root = _config.RootElement;
+        using var jsonDoc = JsonDocument.Parse(jsonString);
+        var root = jsonDoc.RootElement;
 
         try
         {
@@ -323,6 +323,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     Retention.MaxAgeDays = maxAgeDays.GetInt32();
             }
 
+            _isLoaded = true;
             logger.Log("Configuration loaded successfully", LogLevel.Info);
         }
         catch (Exception ex)

@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.Win32;
-using System.Management;
 using System.Runtime.Versioning;
 
 namespace ReStore.Core.src.utils;

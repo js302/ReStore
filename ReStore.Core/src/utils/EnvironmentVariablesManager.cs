@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Win32;
 using System.Diagnostics;
 
 namespace ReStore.Core.src.utils;

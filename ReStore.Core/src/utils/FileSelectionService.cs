@@ -1,4 +1,3 @@
-using ReStore.Core.src.utils;
 using System.Text.RegularExpressions;
 
 namespace ReStore.Core.src.utils;
@@ -155,6 +154,22 @@ public class FileSelectionService
 
             foreach (var subDirectory in subDirectories)
             {
+                // Skip hidden and system directories
+                try
+                {
+                    var dirInfo = new DirectoryInfo(subDirectory);
+                    if ((dirInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden ||
+                        (dirInfo.Attributes & FileAttributes.System) == FileAttributes.System)
+                    {
+                        continue;
+                    }
+                }
+                catch
+                {
+                    // If we can't read attributes, skip the directory
+                    continue;
+                }
+                
                 directories.Push(subDirectory);
             }
         }

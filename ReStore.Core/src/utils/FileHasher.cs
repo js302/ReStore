@@ -29,10 +29,29 @@ public class FileHasher
 
     public async Task<bool> IsContentDifferentAsync(string fileA, string fileB)
     {
-        if(new FileInfo(fileA).Length != new FileInfo(fileB).Length) return true;
+        var infoA = new FileInfo(fileA);
+        var infoB = new FileInfo(fileB);
+        
+        if (infoA.Length != infoB.Length) return true;
 
-        var hashA = await ComputeHashAsync(fileA);
-        var hashB = await ComputeHashAsync(fileB);
-        return !hashA.Equals(hashB, StringComparison.OrdinalIgnoreCase);
+        using var streamA = new FileStream(fileA, FileMode.Open, FileAccess.Read, FileShare.Read, BUFFER_SIZE, useAsync: true);
+        using var streamB = new FileStream(fileB, FileMode.Open, FileAccess.Read, FileShare.Read, BUFFER_SIZE, useAsync: true);
+
+        var bufferA = new byte[BUFFER_SIZE];
+        var bufferB = new byte[BUFFER_SIZE];
+
+        while (true)
+        {
+            var readA = await streamA.ReadAsync(bufferA);
+            var readB = await streamB.ReadAsync(bufferB);
+
+            if (readA != readB) return true;
+            if (readA == 0) return false;
+
+            if (!bufferA.AsSpan(0, readA).SequenceEqual(bufferB.AsSpan(0, readB)))
+            {
+                return true;
+            }
+        }
     }
 }
