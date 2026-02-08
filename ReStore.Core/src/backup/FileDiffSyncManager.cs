@@ -1,25 +1,13 @@
 using ReStore.Core.src.core;
 using ReStore.Core.src.utils;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace ReStore.Core.src.backup;
 
-public class FileDiffSyncManager
+public class FileDiffSyncManager(ILogger logger, SystemState systemState, BackupConfigurationManager backupConfigManager)
 {
-    private readonly ILogger _logger;
-    private readonly SystemState _systemState;
-    private readonly BackupConfigurationManager _backupConfigManager;
-
-    // Constructor updated to accept SystemState
-    public FileDiffSyncManager(ILogger logger, SystemState systemState, BackupConfigurationManager backupConfigManager)
-    {
-        _logger = logger;
-        _systemState = systemState;
-        _backupConfigManager = backupConfigManager;
-    }
+    private readonly ILogger _logger = logger;
+    private readonly SystemState _systemState = systemState;
+    private readonly BackupConfigurationManager _backupConfigManager = backupConfigManager;
 
     // Implement GetFilesToBackup using SystemState
     public List<string> GetFilesToBackup(List<string> allFiles)

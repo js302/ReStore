@@ -61,13 +61,11 @@ public class SftpStorage(ILogger logger) : StorageBase(logger)
     private void EnsureDirectoryExists(string path)
     {
         var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var current = "";
-        
-        if (path.StartsWith("/")) current = "/";
+        var current = path.StartsWith("/") ? "/" : "";
 
         foreach (var part in parts)
         {
-            current = Path.Combine(current, part).Replace("\\", "/");
+            current = string.IsNullOrEmpty(current) ? $"/{part}" : $"{current}/{part}";
             if (!_sftpClient!.Exists(current))
             {
                 _sftpClient.CreateDirectory(current);

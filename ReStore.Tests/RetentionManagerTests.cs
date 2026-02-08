@@ -9,16 +9,11 @@ namespace ReStore.Tests;
 
 public class RetentionManagerTests
 {
-    private sealed class FakeStorage : IStorage
+    private sealed class FakeStorage(IEnumerable<string> existingPaths) : IStorage
     {
-        private readonly HashSet<string> _existingPaths;
+        private readonly HashSet<string> _existingPaths = new(existingPaths, StringComparer.OrdinalIgnoreCase);
 
         public List<string> DeletedPaths { get; } = [];
-
-        public FakeStorage(IEnumerable<string> existingPaths)
-        {
-            _existingPaths = new HashSet<string>(existingPaths, StringComparer.OrdinalIgnoreCase);
-        }
 
         public Task InitializeAsync(Dictionary<string, string> options)
         {

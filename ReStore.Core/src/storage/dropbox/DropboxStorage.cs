@@ -16,8 +16,8 @@ public class DropboxStorage(ILogger logger) : StorageBase(logger)
 
         try
         {
-            if (options.TryGetValue("refreshToken", out var refreshToken) && 
-                options.TryGetValue("appKey", out var appKey) && 
+            if (options.TryGetValue("refreshToken", out var refreshToken) &&
+                options.TryGetValue("appKey", out var appKey) &&
                 options.TryGetValue("appSecret", out var appSecret))
             {
                 _dropboxClient = new DropboxClient(refreshToken, appKey, appSecret);
@@ -27,7 +27,7 @@ public class DropboxStorage(ILogger logger) : StorageBase(logger)
                 var accessToken = options["accessToken"];
                 _dropboxClient = new DropboxClient(accessToken);
             }
-            
+
             // Verify connection
             var account = await _dropboxClient.Users.GetCurrentAccountAsync();
             Logger.Log($"Connected to Dropbox as: {account.Name.DisplayName}", LogLevel.Info);
@@ -65,7 +65,7 @@ public class DropboxStorage(ILogger logger) : StorageBase(logger)
     public override async Task UploadAsync(string localPath, string remotePath)
     {
         var dropboxPath = NormalizePath(remotePath);
-        
+
         using var fileStream = File.OpenRead(localPath);
         await _dropboxClient!.Files.UploadAsync(
             dropboxPath,
@@ -130,9 +130,17 @@ public class DropboxStorage(ILogger logger) : StorageBase(logger)
     {
         var path = NormalizePath(remotePath);
 
-        try 
+        if (expiration != TimeSpan.Zero && expiration != TimeSpan.MaxValue)
         {
-            // Note: Expiration is only supported on Professional/Business plans
+            Logger.Log(
+                $"Warning: Requested link expiration of {expiration.TotalHours:F1} hours will be ignored. " +
+                "Dropbox link expiration requires a Professional or Business plan. " +
+                "The generated link will not expire automatically.",
+                LogLevel.Warning);
+        }
+
+        try
+        {
             var settings = new SharedLinkSettings(
                 requestedVisibility: RequestedVisibility.Public.Instance,
                 audience: LinkAudience.Public.Instance,

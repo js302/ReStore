@@ -19,8 +19,29 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
     private string _backupFolderId = string.Empty;
     private const string BACKUP_FOLDER_NAME = "ReStoreBackups";
     private const int MAX_RETRY_ATTEMPTS = 3;
-    private readonly Dictionary<string, string> _folderCache = new();
+    private static readonly TimeSpan CACHE_TTL = TimeSpan.FromMinutes(10);
+    private readonly Dictionary<string, (string Id, DateTime CachedAt)> _folderCache = [];
     private bool _disposed = false;
+
+    private bool TryGetCachedFolderId(string path, out string? folderId)
+    {
+        if (_folderCache.TryGetValue(path, out var cached))
+        {
+            if (DateTime.UtcNow - cached.CachedAt < CACHE_TTL)
+            {
+                folderId = cached.Id;
+                return true;
+            }
+            _folderCache.Remove(path);
+        }
+        folderId = null;
+        return false;
+    }
+
+    private void CacheFolderId(string path, string folderId)
+    {
+        _folderCache[path] = (folderId, DateTime.UtcNow);
+    }
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
@@ -263,9 +284,9 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
     private async Task<string> GetFolderIdByPathAsync(string folderPath)
     {
         // Check cache first
-        if (_folderCache.TryGetValue(folderPath, out var cachedId))
+        if (TryGetCachedFolderId(folderPath, out var cachedId))
         {
-            return cachedId;
+            return cachedId!;
         }
 
         var pathParts = folderPath.Split('/', '\\').Where(p => !string.IsNullOrEmpty(p)).ToArray();
@@ -277,9 +298,9 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
             currentPath = string.IsNullOrEmpty(currentPath) ? folderName : currentPath + "/" + folderName;
 
             // Check cache again for partial path
-            if (_folderCache.TryGetValue(currentPath, out var partialCachedId))
+            if (TryGetCachedFolderId(currentPath, out var partialCachedId))
             {
-                currentParentId = partialCachedId;
+                currentParentId = partialCachedId!;
                 continue;
             }
 
@@ -297,7 +318,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
             currentParentId = folders.Files[0].Id;
 
             // Cache the folder ID
-            _folderCache[currentPath] = currentParentId;
+            CacheFolderId(currentPath, currentParentId);
         }
 
         return currentParentId;
@@ -340,7 +361,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
                 currentParentId = folder.Id;
 
                 // Cache the new folder ID
-                _folderCache[currentPath] = currentParentId;
+                CacheFolderId(currentPath, currentParentId);
             }
         }
 

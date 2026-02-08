@@ -1,10 +1,9 @@
 ﻿using ReStore.Core.src.core;
 using ReStore.Core.src.utils;
 using ReStore.Core.src.monitoring;
-using ReStore.Core.src.storage;
 using ReStore.Core.src.backup;
 
-namespace ReStore
+namespace ReStore.Core
 {
     public class Program
     {

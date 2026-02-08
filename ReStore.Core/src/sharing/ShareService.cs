@@ -1,6 +1,5 @@
 namespace ReStore.Core.src.sharing;
 
-using ReStore.Core.src.storage;
 using ReStore.Core.src.utils;
 using System;
 using System.IO;
@@ -30,9 +29,25 @@ public class ShareService(IConfigManager configManager, ILogger logger)
         // Upload unencrypted
         await storage.UploadAsync(localFilePath, remotePath);
 
-        _logger.Log($"Generating share link for {fileName}...");
-        string link = await storage.GenerateShareLinkAsync(remotePath, expiration);
-        
-        return link;
+        try
+        {
+            _logger.Log($"Generating share link for {fileName}...");
+            string link = await storage.GenerateShareLinkAsync(remotePath, expiration);
+            return link;
+        }
+        catch (Exception ex)
+        {
+            // Clean up the uploaded file if link generation fails
+            _logger.Log($"Share link generation failed, cleaning up uploaded file: {ex.Message}", LogLevel.Warning);
+            try
+            {
+                await storage.DeleteAsync(remotePath);
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.Log($"Failed to cleanup uploaded file after share link failure: {cleanupEx.Message}", LogLevel.Warning);
+            }
+            throw;
+        }
     }
 }

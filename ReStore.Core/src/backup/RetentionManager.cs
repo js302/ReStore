@@ -4,18 +4,11 @@ using ReStore.Core.src.utils;
 
 namespace ReStore.Core.src.backup;
 
-public class RetentionManager
+public class RetentionManager(ILogger logger, IConfigManager config, SystemState systemState)
 {
-    private readonly ILogger _logger;
-    private readonly IConfigManager _config;
-    private readonly SystemState _systemState;
-
-    public RetentionManager(ILogger logger, IConfigManager config, SystemState systemState)
-    {
-        _logger = logger;
-        _config = config;
-        _systemState = systemState;
-    }
+    private readonly ILogger _logger = logger;
+    private readonly IConfigManager _config = config;
+    private readonly SystemState _systemState = systemState;
 
     public async Task ApplyAllAsync()
     {

@@ -1,6 +1,5 @@
 using ReStore.Core.src.utils;
 using ReStore.Core.src.core;
-using ReStore.Core.src.storage;
 using System.Collections.Concurrent;
 
 namespace ReStore.Core.src.monitoring;
@@ -99,45 +98,52 @@ public class FileWatcher : IDisposable
 
     private async void OnBackupTimer(object? state)
     {
-        _backupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-
-        var pathsToBackup = new List<string>();
-        foreach (var key in _changedFiles.Keys)
+        try
         {
-            if (_changedFiles.TryRemove(key, out _))
+            _backupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+            var pathsToBackup = new List<string>();
+            foreach (var key in _changedFiles.Keys)
             {
-                pathsToBackup.Add(key);
+                if (_changedFiles.TryRemove(key, out _))
+                {
+                    pathsToBackup.Add(key);
+                }
+            }
+
+            if (!pathsToBackup.Any())
+            {
+                _logger.Log("Backup timer triggered, but no pending changes.", LogLevel.Debug);
+                return;
+            }
+
+            _logger.Log($"Backup buffer time elapsed. Processing {pathsToBackup.Count} changes.", LogLevel.Info);
+
+            var groupedFiles = pathsToBackup
+                .Select(path => new { Path = path, Root = FindWatchedRoot(path) })
+                .Where(x => x.Root != null)
+                .GroupBy(x => x.Root!)
+                .ToList();
+
+            foreach (var group in groupedFiles)
+            {
+                var rootDirectory = group.Key;
+                var filesInGroup = group.Select(x => x.Path).ToList();
+
+                _logger.Log($"Initiating backup for {filesInGroup.Count} changed files under {rootDirectory}", LogLevel.Info);
+                try
+                {
+                    await _backup.BackupFilesAsync(filesInGroup, rootDirectory);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log($"Error during scheduled backup for {rootDirectory}: {ex.Message}", LogLevel.Error);
+                }
             }
         }
-
-        if (!pathsToBackup.Any())
+        catch (Exception ex)
         {
-            _logger.Log("Backup timer triggered, but no pending changes.", LogLevel.Debug);
-            return;
-        }
-
-        _logger.Log($"Backup buffer time elapsed. Processing {pathsToBackup.Count} changes.", LogLevel.Info);
-
-        var groupedFiles = pathsToBackup
-            .Select(path => new { Path = path, Root = FindWatchedRoot(path) })
-            .Where(x => x.Root != null)
-            .GroupBy(x => x.Root!)
-            .ToList();
-
-        foreach (var group in groupedFiles)
-        {
-            var rootDirectory = group.Key;
-            var filesInGroup = group.Select(x => x.Path).ToList();
-
-            _logger.Log($"Initiating backup for {filesInGroup.Count} changed files under {rootDirectory}", LogLevel.Info);
-            try
-            {
-                await _backup.BackupFilesAsync(filesInGroup, rootDirectory);
-            }
-            catch (Exception ex)
-            {
-                _logger.Log($"Error during scheduled backup for {rootDirectory}: {ex.Message}", LogLevel.Error);
-            }
+            _logger.Log($"Unhandled error in backup timer: {ex.Message}", LogLevel.Error);
         }
     }
 

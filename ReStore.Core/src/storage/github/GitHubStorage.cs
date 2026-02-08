@@ -9,6 +9,7 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
     private string _repoOwner = string.Empty;
     private string _repoName = string.Empty;
     private bool _disposed = false;
+    private const long MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // GitHub API limit: 100MB
 
     public override async Task InitializeAsync(Dictionary<string, string> options)
     {
@@ -38,7 +39,7 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
     {
         var required = new[] { "token", "owner", "repo" };
         var missing = required.Where(key => !options.ContainsKey(key) || string.IsNullOrEmpty(options[key]));
-        
+
         if (missing.Any())
         {
             throw new ArgumentException($"Missing GitHub configuration: {string.Join(", ", missing)}");
@@ -47,6 +48,14 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
 
     public override async Task UploadAsync(string localPath, string remotePath)
     {
+        var fileInfo = new FileInfo(localPath);
+        if (fileInfo.Length > MAX_FILE_SIZE_BYTES)
+        {
+            throw new InvalidOperationException(
+                $"File '{Path.GetFileName(localPath)}' is {fileInfo.Length / (1024 * 1024)}MB which exceeds GitHub's 100MB file size limit. " +
+                "Consider using a different storage provider for large backups.");
+        }
+
         var bytes = await File.ReadAllBytesAsync(localPath);
         var base64Content = Convert.ToBase64String(bytes);
 
@@ -67,7 +76,7 @@ public class GitHubStorage(ILogger logger) : StorageBase(logger)
         catch (ApiValidationException ex) when (ex.ApiError?.Message?.Contains("already exists") == true)
         {
             Logger.Log($"File {remotePath} already exists, updating...", LogLevel.Info);
-            
+
             var existingFile = await _client!.Repository.Content.GetAllContentsByRef(_repoOwner, _repoName, remotePath);
             await _client.Repository.Content.UpdateFile(
                 _repoOwner,

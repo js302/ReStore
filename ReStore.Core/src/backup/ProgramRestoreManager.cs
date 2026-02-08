@@ -6,14 +6,9 @@ using System.Runtime.Versioning;
 namespace ReStore.Core.src.backup;
 
 [SupportedOSPlatform("windows")]
-public class ProgramRestoreManager
+public class ProgramRestoreManager(ILogger logger)
 {
-    private readonly ILogger _logger;
-
-    public ProgramRestoreManager(ILogger logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger _logger = logger;
 
     public async Task<ProgramRestoreResult> RestoreProgramsFromJsonAsync(string jsonPath, bool wingetOnly = false, bool dryRun = false)
     {

@@ -7,9 +7,6 @@ using ReStore.Core.src.storage.azure;
 using ReStore.Core.src.storage.dropbox;
 using ReStore.Core.src.storage.sftp;
 using ReStore.Core.src.storage.backblaze;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace ReStore.Core.src.storage;
 
@@ -25,15 +22,10 @@ public interface IStorage : IDisposable
     bool SupportsSharing { get; }
 }
 
-public abstract class StorageBase : IStorage
+public abstract class StorageBase(ILogger logger) : IStorage
 {
-    protected readonly ILogger Logger;
+    protected readonly ILogger Logger = logger;
     private bool _disposed = false; // Track disposal status
-
-    protected StorageBase(ILogger logger)
-    {
-        Logger = logger;
-    }
 
     public abstract Task InitializeAsync(Dictionary<string, string> options);
     public abstract Task UploadAsync(string localPath, string remotePath);
