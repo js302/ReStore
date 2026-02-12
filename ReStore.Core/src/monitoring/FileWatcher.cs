@@ -69,6 +69,8 @@ public class FileWatcher : IDisposable
 
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
+        if (_isDisposed) return;
+
         if (_fileSelectionService.ShouldExcludeFile(e.FullPath))
         {
             return;
@@ -81,6 +83,8 @@ public class FileWatcher : IDisposable
 
     private void OnRenamed(object sender, RenamedEventArgs e)
     {
+        if (_isDisposed) return;
+
         if (_fileSelectionService.ShouldExcludeFile(e.FullPath))
         {
             return;
@@ -98,6 +102,8 @@ public class FileWatcher : IDisposable
 
     private async void OnBackupTimer(object? state)
     {
+        if (_isDisposed) return;
+
         try
         {
             _backupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);

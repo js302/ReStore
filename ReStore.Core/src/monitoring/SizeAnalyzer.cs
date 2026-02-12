@@ -34,19 +34,19 @@ public class SizeAnalyzer
 
         try
         {
-            foreach (FileInfo file in directory.GetFiles())
+            foreach (var file in directory.EnumerateFiles("*", SearchOption.AllDirectories))
             {
-                size += file.Length;
-            }
-
-            foreach (DirectoryInfo dir in directory.GetDirectories())
-            {
-                size += CalculateSize(dir);
+                try
+                {
+                    size += file.Length;
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (FileNotFoundException) { }
             }
         }
         catch (UnauthorizedAccessException)
         {
-            // Skip directories/files we can't access
+            // Skip directories we can't access
         }
         catch (DirectoryNotFoundException)
         {

@@ -106,14 +106,12 @@ public partial class SystemState
         try
         {
             var fileName = Path.GetFileNameWithoutExtension(path);
-            // Handle .enc extension if present
             if (fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             {
                 fileName = Path.GetFileNameWithoutExtension(fileName);
             }
 
             // Expected format: backup_<name>_<guid>_<timestamp> or similar patterns
-            // Try to find a 14-digit timestamp (yyyyMMddHHmmss) in the filename
             var match = TimestampRegex().Match(fileName);
             if (match.Success)
             {
@@ -149,12 +147,12 @@ public partial class SystemState
         try
         {
             if (!BackupHistory.ContainsKey(directory))
-                BackupHistory[directory] = new List<BackupInfo>();
+                BackupHistory[directory] = [];
 
             BackupHistory[directory].Add(new BackupInfo
             {
                 Path = path,
-                Timestamp = DateTime.Now,
+                Timestamp = DateTime.UtcNow,
                 IsDiff = isDiff,
                 StorageType = null
             });
@@ -171,12 +169,12 @@ public partial class SystemState
         try
         {
             if (!BackupHistory.ContainsKey(directory))
-                BackupHistory[directory] = new List<BackupInfo>();
+                BackupHistory[directory] = [];
 
             BackupHistory[directory].Add(new BackupInfo
             {
                 Path = path,
-                Timestamp = DateTime.Now,
+                Timestamp = DateTime.UtcNow,
                 IsDiff = isDiff,
                 StorageType = storageType
             });
@@ -192,7 +190,7 @@ public partial class SystemState
         _lock.Wait();
         try
         {
-            return BackupHistory.Keys.ToList();
+            return [.. BackupHistory.Keys];
         }
         finally
         {
@@ -207,10 +205,10 @@ public partial class SystemState
         {
             if (!BackupHistory.TryGetValue(group, out var backups))
             {
-                return new List<BackupInfo>();
+                return [];
             }
 
-            return backups
+            return [.. backups
                 .OrderByDescending(b => b.Timestamp)
                 .Select(b => new BackupInfo
                 {
@@ -218,8 +216,7 @@ public partial class SystemState
                     Timestamp = b.Timestamp,
                     IsDiff = b.IsDiff,
                     StorageType = b.StorageType
-                })
-                .ToList();
+                })];
         }
         finally
         {
@@ -320,9 +317,9 @@ public partial class SystemState
         {
             var stateData = new PersistentStateData
             {
-                LastBackupTime = this.LastBackupTime,
-                BackupHistory = this.BackupHistory,
-                FileMetadata = this.FileMetadata
+                LastBackupTime = LastBackupTime,
+                BackupHistory = BackupHistory,
+                FileMetadata = FileMetadata
             };
 
             Directory.CreateDirectory(Path.GetDirectoryName(_stateFilePath)!);
@@ -357,9 +354,9 @@ public partial class SystemState
                 var stateData = JsonSerializer.Deserialize<PersistentStateData>(json);
                 if (stateData != null)
                 {
-                    this.LastBackupTime = stateData.LastBackupTime;
-                    this.BackupHistory = stateData.BackupHistory ?? [];
-                    this.FileMetadata = stateData.FileMetadata ?? [];
+                    LastBackupTime = stateData.LastBackupTime;
+                    BackupHistory = stateData.BackupHistory ?? [];
+                    FileMetadata = stateData.FileMetadata ?? [];
                     _logger?.Log($"Loaded state: {FileMetadata.Count} file metadata entries, {BackupHistory.Count} backup history entries.", LogLevel.Info);
                 }
                 else
@@ -392,9 +389,9 @@ public partial class SystemState
 
     private void InitializeEmptyState()
     {
-        this.LastBackupTime = DateTime.MinValue;
-        this.BackupHistory = [];
-        this.FileMetadata = [];
+        LastBackupTime = DateTime.MinValue;
+        BackupHistory = [];
+        FileMetadata = [];
     }
 
     public virtual List<string> GetChangedFiles(List<string> allFiles, BackupType backupType)
@@ -431,10 +428,27 @@ public partial class SystemState
                     {
                         if (backupType == BackupType.Incremental)
                         {
-                            if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified || fileInfo.Length != previousMetadata.Size)
+                            if (fileInfo.Length != previousMetadata.Size)
                             {
-                                _logger?.Log($"File changed (Incremental): {filePath}", LogLevel.Debug);
+                                _logger?.Log($"File changed (Incremental, size): {filePath}", LogLevel.Debug);
                                 shouldBackup = true;
+                            }
+                            else if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified)
+                            {
+                                if (!string.IsNullOrEmpty(previousMetadata.Hash))
+                                {
+                                    var currentHash = CalculateFileHashAsync(filePath).GetAwaiter().GetResult();
+                                    if (!string.IsNullOrEmpty(currentHash) && currentHash != previousMetadata.Hash)
+                                    {
+                                        _logger?.Log($"File changed (Incremental, hash): {filePath}", LogLevel.Debug);
+                                        shouldBackup = true;
+                                    }
+                                }
+                                else
+                                {
+                                    _logger?.Log($"File changed (Incremental, timestamp): {filePath}", LogLevel.Debug);
+                                    shouldBackup = true;
+                                }
                             }
                         }
                         else if (backupType == BackupType.Differential)

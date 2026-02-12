@@ -10,7 +10,6 @@ using ReStore.Core.src.storage.backblaze;
 
 namespace ReStore.Core.src.storage;
 
-// Inherit from IDisposable
 public interface IStorage : IDisposable
 {
     Task InitializeAsync(Dictionary<string, string> options);
@@ -25,7 +24,7 @@ public interface IStorage : IDisposable
 public abstract class StorageBase(ILogger logger) : IStorage
 {
     protected readonly ILogger Logger = logger;
-    private bool _disposed = false; // Track disposal status
+    private bool _disposed = false;
 
     public abstract Task InitializeAsync(Dictionary<string, string> options);
     public abstract Task UploadAsync(string localPath, string remotePath);

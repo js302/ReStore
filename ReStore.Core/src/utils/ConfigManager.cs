@@ -62,7 +62,7 @@ public class EncryptionConfig
 {
     public bool Enabled { get; set; } = false;
     public string? Salt { get; set; }
-    public int KeyDerivationIterations { get; set; } = 100000;
+    public int KeyDerivationIterations { get; set; } = 1_000_000;
     public string? VerificationToken { get; set; }
 }
 
@@ -141,12 +141,12 @@ public class ConfigManager(ILogger logger) : IConfigManager
     {
         var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
         var configExists = File.Exists(CONFIG_PATH);
-        
+
         if (!configExists)
         {
             var exampleConfigPath = Path.Combine(configDir, "config.example.json");
             var exampleExists = File.Exists(exampleConfigPath);
-            
+
             if (!exampleExists)
             {
                 await CreateDefaultConfigAsync();
@@ -169,7 +169,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
             // Load watch directories with optional per-path storage
             var watchDirsElement = root.GetProperty("watchDirectories");
             WatchDirectories = [];
-            
+
             foreach (var element in watchDirsElement.EnumerateArray())
             {
                 if (element.ValueKind == JsonValueKind.String)
@@ -193,16 +193,6 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 }
             }
 
-            // Load global storage type
-            if (root.TryGetProperty("globalStorageType", out var globalStorageElement))
-            {
-                GlobalStorageType = globalStorageElement.GetString() ?? "local";
-            }
-            else
-            {
-                GlobalStorageType = StorageSources.Keys.FirstOrDefault() ?? "local";
-            }
-
             BackupInterval = TimeSpan.Parse(root.GetProperty("backupInterval").GetString() ?? "01:00:00");
             SizeThresholdMB = root.GetProperty("sizeThresholdMB").GetInt64();
 
@@ -211,6 +201,16 @@ public class ConfigManager(ILogger logger) : IConfigManager
             StorageSources = JsonSerializer.Deserialize<Dictionary<string, StorageConfig>>(
                 storageSources,
                 _readOptions) ?? throw new JsonException("Failed to deserialize storage sources");
+
+            // Load global storage type AFTER StorageSources so the fallback works
+            if (root.TryGetProperty("globalStorageType", out var globalStorageElement))
+            {
+                GlobalStorageType = globalStorageElement.GetString() ?? "local";
+            }
+            else
+            {
+                GlobalStorageType = StorageSources.Keys.FirstOrDefault() ?? "local";
+            }
 
             foreach (var source in StorageSources.Values)
             {
@@ -252,22 +252,22 @@ public class ConfigManager(ILogger logger) : IConfigManager
             if (root.TryGetProperty("systemBackup", out var systemBackupElement))
             {
                 SystemBackup = new SystemBackupConfig();
-                
+
                 if (systemBackupElement.TryGetProperty("enabled", out var enabled))
                     SystemBackup.Enabled = enabled.GetBoolean();
-                
+
                 if (systemBackupElement.TryGetProperty("includePrograms", out var includePrograms))
                     SystemBackup.IncludePrograms = includePrograms.GetBoolean();
-                
+
                 if (systemBackupElement.TryGetProperty("includeEnvironmentVariables", out var includeEnv))
                     SystemBackup.IncludeEnvironmentVariables = includeEnv.GetBoolean();
-                
+
                 if (systemBackupElement.TryGetProperty("includeWindowsSettings", out var includeSettings))
                     SystemBackup.IncludeWindowsSettings = includeSettings.GetBoolean();
-                
+
                 if (systemBackupElement.TryGetProperty("backupInterval", out var sysBackupInterval))
                     SystemBackup.BackupInterval = TimeSpan.Parse(sysBackupInterval.GetString() ?? "24:00:00");
-                
+
                 if (systemBackupElement.TryGetProperty("excludeSystemPrograms", out var excludePrograms))
                 {
                     SystemBackup.ExcludeSystemPrograms = JsonSerializer.Deserialize<List<string>>(excludePrograms, _readOptions) ?? [];
@@ -294,16 +294,16 @@ public class ConfigManager(ILogger logger) : IConfigManager
             if (root.TryGetProperty("encryption", out var encryptionElement))
             {
                 Encryption = new EncryptionConfig();
-                
+
                 if (encryptionElement.TryGetProperty("enabled", out var encEnabled))
                     Encryption.Enabled = encEnabled.GetBoolean();
-                
+
                 if (encryptionElement.TryGetProperty("salt", out var salt))
                     Encryption.Salt = salt.GetString();
-                
+
                 if (encryptionElement.TryGetProperty("keyDerivationIterations", out var iterations))
                     Encryption.KeyDerivationIterations = iterations.GetInt32();
-                
+
                 if (encryptionElement.TryGetProperty("verificationToken", out var verificationToken))
                     Encryption.VerificationToken = verificationToken.GetString();
             }
@@ -384,7 +384,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
             };
 
             var jsonString = JsonSerializer.Serialize(configObject, _writeOptions);
-            
+
             var tempPath = configPath + ".tmp";
             await File.WriteAllTextAsync(tempPath, jsonString);
             File.Move(tempPath, configPath, overwrite: true);
@@ -430,18 +430,18 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
         WatchDirectories =
         [
-            new WatchDirectoryConfig 
-            { 
+            new WatchDirectoryConfig
+            {
                 Path = Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Desktop"),
                 StorageType = null
             },
-            new WatchDirectoryConfig 
-            { 
+            new WatchDirectoryConfig
+            {
                 Path = Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Documents"),
                 StorageType = null
             },
-            new WatchDirectoryConfig 
-            { 
+            new WatchDirectoryConfig
+            {
                 Path = Environment.ExpandEnvironmentVariables("%USERPROFILE%\\Pictures"),
                 StorageType = null
             }
@@ -532,7 +532,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     {
         var assemblyLocation = Assembly.GetExecutingAssembly().Location;
         var assemblyDirectory = Path.GetDirectoryName(assemblyLocation);
-        
+
         if (string.IsNullOrEmpty(assemblyDirectory))
         {
             return null;
@@ -560,7 +560,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 projectRoot = currentDir;
                 break;
             }
-            
+
             currentDir = currentDir.Parent;
         }
 

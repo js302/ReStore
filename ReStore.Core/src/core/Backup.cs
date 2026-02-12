@@ -102,6 +102,7 @@ public class Backup
         catch (Exception ex)
         {
             _logger.Log($"Failed to backup directory: {ex.Message}", LogLevel.Error);
+            throw;
         }
         finally
         {
@@ -210,6 +211,7 @@ public class Backup
         catch (Exception ex)
         {
             _logger.Log($"Failed to backup specific files from {baseDirectory}: {ex.Message}", LogLevel.Error);
+            throw;
         }
         finally
         {

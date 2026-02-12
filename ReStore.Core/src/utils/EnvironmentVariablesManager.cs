@@ -23,12 +23,12 @@ public class EnvironmentVariablesManager
     public Task<List<EnvironmentVariableEntry>> GetAllEnvironmentVariablesAsync()
     {
         _logger.Log("Collecting all environment variables...", LogLevel.Info);
-        
+
         var variables = new List<EnvironmentVariableEntry>();
 
         // Get system environment variables
         variables.AddRange(GetEnvironmentVariables(EnvironmentVariableTarget.Machine));
-        
+
         // Get user environment variables  
         variables.AddRange(GetEnvironmentVariables(EnvironmentVariableTarget.User));
 
@@ -39,21 +39,21 @@ public class EnvironmentVariablesManager
     private List<EnvironmentVariableEntry> GetEnvironmentVariables(EnvironmentVariableTarget target)
     {
         var variables = new List<EnvironmentVariableEntry>();
-        
+
         try
         {
             _logger.Log($"Reading {target} environment variables...", LogLevel.Debug);
-            
+
             var envVars = Environment.GetEnvironmentVariables(target);
-            
+
             foreach (string key in envVars.Keys)
             {
                 var value = envVars[key]?.ToString() ?? "";
-                
+
                 // Skip some system variables that shouldn't be backed up
                 if (ShouldSkipVariable(key, target))
                     continue;
-                
+
                 variables.Add(new EnvironmentVariableEntry
                 {
                     Name = key,
@@ -61,18 +61,18 @@ public class EnvironmentVariablesManager
                     Target = target
                 });
             }
-            
+
             _logger.Log($"Found {variables.Count} {target} environment variables", LogLevel.Debug);
         }
         catch (Exception ex)
         {
             _logger.Log($"Error reading {target} environment variables: {ex.Message}", LogLevel.Warning);
         }
-        
+
         return variables;
     }
 
-    private bool ShouldSkipVariable(string name, EnvironmentVariableTarget target)
+    private static bool ShouldSkipVariable(string name, EnvironmentVariableTarget target)
     {
         // Skip system-managed variables that shouldn't be restored
         var systemManagedVars = new[]
@@ -162,7 +162,7 @@ public class EnvironmentVariablesManager
             {
                 var target = variable.Target == EnvironmentVariableTarget.Machine ? "Machine" : "User";
                 var escapedValue = variable.Value.Replace("'", "''").Replace("`", "``");
-                
+
                 scriptContent.Add($"Set-EnvironmentVariableSafely -Name '{variable.Name}' -Value '{escapedValue}' -Target {target}");
             }
 
@@ -174,7 +174,7 @@ public class EnvironmentVariablesManager
             });
 
             await File.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent));
-            
+
             _logger.Log($"Created restore script at {outputPath}", LogLevel.Info);
             return outputPath;
         }
@@ -190,14 +190,14 @@ public class EnvironmentVariablesManager
         try
         {
             _logger.Log($"Restoring environment variables from {jsonPath}...", LogLevel.Info);
-            
+
             var json = await File.ReadAllTextAsync(jsonPath);
             var data = JsonSerializer.Deserialize<JsonElement>(json);
-            
+
             if (data.TryGetProperty("variables", out var variablesElement))
             {
                 var variables = JsonSerializer.Deserialize<List<EnvironmentVariableEntry>>(variablesElement.GetRawText());
-                
+
                 if (variables != null)
                 {
                     foreach (var variable in variables)
@@ -212,7 +212,7 @@ public class EnvironmentVariablesManager
                             _logger.Log($"Failed to restore variable {variable.Name}: {ex.Message}", LogLevel.Warning);
                         }
                     }
-                    
+
                     _logger.Log($"Successfully restored {variables.Count} environment variables", LogLevel.Info);
                 }
             }
@@ -229,7 +229,7 @@ public class EnvironmentVariablesManager
         try
         {
             _logger.Log($"Executing PowerShell restore script: {scriptPath}", LogLevel.Info);
-            
+
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
@@ -237,8 +237,7 @@ public class EnvironmentVariablesManager
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true,
-                Verb = "runas" // Run as administrator for system variables
+                CreateNoWindow = true
             };
 
             using var process = Process.Start(processStartInfo);
@@ -269,7 +268,7 @@ public class EnvironmentVariablesManager
         {
             _logger.Log($"Error executing PowerShell restore script: {ex.Message}", LogLevel.Error);
         }
-        
+
         return false;
     }
 }

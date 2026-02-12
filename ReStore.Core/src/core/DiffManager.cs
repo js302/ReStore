@@ -12,7 +12,6 @@ public class DiffManager
 
     public static async Task<byte[]> CreateDiffAsync(string originalFile, string newFile)
     {
-        // Quick skip if hashes match
         var fileHasher = new FileHasher();
         if (!await fileHasher.IsContentDifferentAsync(originalFile, newFile))
         {
@@ -24,46 +23,37 @@ public class DiffManager
         using var origFile = File.OpenRead(originalFile);
         using var newStream = File.OpenRead(newFile);
 
-        // Calculate block checksums for original file
         var blockMap = await CalculateBlocksAsync(origFile);
 
         byte[] buffer = new byte[CHUNK_SIZE];
         byte[] window = new byte[ROLLING_WINDOW];
         int bytesRead;
-        long position = 0;
 
         while ((bytesRead = await newStream.ReadAsync(buffer)) > 0)
         {
             bool matchFound = false;
 
-            // Try to find matching blocks
-            if (bytesRead >= ROLLING_WINDOW)
+            if (bytesRead == CHUNK_SIZE && bytesRead >= ROLLING_WINDOW)
             {
                 Array.Copy(buffer, 0, window, 0, ROLLING_WINDOW);
                 var weakHash = CalculateRollingHash(window);
 
                 if (blockMap.TryGetValue(weakHash, out var blockInfos))
                 {
-                    // Calculate strong hash of current buffer for comparison
                     var currentStrongHash = SHA256.HashData(buffer.AsSpan(0, bytesRead));
 
                     foreach (var blockInfo in blockInfos)
                     {
-                        // First check strong hash to avoid most false positives from weak hash collisions
                         if (!currentStrongHash.AsSpan().SequenceEqual(blockInfo.StrongHash))
                         {
                             continue;
                         }
 
-                        // Strong hash matched, verify with byte comparison as final check
-                        if (await VerifyBlockMatchAsync(origFile, blockInfo.Position, newStream, position))
+                        if (await VerifyBlockMatchAsync(origFile, blockInfo.Position, buffer, bytesRead))
                         {
-                            // Write a COPY instruction
                             writer.Write((byte)DiffOperation.Copy);
                             writer.Write(blockInfo.Position);
                             writer.Write(CHUNK_SIZE);
-
-                            position += CHUNK_SIZE;
                             matchFound = true;
                             break;
                         }
@@ -73,11 +63,9 @@ public class DiffManager
 
             if (!matchFound)
             {
-                // Write a DATA instruction for new/modified content
                 writer.Write((byte)DiffOperation.Data);
                 writer.Write(bytesRead);
                 writer.Write(buffer, 0, bytesRead);
-                position += bytesRead;
             }
         }
 
@@ -155,35 +143,24 @@ public class DiffManager
         return hash;
     }
 
-    private static async Task<bool> VerifyBlockMatchAsync(Stream original, long origPos, Stream current, long currentPos)
+    private static async Task<bool> VerifyBlockMatchAsync(Stream original, long origPos, byte[] currentBuffer, int currentLength)
     {
         long savedOrigPos = original.Position;
-        long savedCurrentPos = current.Position;
 
         try
         {
             byte[] origBuffer = new byte[CHUNK_SIZE];
-            byte[] currentBuffer = new byte[CHUNK_SIZE];
 
             original.Position = origPos;
-            current.Position = currentPos;
-
             int origRead = await original.ReadAsync(origBuffer);
-            int currentRead = await current.ReadAsync(currentBuffer);
 
-            if (origRead != currentRead) return false;
+            if (origRead != currentLength) return false;
 
-            for (int i = 0; i < origRead; i++)
-            {
-                if (origBuffer[i] != currentBuffer[i]) return false;
-            }
-
-            return true;
+            return origBuffer.AsSpan(0, origRead).SequenceEqual(currentBuffer.AsSpan(0, currentLength));
         }
         finally
         {
             original.Position = savedOrigPos;
-            current.Position = savedCurrentPos;
         }
     }
 

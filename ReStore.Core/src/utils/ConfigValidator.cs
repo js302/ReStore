@@ -38,7 +38,7 @@ public class ConfigValidator
     public ConfigValidationResult ValidateConfiguration(IConfigManager config)
     {
         var result = new ConfigValidationResult();
-        
+
         _logger.Log("Starting configuration validation...", LogLevel.Info);
 
         ValidateWatchDirectories(config.WatchDirectories, result);
@@ -191,7 +191,7 @@ public class ConfigValidator
 
             var wasConfigured = !IsStorageSourceUnconfigured(sourceName, config);
             ValidateStorageSource(sourceName, config, result);
-            
+
             if (wasConfigured)
             {
                 configuredSourcesCount++;
@@ -269,8 +269,8 @@ public class ConfigValidator
         }
 
         // Check if any option contains placeholder text
-        return config.Options.Any(opt => 
-            string.IsNullOrWhiteSpace(opt.Value) || 
+        return config.Options.Any(opt =>
+            string.IsNullOrWhiteSpace(opt.Value) ||
             opt.Value.StartsWith("your_", StringComparison.OrdinalIgnoreCase) ||
             opt.Value.Contains("your_", StringComparison.OrdinalIgnoreCase));
     }
@@ -281,7 +281,7 @@ public class ConfigValidator
         {
             var expandedPath = Environment.ExpandEnvironmentVariables(config.Path);
             var directory = Path.GetDirectoryName(expandedPath);
-            
+
             if (string.IsNullOrEmpty(directory))
             {
                 result.AddError($"Local storage '{sourceName}' has invalid path: {config.Path}");
@@ -315,8 +315,8 @@ public class ConfigValidator
     private void ValidateGoogleDriveStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "client_id", "client_secret" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -348,8 +348,8 @@ public class ConfigValidator
     private void ValidateS3Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "accessKeyId", "secretAccessKey", "region", "bucketName" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -383,8 +383,8 @@ public class ConfigValidator
     private void ValidateGitHubStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "token", "repo", "owner" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -398,8 +398,8 @@ public class ConfigValidator
     private void ValidateAzureStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "connectionString", "containerName" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -413,8 +413,8 @@ public class ConfigValidator
     private void ValidateGcpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "bucketName" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -451,8 +451,8 @@ public class ConfigValidator
     private void ValidateSftpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "host", "username" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -480,8 +480,8 @@ public class ConfigValidator
     private void ValidateB2Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "keyId", "applicationKey", "bucketName" };
-        var missingOptions = requiredOptions.Where(opt => 
-            !config.Options.ContainsKey(opt) || 
+        var missingOptions = requiredOptions.Where(opt =>
+            !config.Options.ContainsKey(opt) ||
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
@@ -507,9 +507,10 @@ public class ConfigValidator
 
                 try
                 {
-                    // Test if the pattern is a valid glob pattern by attempting to use it
-                    _ = System.IO.Directory.EnumerateFiles(".", pattern).Any();
-                    // If we get here without exception, the pattern is valid
+                    string regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
+                        .Replace("\\*", ".*")
+                        .Replace("\\?", ".") + "$";
+                    _ = new System.Text.RegularExpressions.Regex(regexPattern);
                 }
                 catch (Exception)
                 {

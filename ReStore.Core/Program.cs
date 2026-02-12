@@ -27,14 +27,15 @@ Examples:
 Notes:
   - Storage types are configured in config.json
   - Per-path and per-component storage can be set in configuration
-  - Use --storage flag to override configured storage for a specific operation";
+  - Use --storage flag to override configured storage for a specific operation
+  - Set RESTORE_ENCRYPTION_PASSWORD env var to provide password non-interactively";
 
         public static async Task Main(string[] args)
         {
             var logger = new Logger();
-            
+
             ConfigInitializer.EnsureConfigurationSetup(logger);
-            
+
             var configManager = new ConfigManager(logger);
             await configManager.LoadAsync();
 
@@ -133,7 +134,7 @@ Notes:
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
-                            
+
                             var restoreStorageType = storageOverride ?? configManager.GlobalStorageType;
                             using (var storage = await configManager.CreateStorageAsync(restoreStorageType))
                             {
@@ -149,9 +150,9 @@ Notes:
                                 break;
                             }
                             var backupType = args.Length >= 2 && !args[1].StartsWith("--") ? args[1] : "all";
-                            var passwordProvider = new StaticPasswordProvider("your_password_here");
+                            var passwordProvider = CreateCliPasswordProvider(configManager);
                             var systemBackupManager = new SystemBackupManager(logger, configManager, systemState, passwordProvider);
-                            
+
                             switch (backupType.ToLowerInvariant())
                             {
                                 case "programs":
@@ -182,7 +183,7 @@ Notes:
                                 break;
                             }
                             var restoreType = args.Length >= 3 && !args[2].StartsWith("--") ? args[2] : "all";
-                            var restorePasswordProvider = new StaticPasswordProvider("your_password_here");
+                            var restorePasswordProvider = CreateCliPasswordProvider(configManager);
                             var systemRestoreManager = new SystemBackupManager(logger, configManager, systemState, restorePasswordProvider);
                             await systemRestoreManager.RestoreSystemAsync(restoreType, args[1], storageOverride);
                             break;
@@ -210,15 +211,58 @@ Notes:
             }
         }
 
+        private static IPasswordProvider CreateCliPasswordProvider(IConfigManager config)
+        {
+            if (!config.Encryption.Enabled)
+            {
+                return new StaticPasswordProvider(null);
+            }
+
+            var envPassword = Environment.GetEnvironmentVariable("RESTORE_ENCRYPTION_PASSWORD");
+            if (!string.IsNullOrEmpty(envPassword))
+            {
+                return new StaticPasswordProvider(envPassword);
+            }
+
+            Console.Write("Enter encryption password: ");
+            var password = ReadPasswordFromConsole();
+            return new StaticPasswordProvider(password);
+        }
+
+        private static string ReadPasswordFromConsole()
+        {
+            var password = new System.Text.StringBuilder();
+            while (true)
+            {
+                var key = Console.ReadKey(intercept: true);
+                if (key.Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine();
+                    break;
+                }
+                if (key.Key == ConsoleKey.Backspace && password.Length > 0)
+                {
+                    password.Length--;
+                    Console.Write("\b \b");
+                }
+                else if (!char.IsControl(key.KeyChar))
+                {
+                    password.Append(key.KeyChar);
+                    Console.Write('*');
+                }
+            }
+            return password.ToString();
+        }
+
         private static void ValidateConfiguration(IConfigManager configManager, ILogger logger)
         {
             logger.Log($"Configuration file location: {configManager.GetConfigFilePath()}", LogLevel.Info);
             logger.Log("Running comprehensive configuration validation...", LogLevel.Info);
-            
+
             var result = configManager.ValidateConfiguration();
-            
+
             PrintValidationResults(result, logger);
-            
+
             if (result.IsValid)
             {
                 Console.WriteLine("\nConfiguration is valid and ready to use!");

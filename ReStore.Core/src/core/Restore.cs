@@ -93,14 +93,17 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         catch (FileNotFoundException fnfEx)
         {
             _logger.Log($"Restore failed: Backup file not found on remote storage or locally after download. {fnfEx.Message}", LogLevel.Error);
+            throw;
         }
         catch (IOException ioEx)
         {
             _logger.Log($"Restore failed: IO error during download or decompression. {ioEx.Message}", LogLevel.Error);
+            throw;
         }
         catch (Exception ex)
         {
             _logger.Log($"Restore failed: {ex.Message}", LogLevel.Error);
+            throw;
         }
         finally
         {

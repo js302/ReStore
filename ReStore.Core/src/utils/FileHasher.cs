@@ -14,24 +14,35 @@ public class FileHasher
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 
-    public async Task<Dictionary<string, string>> ComputeDirectoryHashesAsync(string directory)
+    public async Task<Dictionary<string, string>> ComputeDirectoryHashesAsync(string directory, int maxConcurrency = 4)
     {
-        var hashes = new Dictionary<string, string>();
         var files = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
+        var results = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+        var semaphore = new SemaphoreSlim(maxConcurrency);
 
-        foreach (var file in files)
+        var tasks = files.Select(async file =>
         {
-            hashes[file] = await ComputeHashAsync(file);
-        }
+            await semaphore.WaitAsync();
+            try
+            {
+                var hash = await ComputeHashAsync(file);
+                results[file] = hash;
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
 
-        return hashes;
+        await Task.WhenAll(tasks);
+        return new Dictionary<string, string>(results);
     }
 
     public async Task<bool> IsContentDifferentAsync(string fileA, string fileB)
     {
         var infoA = new FileInfo(fileA);
         var infoB = new FileInfo(fileB);
-        
+
         if (infoA.Length != infoB.Length) return true;
 
         using var streamA = new FileStream(fileA, FileMode.Open, FileAccess.Read, FileShare.Read, BUFFER_SIZE, useAsync: true);
