@@ -16,12 +16,12 @@ namespace ReStore.Views
     {
         [DllImport("user32.dll")]
         private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-        
+
         [DllImport("user32.dll")]
         private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-        
+
         private const uint MONITOR_DEFAULTTONEAREST = 2;
-        
+
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
         {
@@ -30,7 +30,7 @@ namespace ReStore.Views
             public int Right;
             public int Bottom;
         }
-        
+
         [StructLayout(LayoutKind.Sequential)]
         public struct MONITORINFO
         {
@@ -39,14 +39,14 @@ namespace ReStore.Views
             public RECT rcWork;
             public uint dwFlags;
         }
-        
+
         [StructLayout(LayoutKind.Sequential)]
         public struct POINT
         {
             public int X;
             public int Y;
         }
-        
+
         [StructLayout(LayoutKind.Sequential)]
         public struct MINMAXINFO
         {
@@ -56,11 +56,11 @@ namespace ReStore.Views
             public POINT ptMinTrackSize;
             public POINT ptMaxTrackSize;
         }
-        
+
         private SolidColorBrush _navHoverBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
         private SolidColorBrush _navSelectedBrush = new SolidColorBrush(Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF));
         private SolidColorBrush _captionHoverBrush = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
-        
+
         internal SystemTrayManager? TrayManager { get; set; }
 
         public void UpdateTrayManager(bool enableTray)
@@ -129,10 +129,10 @@ namespace ReStore.Views
         public MainWindow()
         {
             InitializeComponent();
-            
+
             ApplicationThemeManager.Changed += OnThemeChanged;
             UpdateThemeColors();
-            
+
             ContentFrame.Navigate(new Pages.DashboardPage());
 
             var navDashboard = (System.Windows.Controls.Button)FindName("NavDashboard");
@@ -156,42 +156,42 @@ namespace ReStore.Views
             SourceInitialized += OnSourceInitialized;
             Loaded += OnWindowLoaded;
         }
-        
+
         private IntPtr WindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             const int WM_GETMINMAXINFO = 0x0024;
-            
+
             if (msg == WM_GETMINMAXINFO)
             {
                 var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
                 var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                
+
                 if (monitor != IntPtr.Zero)
                 {
                     var monitorInfo = new MONITORINFO();
                     monitorInfo.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
                     GetMonitorInfo(monitor, ref monitorInfo);
-                    
+
                     var workArea = monitorInfo.rcWork;
                     var monitorArea = monitorInfo.rcMonitor;
-                    
+
                     mmi.ptMaxPosition.X = workArea.Left - monitorArea.Left;
                     mmi.ptMaxPosition.Y = workArea.Top - monitorArea.Top;
                     mmi.ptMaxSize.X = workArea.Right - workArea.Left;
                     mmi.ptMaxSize.Y = workArea.Bottom - workArea.Top;
-                    
+
                     Marshal.StructureToPtr(mmi, lParam, true);
                     handled = true;
                 }
             }
-            
+
             return IntPtr.Zero;
         }
 
         private void OnWindowLoaded(object sender, RoutedEventArgs e)
         {
             SetupTaskbarJumpList();
-            
+
             var onStarted = () => Dispatcher.Invoke(SetupTaskbarJumpList);
             var onStopped = () => Dispatcher.Invoke(SetupTaskbarJumpList);
             WatcherService.Instance.SetCallbacks(onStarted, onStopped, null);
@@ -292,13 +292,13 @@ namespace ReStore.Views
         private void UpdateThemeColors()
         {
             var isDark = ApplicationThemeManager.GetAppTheme() == ApplicationTheme.Dark;
-            
+
             if (isDark)
             {
                 _navHoverBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
                 _navSelectedBrush = new SolidColorBrush(Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF));
                 _captionHoverBrush = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
-                
+
                 Application.Current.Resources["TitleBarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x23, 0x23, 0x23));
                 Application.Current.Resources["SidebarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x26));
                 Application.Current.Resources["MainWindowBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x30));
@@ -309,13 +309,13 @@ namespace ReStore.Views
                 _navHoverBrush = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
                 _navSelectedBrush = new SolidColorBrush(Color.FromArgb(0x4D, 0x00, 0x00, 0x00));
                 _captionHoverBrush = new SolidColorBrush(Color.FromArgb(0x1F, 0x00, 0x00, 0x00));
-                
+
                 Application.Current.Resources["TitleBarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE5, 0xE5));
                 Application.Current.Resources["SidebarBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0));
                 Application.Current.Resources["MainWindowBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
                 Application.Current.Resources["SeparatorBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));
             }
-            
+
             UpdateHoverBorders();
         }
 
@@ -366,10 +366,17 @@ namespace ReStore.Views
             WindowEffects.SetImmersiveDarkMode(this);
         }
 
+        protected override void OnClosed(EventArgs e)
+        {
+            ApplicationThemeManager.Changed -= OnThemeChanged;
+            WatcherService.Instance.SetCallbacks(null, null, null);
+            base.OnClosed(e);
+        }
+
         private void UpdateWindowState()
         {
             var isMaximized = WindowState == WindowState.Maximized;
-            
+
             var chrome = WindowChrome.GetWindowChrome(this);
             if (chrome != null)
             {
@@ -431,7 +438,7 @@ namespace ReStore.Views
             fadeOut.Completed += (s, e) =>
             {
                 ContentFrame.Navigate(page);
-                
+
                 var fadeIn = new System.Windows.Media.Animation.DoubleAnimation
                 {
                     From = 0,

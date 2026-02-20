@@ -90,7 +90,6 @@ Notes:
             await systemState.LoadStateAsync();
 
             var sizeAnalyzer = new SizeAnalyzer();
-            var compressionUtil = new CompressionUtil();
 
             // Use a CancellationTokenSource for graceful shutdown in service mode
             var cts = new CancellationTokenSource();
@@ -105,7 +104,8 @@ Notes:
             {
                 if (isServiceMode)
                 {
-                    using var watcher = new FileWatcher(configManager, logger, systemState, sizeAnalyzer, compressionUtil);
+                    var servicePasswordProvider = CreateCliPasswordProvider(configManager);
+                    using var watcher = new FileWatcher(configManager, logger, systemState, sizeAnalyzer, servicePasswordProvider);
                     await watcher.StartAsync();
                     logger.Log("File watcher service running. Press Ctrl+C to stop.", LogLevel.Info);
                     await Task.Delay(Timeout.Infinite, cts.Token);
@@ -124,7 +124,8 @@ Notes:
                                 Console.WriteLine(USAGE_MESSAGE);
                                 break;
                             }
-                            var backup = new Backup(logger, systemState, sizeAnalyzer, configManager);
+                            var backupPasswordProvider = CreateCliPasswordProvider(configManager);
+                            var backup = new Backup(logger, systemState, sizeAnalyzer, configManager, backupPasswordProvider);
                             await backup.BackupDirectoryAsync(args[1], storageOverride);
                             break;
 
@@ -136,9 +137,10 @@ Notes:
                             }
 
                             var restoreStorageType = storageOverride ?? configManager.GlobalStorageType;
+                            var restorePasswordProvider = CreateCliPasswordProvider(configManager);
                             using (var storage = await configManager.CreateStorageAsync(restoreStorageType))
                             {
-                                var restore = new Restore(logger, storage);
+                                var restore = new Restore(logger, storage, restorePasswordProvider);
                                 await restore.RestoreFromBackupAsync(args[1], args[2]);
                             }
                             break;
@@ -150,8 +152,8 @@ Notes:
                                 break;
                             }
                             var backupType = args.Length >= 2 && !args[1].StartsWith("--") ? args[1] : "all";
-                            var passwordProvider = CreateCliPasswordProvider(configManager);
-                            var systemBackupManager = new SystemBackupManager(logger, configManager, systemState, passwordProvider);
+                            var systemBackupPasswordProvider = CreateCliPasswordProvider(configManager);
+                            var systemBackupManager = new SystemBackupManager(logger, configManager, systemState, systemBackupPasswordProvider);
 
                             switch (backupType.ToLowerInvariant())
                             {
@@ -183,8 +185,8 @@ Notes:
                                 break;
                             }
                             var restoreType = args.Length >= 3 && !args[2].StartsWith("--") ? args[2] : "all";
-                            var restorePasswordProvider = CreateCliPasswordProvider(configManager);
-                            var systemRestoreManager = new SystemBackupManager(logger, configManager, systemState, restorePasswordProvider);
+                            var systemRestorePasswordProvider = CreateCliPasswordProvider(configManager);
+                            var systemRestoreManager = new SystemBackupManager(logger, configManager, systemState, systemRestorePasswordProvider);
                             await systemRestoreManager.RestoreSystemAsync(restoreType, args[1], storageOverride);
                             break;
                     }

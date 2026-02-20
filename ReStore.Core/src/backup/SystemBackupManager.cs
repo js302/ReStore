@@ -32,24 +32,24 @@ public class SystemBackupManager
     public async Task BackupSystemAsync()
     {
         _logger.Log("Starting full system backup...", LogLevel.Info);
-        
+
         try
         {
             if (_config.SystemBackup.IncludePrograms)
                 await BackupInstalledProgramsAsync();
             else
                 _logger.Log("Skipping programs backup (disabled in config)", LogLevel.Info);
-            
+
             if (_config.SystemBackup.IncludeEnvironmentVariables)
                 await BackupEnvironmentVariablesAsync();
             else
                 _logger.Log("Skipping environment variables backup (disabled in config)", LogLevel.Info);
-            
+
             if (_config.SystemBackup.IncludeWindowsSettings)
                 await BackupWindowsSettingsAsync();
             else
                 _logger.Log("Skipping Windows settings backup (disabled in config)", LogLevel.Info);
-            
+
             _logger.Log("System backup completed successfully", LogLevel.Info);
         }
         catch (Exception ex)
@@ -63,14 +63,14 @@ public class SystemBackupManager
     {
         return component.ToLowerInvariant() switch
         {
-            "programs" => _config.SystemBackup.ProgramsStorageType 
-                ?? _config.SystemBackup.StorageType 
+            "programs" => _config.SystemBackup.ProgramsStorageType
+                ?? _config.SystemBackup.StorageType
                 ?? _config.GlobalStorageType,
-            "environment" => _config.SystemBackup.EnvironmentStorageType 
-                ?? _config.SystemBackup.StorageType 
+            "environment" => _config.SystemBackup.EnvironmentStorageType
+                ?? _config.SystemBackup.StorageType
                 ?? _config.GlobalStorageType,
-            "settings" => _config.SystemBackup.SettingsStorageType 
-                ?? _config.SystemBackup.StorageType 
+            "settings" => _config.SystemBackup.SettingsStorageType
+                ?? _config.SystemBackup.StorageType
                 ?? _config.GlobalStorageType,
             _ => _config.GlobalStorageType
         };
@@ -79,7 +79,7 @@ public class SystemBackupManager
     public async Task BackupInstalledProgramsAsync()
     {
         _logger.Log("Backing up installed programs...", LogLevel.Info);
-        
+
         IStorage? storage = null;
         try
         {
@@ -88,7 +88,7 @@ public class SystemBackupManager
             _logger.Log($"Using {storageType} storage for programs backup", LogLevel.Info);
 
             var programs = await _programDiscovery.GetAllInstalledProgramsAsync();
-            
+
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
             var uniqueId = Guid.NewGuid().ToString("N");
             var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", $"{timestamp}_{uniqueId}");
@@ -105,7 +105,7 @@ public class SystemBackupManager
 
             var remotePath = $"system_backups/programs/programs_backup_{uniqueId}_{timestamp}.zip";
             var zipPath = Path.Combine(Path.GetTempPath(), $"programs_backup_{uniqueId}_{timestamp}.zip");
-            
+
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
@@ -123,7 +123,7 @@ public class SystemBackupManager
                 var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
-                
+
                 // Upload metadata file
                 var metadataPath = encryptedPath + ".meta";
                 var remoteMetadataPath = remotePath + ".meta";
@@ -163,7 +163,7 @@ public class SystemBackupManager
     public async Task BackupEnvironmentVariablesAsync()
     {
         _logger.Log("Backing up environment variables...", LogLevel.Info);
-        
+
         IStorage? storage = null;
         try
         {
@@ -172,7 +172,7 @@ public class SystemBackupManager
             _logger.Log($"Using {storageType} storage for environment variables backup", LogLevel.Info);
 
             var variables = await _envManager.GetAllEnvironmentVariablesAsync();
-            
+
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
             var uniqueId = Guid.NewGuid().ToString("N");
             var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemBackup", $"{timestamp}_{uniqueId}");
@@ -188,7 +188,7 @@ public class SystemBackupManager
 
             var remotePath = $"system_backups/environment/env_backup_{uniqueId}_{timestamp}.zip";
             var zipPath = Path.Combine(Path.GetTempPath(), $"env_backup_{uniqueId}_{timestamp}.zip");
-            
+
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
@@ -206,7 +206,7 @@ public class SystemBackupManager
                 var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
-                
+
                 // Upload metadata file
                 var metadataPath = encryptedPath + ".meta";
                 var remoteMetadataPath = remotePath + ".meta";
@@ -246,7 +246,7 @@ public class SystemBackupManager
     private async Task CreateWingetRestoreScriptAsync(List<InstalledProgram> programs, string outputPath)
     {
         var wingetPrograms = programs.Where(p => p.IsWingetAvailable && !string.IsNullOrEmpty(p.WingetId)).ToList();
-        
+
         var scriptContent = new List<string>
         {
             "# ReStore Winget Programs Restore Script",
@@ -298,7 +298,7 @@ public class SystemBackupManager
     private async Task CreateManualInstallListAsync(List<InstalledProgram> programs, string outputPath)
     {
         var manualPrograms = programs.Where(p => !p.IsWingetAvailable).ToList();
-        
+
         var content = new List<string>
         {
             "# Programs that need manual installation",
@@ -477,62 +477,82 @@ public class SystemBackupManager
     public async Task RestoreSystemAsync(string backupType, string backupPath, string? storageTypeOverride = null)
     {
         _logger.Log($"Starting system restore of {backupType} from {backupPath}...", LogLevel.Info);
-        
+
         IStorage? storage = null;
+        string? tempDir = null;
         try
         {
-            var component = backupType.Replace("system_", "");
+            var normalizedBackupType = backupType.Trim().ToLowerInvariant();
+            var normalizedBackupPath = backupPath.Replace('\\', '/').ToLowerInvariant();
+            var component = normalizedBackupType switch
+            {
+                "system_programs" => "programs",
+                "system_environment" => "environment",
+                "system_settings" => "settings",
+                "all" when normalizedBackupPath.Contains("/programs/") => "programs",
+                "all" when normalizedBackupPath.Contains("/environment/") => "environment",
+                "all" when normalizedBackupPath.Contains("/settings/") => "settings",
+                _ => normalizedBackupType
+            };
+
+            if (component is not ("programs" or "environment" or "settings"))
+            {
+                throw new ArgumentException($"Unsupported system restore type: {backupType}. Use programs, environment, or settings.", nameof(backupType));
+            }
+
             var storageType = storageTypeOverride ?? GetStorageTypeForComponent(component);
             storage = await _config.CreateStorageAsync(storageType);
             _logger.Log($"Using {storageType} storage for restore", LogLevel.Info);
 
             var restoreTimestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
             var restoreUniqueId = Guid.NewGuid().ToString("N");
-            var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", $"{restoreTimestamp}_{restoreUniqueId}");
+            tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", $"{restoreTimestamp}_{restoreUniqueId}");
             Directory.CreateDirectory(tempDir);
-            
+
             var zipPath = Path.Combine(tempDir, "backup.zip");
             await storage.DownloadAsync(backupPath, zipPath);
-            
+
             var extractDir = Path.Combine(tempDir, "extracted");
             var compressionUtil = new CompressionUtil();
-            
+
             if (backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
+                var metadataPath = backupPath + ".meta";
+                var tempMetadataPath = zipPath + ".meta";
+                await storage.DownloadAsync(metadataPath, tempMetadataPath);
+
                 if (_passwordProvider == null)
                 {
                     throw new InvalidOperationException("Encrypted backup detected but no password provider available");
                 }
-                
+
                 var password = await _passwordProvider.GetPasswordAsync();
                 if (string.IsNullOrEmpty(password))
                 {
                     throw new InvalidOperationException("Password required to decrypt backup");
                 }
-                
+
                 await compressionUtil.DecryptAndDecompressAsync(zipPath, password, extractDir, _logger);
             }
             else
             {
                 await compressionUtil.DecompressAsync(zipPath, extractDir);
             }
-            
-            if (backupType == "system_programs")
+
+            if (component == "programs")
             {
                 await RestoreProgramsAsync(extractDir);
             }
-            else if (backupType == "system_environment")
+            else if (component == "environment")
             {
                 await RestoreEnvironmentVariablesAsync(extractDir);
             }
-            else if (backupType == "system_settings")
+            else if (component == "settings")
             {
                 await RestoreWindowsSettingsAsync(extractDir);
             }
-            
-            Directory.Delete(tempDir, true);
-            
+
             _logger.Log($"System restore of {backupType} completed successfully", LogLevel.Info);
         }
         catch (Exception ex)
@@ -543,6 +563,18 @@ public class SystemBackupManager
         finally
         {
             storage?.Dispose();
+
+            if (!string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
+            {
+                try
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log($"Failed to cleanup temporary restore directory {tempDir}: {ex.Message}", LogLevel.Warning);
+                }
+            }
         }
     }
 
@@ -554,13 +586,13 @@ public class SystemBackupManager
             _logger.Log("Programs restore script found. Please run it manually with appropriate permissions.", LogLevel.Info);
             _logger.Log($"Script location: {scriptPath}", LogLevel.Info);
         }
-        
+
         var jsonPath = Path.Combine(extractDir, "installed_programs.json");
         if (File.Exists(jsonPath))
         {
             _logger.Log($"Programs backup data available at: {jsonPath}", LogLevel.Info);
         }
-        
+
         return Task.CompletedTask;
     }
 
@@ -571,7 +603,7 @@ public class SystemBackupManager
         {
             await _envManager.RestoreEnvironmentVariablesAsync(jsonPath);
         }
-        
+
         var scriptPath = Path.Combine(extractDir, "restore_environment_variables.ps1");
         if (File.Exists(scriptPath))
         {
@@ -583,7 +615,7 @@ public class SystemBackupManager
     public async Task BackupWindowsSettingsAsync()
     {
         _logger.Log("Backing up Windows settings...", LogLevel.Info);
-        
+
         IStorage? storage = null;
         try
         {
@@ -603,7 +635,7 @@ public class SystemBackupManager
 
             var remotePath = $"system_backups/settings/settings_backup_{uniqueId}_{timestamp}.zip";
             var zipPath = Path.Combine(Path.GetTempPath(), $"settings_backup_{uniqueId}_{timestamp}.zip");
-            
+
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
             await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
@@ -621,7 +653,7 @@ public class SystemBackupManager
                 var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
-                
+
                 // Upload metadata file
                 var metadataPath = encryptedPath + ".meta";
                 var remoteMetadataPath = remotePath + ".meta";
@@ -667,13 +699,13 @@ public class SystemBackupManager
             _logger.Log($"Script location: {scriptPath}", LogLevel.Info);
             _logger.Log("IMPORTANT: Review the script before running. Some settings may require administrator privileges.", LogLevel.Warning);
         }
-        
+
         var manifestPath = Path.Combine(extractDir, "settings_manifest.json");
         if (File.Exists(manifestPath))
         {
             _logger.Log($"Settings manifest available at: {manifestPath}", LogLevel.Info);
         }
-        
+
         return Task.CompletedTask;
     }
 }

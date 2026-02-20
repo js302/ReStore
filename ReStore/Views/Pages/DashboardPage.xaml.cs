@@ -60,7 +60,7 @@ namespace ReStore.Views.Pages
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
             var storyboard = new System.Windows.Media.Animation.Storyboard();
-            
+
             var fadeIn = new System.Windows.Media.Animation.DoubleAnimation
             {
                 From = 0,
@@ -68,7 +68,7 @@ namespace ReStore.Views.Pages
                 Duration = TimeSpan.FromMilliseconds(400),
                 EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
             };
-            
+
             System.Windows.Media.Animation.Storyboard.SetTargetProperty(fadeIn, new PropertyPath(UIElement.OpacityProperty));
             storyboard.Children.Add(fadeIn);
             storyboard.Begin(this);
@@ -77,7 +77,7 @@ namespace ReStore.Views.Pages
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
             _statsTimer?.Stop();
-            
+
             if (_watcher == null && _storage != null)
             {
                 _storage?.Dispose();
@@ -92,7 +92,7 @@ namespace ReStore.Views.Pages
                 await _configManager.LoadAsync();
                 _state = new SystemState(this);
                 await _state.LoadStateAsync();
-                
+
                 var configPath = _configManager.GetConfigFilePath();
                 StatusText.Text = $"Config loaded: {configPath}";
                 UpdateStatistics();
@@ -102,12 +102,12 @@ namespace ReStore.Views.Pages
             {
                 var configDir = ConfigInitializer.GetUserConfigDirectory();
                 var examplePath = ConfigInitializer.GetUserExampleConfigPath();
-                
+
                 Log("Configuration setup required", LogLevel.Warning);
                 Log($"Configuration directory: {configDir}", LogLevel.Info);
                 Log($"Example config: {examplePath}", LogLevel.Info);
                 Log("Please rename config.example.json to config.json and configure your settings", LogLevel.Warning);
-                
+
                 MessageBox.Show(
                     $"Welcome to ReStore!\n\n" +
                     $"First-time setup required:\n\n" +
@@ -118,7 +118,7 @@ namespace ReStore.Views.Pages
                     "Configuration Required",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
-                
+
                 StatusText.Text = "Configuration required - see logs";
             }
             catch (Exception ex)
@@ -269,8 +269,7 @@ namespace ReStore.Views.Pages
                 }
 
                 var sizeAnalyzer = new SizeAnalyzer();
-                var compression = new CompressionUtil();
-                _watcher = new FileWatcher(_configManager, this, _state, sizeAnalyzer, compression);
+                _watcher = new FileWatcher(_configManager, this, _state, sizeAnalyzer);
                 await _watcher.StartAsync();
 
                 WatcherService.Instance.SetWatcher(_watcher);
@@ -340,9 +339,9 @@ namespace ReStore.Views.Pages
 
                     var sizeAnalyzer = new SizeAnalyzer();
                     var backup = new Backup(this, _state, sizeAnalyzer, _configManager);
-                    
+
                     await backup.BackupDirectoryAsync(folderPath);
-                    
+
                     Log($"Manual backup completed: {folderPath}", LogLevel.Info);
                     await RefreshBackupHistoryAsync();
                     UpdateStatistics();
@@ -542,10 +541,10 @@ namespace ReStore.Views.Pages
                     Duration = TimeSpan.FromMilliseconds(300),
                     EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut }
                 };
-                
+
                 var brush = StatusIndicator.Fill as System.Windows.Media.SolidColorBrush;
                 brush?.BeginAnimation(System.Windows.Media.SolidColorBrush.ColorProperty, colorAnimation);
-                
+
                 if (StatusIndicator.Effect is System.Windows.Media.Effects.DropShadowEffect effect)
                 {
                     effect.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.ColorProperty, colorAnimation);

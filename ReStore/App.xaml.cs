@@ -1,12 +1,10 @@
-using System;
 using System.Diagnostics;
-using System.Threading;
+using System.Threading.Tasks;
 using System.IO.Pipes;
 using System.IO;
 using System.Windows;
 using ReStore.Views;
 using ReStore.Views.Pages;
-using Wpf.Ui.Appearance;
 using ReStore.Services;
 using ReStore.Interop;
 
@@ -16,17 +14,19 @@ namespace ReStore
     {
         private SystemTrayManager? _trayManager;
         private static Mutex? _instanceMutex;
+        private static bool _ownsMutex;
         private const string MUTEX_NAME = "ReStore_SingleInstance_Mutex";
         private const string PIPE_NAME = "ReStore_CommandPipe";
         private Thread? _pipeServerThread;
         private bool _isRunning = true;
-        
+
         public static Services.GuiPasswordProvider? GlobalPasswordProvider { get; private set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
             bool createdNew;
             _instanceMutex = new Mutex(true, MUTEX_NAME, out createdNew);
+            _ownsMutex = createdNew;
 
             if (!createdNew)
             {
@@ -43,12 +43,12 @@ namespace ReStore
             }
 
             base.OnStartup(e);
-            
+
             ReStore.Core.src.utils.ConfigInitializer.EnsureConfigurationSetup();
-            
+
             // Initialize global password provider
             GlobalPasswordProvider = new Services.GuiPasswordProvider();
-            
+
             AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             {
                 var ex = args.ExceptionObject as Exception;
@@ -68,7 +68,7 @@ namespace ReStore
 
             var mainWindow = new MainWindow();
             MainWindow = mainWindow;
-            
+
             var settings = AppSettings.Load();
             mainWindow.UpdateTrayManager(settings.MinimizeToTray);
             _trayManager = mainWindow.TrayManager;
@@ -78,10 +78,10 @@ namespace ReStore
                 WindowEffects.ApplySystemBackdrop(mainWindow);
                 WindowEffects.FixMaximizedBounds(mainWindow);
             };
-            
+
             if (e.Args.Length > 0 && e.Args[0] == "--share" && e.Args.Length > 1)
             {
-                OpenShareWindow(e.Args[1], shutdownOnClose: true);
+                _ = OpenShareWindowAsync(e.Args[1], shutdownOnClose: true);
             }
             else
             {
@@ -89,10 +89,10 @@ namespace ReStore
                 {
                     HandleCommandLineArgs(e.Args, mainWindow);
                 }
-                
+
                 mainWindow.Show();
             }
-            
+
             _pipeServerThread = new Thread(ListenForCommands);
             _pipeServerThread.IsBackground = true;
             _pipeServerThread.Start();
@@ -107,11 +107,11 @@ namespace ReStore
                     using (var pipeServer = new NamedPipeServerStream(PIPE_NAME, PipeDirection.In, 1))
                     {
                         pipeServer.WaitForConnection();
-                        
+
                         using (var reader = new StreamReader(pipeServer))
                         {
                             var command = reader.ReadToEnd();
-                            
+
                             Dispatcher.Invoke(() =>
                             {
                                 if (MainWindow is MainWindow mw)
@@ -132,9 +132,12 @@ namespace ReStore
         private void SendCommandToExistingInstance(string[] args)
         {
             var command = "";
-            if (args.Length > 0 && args[0] == "--share" && args.Length > 1) {
+            if (args.Length > 0 && args[0] == "--share" && args.Length > 1)
+            {
                 command = $"--share \"{args[1]}\"";
-            } else {
+            }
+            else
+            {
                 command = string.Join(" ", args);
             }
             SendCommandToExistingInstance(command);
@@ -147,7 +150,7 @@ namespace ReStore
                 using (var pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.Out))
                 {
                     pipeClient.Connect(1000);
-                    
+
                     using (var writer = new StreamWriter(pipeClient))
                     {
                         writer.Write(command);
@@ -171,14 +174,14 @@ namespace ReStore
             if (command.StartsWith("--share "))
             {
                 var path = command.Substring(8).Trim('"');
-                OpenShareWindow(path, shutdownOnClose: false);
+                _ = OpenShareWindowAsync(path, shutdownOnClose: false);
                 return;
             }
 
             mainWindow.Show();
             mainWindow.WindowState = WindowState.Normal;
             mainWindow.Activate();
-            
+
             if (command == "/startWatcher")
             {
                 ExecuteWatcherAction(mainWindow, true);
@@ -189,45 +192,52 @@ namespace ReStore
             }
         }
 
-        private void OpenShareWindow(string filePath, bool shutdownOnClose)
+        private async Task OpenShareWindowAsync(string filePath, bool shutdownOnClose)
         {
-            var logger = new ReStore.Core.src.utils.Logger();
-            var configManager = new ReStore.Core.src.utils.ConfigManager(logger);
-            System.Threading.Tasks.Task.Run(async () => await configManager.LoadAsync()).Wait();
-            
-            var shareService = new ReStore.Core.src.sharing.ShareService(configManager, logger);
-            
-            Dispatcher.Invoke(() =>
+            try
             {
-                var shareWindow = new ReStore.Views.Windows.ShareWindow(filePath, shareService, configManager);
-                if (shutdownOnClose)
+                var logger = new ReStore.Core.src.utils.Logger();
+                var configManager = new ReStore.Core.src.utils.ConfigManager(logger);
+                await configManager.LoadAsync();
+
+                var shareService = new ReStore.Core.src.sharing.ShareService(configManager, logger);
+
+                await Dispatcher.InvokeAsync(() =>
                 {
-                    shareWindow.Closed += (s, e) => 
+                    var shareWindow = new ReStore.Views.Windows.ShareWindow(filePath, shareService, configManager);
+                    if (shutdownOnClose)
                     {
-                        // Only shutdown if the main window hasn't been shown in the meantime
-                        if (MainWindow == null || MainWindow.Visibility != Visibility.Visible)
+                        shareWindow.Closed += (_, _) =>
                         {
-                            Shutdown();
-                        }
-                    };
-                }
-                shareWindow.Show();
-            });
+                            if (MainWindow == null || MainWindow.Visibility != Visibility.Visible)
+                            {
+                                Shutdown();
+                            }
+                        };
+                    }
+                    shareWindow.Show();
+                });
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Failed to open share window: {ex}");
+                MessageBox.Show($"Failed to open share window: {ex.Message}", "ReStore Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
-        private void ExecuteWatcherAction(MainWindow mainWindow, bool start)
+        private static void ExecuteWatcherAction(MainWindow mainWindow, bool start)
         {
             mainWindow.Dispatcher.InvokeAsync(async () =>
             {
                 await System.Threading.Tasks.Task.Delay(100);
                 var frame = mainWindow.FindName("ContentFrame") as System.Windows.Controls.Frame;
-                
+
                 if (frame?.Content is not DashboardPage)
                 {
                     frame?.Navigate(new DashboardPage());
                     await System.Threading.Tasks.Task.Delay(100);
                 }
-                
+
                 if (frame?.Content is DashboardPage dashboard)
                 {
                     var btnName = start ? "StartWatcherBtn" : "StopWatcherBtn";
@@ -248,15 +258,18 @@ namespace ReStore
         protected override void OnExit(ExitEventArgs e)
         {
             _isRunning = false;
-            
+
             if (MainWindow is MainWindow mw)
             {
                 mw.TrayManager?.Dispose();
             }
-            
-            _instanceMutex?.ReleaseMutex();
+
+            if (_ownsMutex)
+            {
+                _instanceMutex?.ReleaseMutex();
+            }
             _instanceMutex?.Dispose();
-            
+
             base.OnExit(e);
         }
     }

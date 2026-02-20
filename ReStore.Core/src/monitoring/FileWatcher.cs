@@ -10,23 +10,24 @@ public class FileWatcher : IDisposable
     private readonly ILogger _logger;
     private readonly SystemState _systemState;
     private readonly SizeAnalyzer _sizeAnalyzer;
-    private readonly CompressionUtil _compressionUtil;
     private readonly Backup _backup;
-    private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly IPasswordProvider? _passwordProvider;
+    private readonly List<FileSystemWatcher> _watchers = [];
     private readonly ConcurrentDictionary<string, DateTime> _changedFiles = new();
     private readonly FileSelectionService _fileSelectionService;
+    private readonly SemaphoreSlim _backupExecutionLock = new(1, 1);
     private Timer? _backupTimer;
     private readonly TimeSpan _bufferTime = TimeSpan.FromSeconds(10);
     private bool _isDisposed = false;
 
-    public FileWatcher(IConfigManager configManager, ILogger logger, SystemState systemState, SizeAnalyzer sizeAnalyzer, CompressionUtil compressionUtil)
+    public FileWatcher(IConfigManager configManager, ILogger logger, SystemState systemState, SizeAnalyzer sizeAnalyzer, IPasswordProvider? passwordProvider = null)
     {
         _configManager = configManager;
         _logger = logger;
         _systemState = systemState;
         _sizeAnalyzer = sizeAnalyzer;
-        _compressionUtil = compressionUtil;
-        _backup = new Backup(_logger, _systemState, _sizeAnalyzer, _configManager);
+        _passwordProvider = passwordProvider;
+        _backup = new Backup(_logger, _systemState, _sizeAnalyzer, _configManager, _passwordProvider);
         _fileSelectionService = new FileSelectionService(_logger, _configManager);
     }
 
@@ -100,9 +101,20 @@ public class FileWatcher : IDisposable
         _logger.Log($"File watcher error: {e.GetException().Message}", LogLevel.Error);
     }
 
-    private async void OnBackupTimer(object? state)
+    private void OnBackupTimer(object? state)
+    {
+        _ = ProcessBackupTimerAsync();
+    }
+
+    private async Task ProcessBackupTimerAsync()
     {
         if (_isDisposed) return;
+
+        if (!await _backupExecutionLock.WaitAsync(0))
+        {
+            _logger.Log("Backup processing is already running; skipping overlapping timer tick.", LogLevel.Debug);
+            return;
+        }
 
         try
         {
@@ -151,6 +163,10 @@ public class FileWatcher : IDisposable
         {
             _logger.Log($"Unhandled error in backup timer: {ex.Message}", LogLevel.Error);
         }
+        finally
+        {
+            _backupExecutionLock.Release();
+        }
     }
 
     private string? FindWatchedRoot(string filePath)
@@ -158,10 +174,21 @@ public class FileWatcher : IDisposable
         var normalizedPath = Path.GetFullPath(filePath);
 
         return _configManager.WatchDirectories
-            .Select(wc => Path.GetFullPath(wc.Path))
-            .Where(watchedDir => normalizedPath.StartsWith(watchedDir, StringComparison.OrdinalIgnoreCase))
+            .Select(wc => Path.GetFullPath(wc.Path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .Where(watchedDir => IsPathWithinRoot(normalizedPath, watchedDir))
             .OrderByDescending(watchedDir => watchedDir.Length)
             .FirstOrDefault();
+    }
+
+    private static bool IsPathWithinRoot(string path, string root)
+    {
+        if (path.Equals(root, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var rootWithSeparator = root + Path.DirectorySeparatorChar;
+        return path.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose()
@@ -185,6 +212,7 @@ public class FileWatcher : IDisposable
             }
             _watchers.Clear();
             _changedFiles.Clear();
+            _backupExecutionLock.Dispose();
             _logger.Log("FileWatcher resources disposed.", LogLevel.Debug);
         }
 

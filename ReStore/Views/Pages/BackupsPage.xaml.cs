@@ -24,29 +24,29 @@ namespace ReStore.Views.Pages
         public DateTime Timestamp { get; set; }
         public bool IsDiff { get; set; }
         public long SizeBytes { get; set; }
-        
+
         public string TypeLabel => IsDiff ? "Differential" : "Full";
         public string SizeLabel => FormatBytes(SizeBytes);
         public string StatusText => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? "Recent" : "Archived";
         public Brush StatusColor => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? _recentBrush : _archivedBrush;
-        
+
         public string DisplayPath
         {
             get
             {
                 if (string.IsNullOrEmpty(_storageBasePath) || string.IsNullOrEmpty(Path))
                     return Path;
-                
+
                 if (Path.StartsWith("./") || Path.StartsWith(".\\"))
                 {
                     var relativePath = Path.Substring(2);
                     return System.IO.Path.Combine(_storageBasePath, relativePath);
                 }
-                
+
                 return System.IO.Path.Combine(_storageBasePath, Path);
             }
         }
-        
+
         public static void SetStorageBasePath(string? basePath)
         {
             _storageBasePath = basePath;
@@ -102,13 +102,20 @@ namespace ReStore.Views.Pages
             FilterTypeCombo.SelectionChanged += (_, __) => ApplyFilters();
             SortCombo.SelectionChanged += (_, __) => ApplyFilters();
             RefreshBtn.Click += async (_, __) => await LoadBackupsAsync();
-            
+
             RestoreSelectedBtn.Click += async (_, __) => await RestoreSelectedAsync();
             DeleteSelectedBtn.Click += async (_, __) => await DeleteSelectedAsync();
             SelectAllBtn.Click += (_, __) => SelectAll();
             DeselectAllBtn.Click += (_, __) => DeselectAll();
+            Unloaded += Page_Unloaded;
 
             _ = InitializeAsync();
+        }
+
+        private void Page_Unloaded(object sender, RoutedEventArgs e)
+        {
+            _storage?.Dispose();
+            _storage = null;
         }
 
         private async Task InitializeAsync()
@@ -139,7 +146,7 @@ namespace ReStore.Views.Pages
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
             var storyboard = new System.Windows.Media.Animation.Storyboard();
-            
+
             var fadeIn = new System.Windows.Media.Animation.DoubleAnimation
             {
                 From = 0,
@@ -147,7 +154,7 @@ namespace ReStore.Views.Pages
                 Duration = TimeSpan.FromMilliseconds(400),
                 EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
             };
-            
+
             System.Windows.Media.Animation.Storyboard.SetTargetProperty(fadeIn, new PropertyPath(UIElement.OpacityProperty));
             storyboard.Children.Add(fadeIn);
             storyboard.Begin(this);
@@ -160,7 +167,7 @@ namespace ReStore.Views.Pages
             await Task.Run(async () =>
             {
                 var items = new List<BackupItem>();
-                
+
                 foreach (var kvp in _state.BackupHistory)
                 {
                     var directory = kvp.Key;
@@ -208,7 +215,7 @@ namespace ReStore.Views.Pages
                 return await Task.Run(() =>
                 {
                     var localPath = Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
-                    
+
                     if (_storage.GetType().Name.Contains("LocalStorage"))
                     {
                         if (File.Exists(path))
@@ -216,7 +223,7 @@ namespace ReStore.Views.Pages
                             return new FileInfo(path).Length;
                         }
                     }
-                    
+
                     return 0;
                 });
             }
@@ -233,7 +240,7 @@ namespace ReStore.Views.Pages
             var searchText = SearchBox.Text?.Trim().ToLower();
             if (!string.IsNullOrEmpty(searchText))
             {
-                filtered = filtered.Where(b => b.Directory.ToLower().Contains(searchText) || 
+                filtered = filtered.Where(b => b.Directory.ToLower().Contains(searchText) ||
                                               b.Path.ToLower().Contains(searchText));
             }
 
@@ -407,7 +414,7 @@ namespace ReStore.Views.Pages
                     if (_storage != null)
                     {
                         await _storage.DeleteAsync(backup.Path);
-                        
+
                         // If encrypted, also delete the metadata file
                         if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
                         {
@@ -472,7 +479,7 @@ namespace ReStore.Views.Pages
                         if (_storage != null)
                         {
                             await _storage.DeleteAsync(backup.Path);
-                            
+
                             // If encrypted, also delete the metadata file
                             if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
                             {

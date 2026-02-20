@@ -102,7 +102,7 @@ namespace ReStore.Services
         private static string? GetExecutablePath()
         {
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var installedPath = System.IO.Path.Combine(localAppData, "Microsoft", "WindowsApps", "restore.exe");
+            var installedPath = System.IO.Path.Combine(localAppData, "Microsoft", "WindowsApps", "ReStore.exe");
 
             if (System.IO.File.Exists(installedPath))
             {

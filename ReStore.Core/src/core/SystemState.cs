@@ -36,7 +36,7 @@ public partial class SystemState
     );
     [JsonIgnore]
     private readonly ILogger? _logger;
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly Lock _stateLock = new();
 
     public SystemState(ILogger? logger = null)
     {
@@ -46,43 +46,35 @@ public partial class SystemState
 
     public void SetStateFilePath(string path)
     {
-        _stateFilePath = path;
+        lock (_stateLock)
+        {
+            _stateFilePath = path;
+        }
         _logger?.Log($"System state file path set to: {_stateFilePath}", LogLevel.Debug);
     }
 
     public virtual bool HasFileChanged(string path, string currentHash)
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             return !FileMetadata.TryGetValue(path, out var storedMetadata) || storedMetadata.Hash != currentHash;
-        }
-        finally
-        {
-            _lock.Release();
         }
     }
 
     public virtual string? GetPreviousBackupPath(string directory)
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             if (!BackupHistory.TryGetValue(directory, out var backups) || backups.Count == 0)
                 return null;
 
             return backups.OrderByDescending(b => b.Timestamp).First().Path;
         }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     public virtual string? GetBaseBackupPath(string diffPath)
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             foreach (var history in BackupHistory.Values)
             {
@@ -94,10 +86,6 @@ public partial class SystemState
                     return baseBackup.Path;
             }
             return null;
-        }
-        finally
-        {
-            _lock.Release();
         }
     }
 
@@ -143,8 +131,7 @@ public partial class SystemState
 
     public virtual void AddBackup(string directory, string path, bool isDiff)
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             if (!BackupHistory.ContainsKey(directory))
                 BackupHistory[directory] = [];
@@ -157,16 +144,11 @@ public partial class SystemState
                 StorageType = null
             });
         }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     public virtual void AddBackup(string directory, string path, bool isDiff, string? storageType)
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             if (!BackupHistory.ContainsKey(directory))
                 BackupHistory[directory] = [];
@@ -179,29 +161,19 @@ public partial class SystemState
                 StorageType = storageType
             });
         }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     public virtual List<string> GetBackupGroups()
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             return [.. BackupHistory.Keys];
-        }
-        finally
-        {
-            _lock.Release();
         }
     }
 
     public virtual List<BackupInfo> GetBackupsForGroup(string group)
     {
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             if (!BackupHistory.TryGetValue(group, out var backups))
             {
@@ -218,10 +190,6 @@ public partial class SystemState
                     StorageType = b.StorageType
                 })];
         }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     public virtual void RemoveBackupsFromGroup(string group, IEnumerable<string> backupPaths)
@@ -232,8 +200,7 @@ public partial class SystemState
             return;
         }
 
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             if (!BackupHistory.TryGetValue(group, out var backups) || backups.Count == 0)
             {
@@ -247,10 +214,6 @@ public partial class SystemState
                 BackupHistory.Remove(group);
             }
         }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     public virtual async Task AddOrUpdateFileMetadataAsync(string filePath)
@@ -260,8 +223,7 @@ public partial class SystemState
             var fileInfo = new FileInfo(filePath);
             if (!fileInfo.Exists)
             {
-                await _lock.WaitAsync();
-                try
+                lock (_stateLock)
                 {
                     if (FileMetadata.ContainsKey(filePath))
                     {
@@ -269,17 +231,12 @@ public partial class SystemState
                         _logger?.Log($"Removed metadata for deleted file: {filePath}", LogLevel.Debug);
                     }
                 }
-                finally
-                {
-                    _lock.Release();
-                }
                 return;
             }
 
             var hash = await CalculateFileHashAsync(filePath);
 
-            await _lock.WaitAsync();
-            try
+            lock (_stateLock)
             {
                 var metadata = new FileMetadata
                 {
@@ -290,10 +247,6 @@ public partial class SystemState
                 };
 
                 FileMetadata[filePath] = metadata;
-            }
-            finally
-            {
-                _lock.Release();
             }
         }
         catch (IOException ioEx)
@@ -312,86 +265,97 @@ public partial class SystemState
 
     public virtual async Task SaveStateAsync()
     {
-        await _lock.WaitAsync();
-        try
+        PersistentStateData stateData;
+        string stateFilePath;
+
+        lock (_stateLock)
         {
-            var stateData = new PersistentStateData
+            stateData = new PersistentStateData
             {
                 LastBackupTime = LastBackupTime,
-                BackupHistory = BackupHistory,
-                FileMetadata = FileMetadata
+                BackupHistory = CloneBackupHistory(BackupHistory),
+                FileMetadata = CloneFileMetadata(FileMetadata)
             };
 
-            Directory.CreateDirectory(Path.GetDirectoryName(_stateFilePath)!);
+            stateFilePath = _stateFilePath;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(stateFilePath)!);
             var options = new JsonSerializerOptions { WriteIndented = true };
             var json = JsonSerializer.Serialize(stateData, options);
 
-            var tempPath = _stateFilePath + ".tmp";
+            var tempPath = stateFilePath + ".tmp";
             await File.WriteAllTextAsync(tempPath, json);
-            File.Move(tempPath, _stateFilePath, overwrite: true);
+            File.Move(tempPath, stateFilePath, overwrite: true);
 
-            _logger?.Log($"System state saved to {_stateFilePath}", LogLevel.Info);
+            _logger?.Log($"System state saved to {stateFilePath}", LogLevel.Info);
         }
         catch (Exception ex)
         {
-            _logger?.Log($"Error saving system state to {_stateFilePath}: {ex.Message}", LogLevel.Error);
-        }
-        finally
-        {
-            _lock.Release();
+            _logger?.Log($"Error saving system state to {stateFilePath}: {ex.Message}", LogLevel.Error);
         }
     }
 
     public virtual async Task LoadStateAsync()
     {
-        await _lock.WaitAsync();
+        string stateFilePath;
+
+        lock (_stateLock)
+        {
+            stateFilePath = _stateFilePath;
+        }
+
         try
         {
-            if (File.Exists(_stateFilePath))
+            if (File.Exists(stateFilePath))
             {
-                _logger?.Log($"Loading system state from {_stateFilePath}", LogLevel.Debug);
-                string json = await File.ReadAllTextAsync(_stateFilePath);
+                _logger?.Log($"Loading system state from {stateFilePath}", LogLevel.Debug);
+                string json = await File.ReadAllTextAsync(stateFilePath);
                 var stateData = JsonSerializer.Deserialize<PersistentStateData>(json);
                 if (stateData != null)
                 {
-                    LastBackupTime = stateData.LastBackupTime;
-                    BackupHistory = stateData.BackupHistory ?? [];
-                    FileMetadata = stateData.FileMetadata ?? [];
+                    lock (_stateLock)
+                    {
+                        LastBackupTime = stateData.LastBackupTime;
+                        BackupHistory = stateData.BackupHistory ?? [];
+                        FileMetadata = stateData.FileMetadata ?? [];
+                    }
                     _logger?.Log($"Loaded state: {FileMetadata.Count} file metadata entries, {BackupHistory.Count} backup history entries.", LogLevel.Info);
                 }
                 else
                 {
-                    _logger?.Log($"Deserialization of state file resulted in null: {_stateFilePath}", LogLevel.Warning);
+                    _logger?.Log($"Deserialization of state file resulted in null: {stateFilePath}", LogLevel.Warning);
                     InitializeEmptyState();
                 }
             }
             else
             {
-                _logger?.Log($"State file not found, initializing empty state: {_stateFilePath}", LogLevel.Info);
+                _logger?.Log($"State file not found, initializing empty state: {stateFilePath}", LogLevel.Info);
                 InitializeEmptyState();
             }
         }
         catch (JsonException jsonEx)
         {
-            _logger?.Log($"Error deserializing system state file {_stateFilePath}: {jsonEx.Message}. Initializing empty state.", LogLevel.Error);
+            _logger?.Log($"Error deserializing system state file {stateFilePath}: {jsonEx.Message}. Initializing empty state.", LogLevel.Error);
             InitializeEmptyState();
         }
         catch (Exception ex)
         {
-            _logger?.Log($"Error loading system state from {_stateFilePath}: {ex.Message}. Initializing empty state.", LogLevel.Error);
+            _logger?.Log($"Error loading system state from {stateFilePath}: {ex.Message}. Initializing empty state.", LogLevel.Error);
             InitializeEmptyState();
-        }
-        finally
-        {
-            _lock.Release();
         }
     }
 
     private void InitializeEmptyState()
     {
-        LastBackupTime = DateTime.MinValue;
-        BackupHistory = [];
-        FileMetadata = [];
+        lock (_stateLock)
+        {
+            LastBackupTime = DateTime.MinValue;
+            BackupHistory = [];
+            FileMetadata = [];
+        }
     }
 
     public virtual List<string> GetChangedFiles(List<string> allFiles, BackupType backupType)
@@ -404,8 +368,7 @@ public partial class SystemState
 
         var filesToBackup = new List<string>();
 
-        _lock.Wait();
-        try
+        lock (_stateLock)
         {
             DateTime lastFullBackupTime = GetLastFullBackupTime();
 
@@ -437,7 +400,7 @@ public partial class SystemState
                             {
                                 if (!string.IsNullOrEmpty(previousMetadata.Hash))
                                 {
-                                    var currentHash = CalculateFileHashAsync(filePath).GetAwaiter().GetResult();
+                                    var currentHash = CalculateFileHash(filePath);
                                     if (!string.IsNullOrEmpty(currentHash) && currentHash != previousMetadata.Hash)
                                     {
                                         _logger?.Log($"File changed (Incremental, hash): {filePath}", LogLevel.Debug);
@@ -472,10 +435,6 @@ public partial class SystemState
                     filesToBackup.Add(filePath);
                 }
             }
-        }
-        finally
-        {
-            _lock.Release();
         }
 
         _logger?.Log($"Found {filesToBackup.Count} changed files out of {allFiles.Count} total files for {backupType} backup.", LogLevel.Info);
@@ -518,6 +477,51 @@ public partial class SystemState
         {
             return string.Empty;
         }
+    }
+
+    private static string CalculateFileHash(string filePath)
+    {
+        try
+        {
+            using var sha256 = SHA256.Create();
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            byte[] hash = sha256.ComputeHash(stream);
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static Dictionary<string, List<BackupInfo>> CloneBackupHistory(Dictionary<string, List<BackupInfo>> backupHistory)
+    {
+        return backupHistory.ToDictionary(
+            item => item.Key,
+            item => item.Value.Select(backup => new BackupInfo
+            {
+                Path = backup.Path,
+                Timestamp = backup.Timestamp,
+                IsDiff = backup.IsDiff,
+                StorageType = backup.StorageType
+            }).ToList());
+    }
+
+    private static Dictionary<string, FileMetadata> CloneFileMetadata(Dictionary<string, FileMetadata> fileMetadata)
+    {
+        return fileMetadata.ToDictionary(
+            item => item.Key,
+            item => new FileMetadata
+            {
+                FilePath = item.Value.FilePath,
+                Size = item.Value.Size,
+                LastModified = item.Value.LastModified,
+                Hash = item.Value.Hash
+            });
     }
 }
 

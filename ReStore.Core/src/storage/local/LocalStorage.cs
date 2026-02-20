@@ -19,7 +19,7 @@ public class LocalStorage : StorageBase
         }
 
         _basePath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(pathValue));
-        
+
         try
         {
             Directory.CreateDirectory(_basePath);
@@ -45,7 +45,7 @@ public class LocalStorage : StorageBase
             throw new ArgumentException("Remote path cannot be null or empty", nameof(remotePath));
         }
 
-        var targetPath = GetFullPath(remotePath);
+        var targetPath = ResolveStoragePath(remotePath);
         var targetDirectory = Path.GetDirectoryName(targetPath);
 
         if (targetDirectory != null)
@@ -77,8 +77,8 @@ public class LocalStorage : StorageBase
             throw new ArgumentException("Local path cannot be null or empty", nameof(localPath));
         }
 
-        var sourcePath = GetFullPath(remotePath);
-        
+        var sourcePath = ResolveStoragePath(remotePath);
+
         if (!File.Exists(sourcePath))
         {
             throw new FileNotFoundException($"File not found in local storage: {remotePath}");
@@ -109,7 +109,7 @@ public class LocalStorage : StorageBase
             return Task.FromResult(false);
         }
 
-        var fullPath = GetFullPath(remotePath);
+        var fullPath = ResolveStoragePath(remotePath);
         return Task.FromResult(File.Exists(fullPath));
     }
 
@@ -120,8 +120,8 @@ public class LocalStorage : StorageBase
             throw new ArgumentException("Remote path cannot be null or empty", nameof(remotePath));
         }
 
-        var fullPath = GetFullPath(remotePath);
-        
+        var fullPath = ResolveStoragePath(remotePath);
+
         if (!File.Exists(fullPath))
         {
             Logger.Log($"File not found, cannot delete: {remotePath}", LogLevel.Warning);
@@ -142,10 +142,26 @@ public class LocalStorage : StorageBase
         return Task.CompletedTask;
     }
 
-    private string GetFullPath(string remotePath)
+    private string ResolveStoragePath(string remotePath)
     {
-        var normalizedPath = remotePath.Replace('/', Path.DirectorySeparatorChar);
-        return Path.Combine(_basePath, normalizedPath);
+        var normalizedPath = remotePath
+            .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+            .TrimStart(Path.DirectorySeparatorChar);
+
+        if (Path.IsPathRooted(normalizedPath))
+        {
+            throw new InvalidOperationException($"Rooted remote paths are not allowed: {remotePath}");
+        }
+
+        var resolvedPath = Path.GetFullPath(Path.Combine(_basePath, normalizedPath));
+        var normalizedBasePath = _basePath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+        if (!resolvedPath.StartsWith(normalizedBasePath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Remote path escapes storage root: {remotePath}");
+        }
+
+        return resolvedPath;
     }
 
     protected override void Dispose(bool disposing)

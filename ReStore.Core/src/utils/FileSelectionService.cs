@@ -25,7 +25,7 @@ public class FileSelectionService
         }
 
         // Check exclude paths from config
-        if (_configManager.ExcludedPaths.Any(p => filePath.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+        if (_configManager.ExcludedPaths.Any(p => IsPathWithinRoot(filePath, NormalizePath(p))))
         {
             return true;
         }
@@ -41,7 +41,7 @@ public class FileSelectionService
                 {
                     return true;
                 }
-                
+
                 // Check file size
                 var fileInfo = new FileInfo(filePath);
                 long maxFileSizeBytes = _configManager.MaxFileSizeMB * 1024 * 1024L;
@@ -169,7 +169,7 @@ public class FileSelectionService
                     // If we can't read attributes, skip the directory
                     continue;
                 }
-                
+
                 directories.Push(subDirectory);
             }
         }
@@ -183,5 +183,24 @@ public class FileSelectionService
             .Replace("\\?", ".") + "$";
 
         return Regex.IsMatch(fileName, regexPattern, RegexOptions.IgnoreCase);
+    }
+
+    private static string NormalizePath(string path)
+    {
+        return Path.GetFullPath(Environment.ExpandEnvironmentVariables(path))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static bool IsPathWithinRoot(string path, string root)
+    {
+        var normalizedPath = NormalizePath(path);
+
+        if (normalizedPath.Equals(root, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var rootWithSeparator = root + Path.DirectorySeparatorChar;
+        return normalizedPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -53,7 +53,7 @@ public class FileSelectionServiceTests : IDisposable
         // Arrange
         var excludePath = Path.Combine(_testDir, "Temp");
         Directory.CreateDirectory(excludePath);
-        
+
         _configMock.Setup(c => c.ExcludedPatterns).Returns(new List<string>());
         _configMock.Setup(c => c.ExcludedPaths).Returns(new List<string> { excludePath });
         _configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
@@ -67,6 +67,53 @@ public class FileSelectionServiceTests : IDisposable
 
         // Assert
         result.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ShouldExcludeFile_WhenFileIsInsideExcludedDirectoryBoundary()
+    {
+        // Arrange
+        var excludedRoot = Path.Combine(_testDir, "Data");
+        Directory.CreateDirectory(excludedRoot);
+
+        _configMock.Setup(c => c.ExcludedPatterns).Returns(new List<string>());
+        _configMock.Setup(c => c.ExcludedPaths).Returns(new List<string> { excludedRoot });
+        _configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
+
+        var service = new FileSelectionService(_loggerMock.Object, _configMock.Object);
+        var file = Path.Combine(excludedRoot, "nested", "test.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "content");
+
+        // Act
+        var result = service.ShouldExcludeFile(file);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ShouldNotExcludeFile_WhenPathOnlySharesPrefixWithExcludedDirectory()
+    {
+        // Arrange
+        var excludedRoot = Path.Combine(_testDir, "Data");
+        var siblingRoot = Path.Combine(_testDir, "DataArchive");
+        Directory.CreateDirectory(excludedRoot);
+        Directory.CreateDirectory(siblingRoot);
+
+        _configMock.Setup(c => c.ExcludedPatterns).Returns(new List<string>());
+        _configMock.Setup(c => c.ExcludedPaths).Returns(new List<string> { excludedRoot });
+        _configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
+
+        var service = new FileSelectionService(_loggerMock.Object, _configMock.Object);
+        var file = Path.Combine(siblingRoot, "test.txt");
+        File.WriteAllText(file, "content");
+
+        // Act
+        var result = service.ShouldExcludeFile(file);
+
+        // Assert
+        result.Should().BeFalse();
     }
 
     [Fact]

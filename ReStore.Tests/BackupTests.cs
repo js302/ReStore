@@ -79,4 +79,48 @@ public class BackupTests : IDisposable
         _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         _stateMock.Verify(s => s.SaveStateAsync(), Times.AtLeastOnce);
     }
+
+    [Fact]
+    public async Task BackupDirectoryAsync_ShouldNotUpdateMetadata_WhenUploadFails()
+    {
+        // Arrange
+        var filePath = Path.Combine(_testDir, "failure-case.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
+            .ReturnsAsync(_storageMock.Object);
+
+        _configMock.Setup(c => c.WatchDirectories)
+            .Returns(new List<WatchDirectoryConfig>());
+
+        _configMock.Setup(c => c.GlobalStorageType).Returns("local");
+        _configMock.Setup(c => c.SizeThresholdMB).Returns(100);
+        _configMock.Setup(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });
+        _configMock.Setup(c => c.ExcludedPatterns).Returns(new List<string>());
+        _configMock.Setup(c => c.ExcludedPaths).Returns(new List<string>());
+        _configMock.Setup(c => c.BackupType).Returns(BackupType.Incremental);
+
+        _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
+            .ReturnsAsync((100, false));
+
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), It.IsAny<BackupType>()))
+            .Returns(new List<string> { filePath });
+
+        _storageMock.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ThrowsAsync(new InvalidOperationException("simulated upload failure"));
+
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        // Act
+        var act = () => backup.BackupDirectoryAsync(_testDir);
+
+        // Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
+        _stateMock.Verify(s => s.AddOrUpdateFileMetadataAsync(It.IsAny<string>()), Times.Never);
+    }
 }

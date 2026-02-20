@@ -78,6 +78,11 @@ public class Backup
 
             _logger.Log($"Preparing to backup {filesToBackup.Count} files from {sourceDirectory}");
 
+            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+
+            _logger.Log("Proceeding with full backup creation for selected files.", LogLevel.Info);
+            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp, storage, storageType);
+
             if (_diffSyncManager != null)
             {
                 await _diffSyncManager.UpdateFileMetadataAsync(filesToBackup);
@@ -89,11 +94,6 @@ public class Backup
                     await _state.AddOrUpdateFileMetadataAsync(file);
                 }
             }
-
-            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-
-            _logger.Log("Proceeding with full backup creation for selected files.", LogLevel.Info);
-            await CreateFullBackupAsync(sourceDirectory, filesToBackup, timestamp, storage, storageType);
 
             _state.LastBackupTime = DateTime.UtcNow;
 
@@ -136,18 +136,6 @@ public class Backup
             storage = await _config.CreateStorageAsync(storageType);
 
             _logger.Log($"Starting backup of {fileList.Count} specific files from base directory {baseDirectory} using {storageType} storage", LogLevel.Info);
-
-            foreach (var file in fileList)
-            {
-                if (File.Exists(file))
-                {
-                    await _state.AddOrUpdateFileMetadataAsync(file);
-                }
-                else
-                {
-                    _logger.Log($"File no longer exists, skipping metadata update: {file}", LogLevel.Warning);
-                }
-            }
 
             var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
             var archiveFileName = $"backup_{Path.GetFileName(baseDirectory)}_{Guid.NewGuid():N}_{timestamp}.zip";
@@ -192,6 +180,11 @@ public class Backup
 
             _state.AddBackup(baseDirectory, remotePath, false, storageType);
             await _retentionManager.ApplyGroupAsync(baseDirectory);
+
+            foreach (var file in existingFilesToBackup)
+            {
+                await _state.AddOrUpdateFileMetadataAsync(file);
+            }
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
