@@ -11,14 +11,9 @@ public class EnvironmentVariableEntry
     public string TargetName => Target.ToString();
 }
 
-public class EnvironmentVariablesManager
+public class EnvironmentVariablesManager(ILogger logger)
 {
-    private readonly ILogger _logger;
-
-    public EnvironmentVariablesManager(ILogger logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger _logger = logger;
 
     public Task<List<EnvironmentVariableEntry>> GetAllEnvironmentVariablesAsync()
     {

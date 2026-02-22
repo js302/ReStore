@@ -69,6 +69,15 @@ public class Backup
                 ? _diffSyncManager.GetFilesToBackup(allFiles)
                 : allFiles;
 
+            // Clean up metadata for files that no longer exist in this directory
+            var trackedFiles = _state.GetTrackedFilesInDirectory(sourceDirectory) ?? [];
+            var filesToRemove = trackedFiles.Except(allFiles ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase).ToList();
+
+            foreach (var file in filesToRemove)
+            {
+                await _state.AddOrUpdateFileMetadataAsync(file);
+            }
+
             if (!filesToBackup.Any())
             {
                 _logger.Log("No files need to be backed up based on the current state and backup type.", LogLevel.Info);
@@ -144,13 +153,21 @@ public class Backup
             _logger.Log($"Creating temporary archive: {tempArchive}", LogLevel.Debug);
 
             var existingFilesToBackup = fileList.Where(File.Exists).ToList();
-            if (!existingFilesToBackup.Any())
+            var deletedFiles = fileList.Except(existingFilesToBackup, StringComparer.OrdinalIgnoreCase).ToList();
+
+            foreach (var file in deletedFiles)
             {
-                _logger.Log("All specified files were deleted before archiving could start.", LogLevel.Warning);
+                await _state.AddOrUpdateFileMetadataAsync(file);
+            }
+
+            if (existingFilesToBackup.Count == 0)
+            {
+                _logger.Log("All specified files were deleted before archiving could start. Metadata updated.", LogLevel.Info);
+                await _state.SaveStateAsync();
                 return;
             }
 
-            await _compressionUtil.CompressFilesAsync(existingFilesToBackup, baseDirectory, tempArchive);
+            await CompressionUtil.CompressFilesAsync(existingFilesToBackup, baseDirectory, tempArchive);
 
             string fileToUpload = tempArchive;
             if (_config.Encryption.Enabled && _passwordProvider != null)
@@ -162,7 +179,7 @@ public class Backup
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await _compressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 archiveFileName = Path.GetFileName(encryptedPath);
 
@@ -178,7 +195,8 @@ public class Backup
             _logger.Log($"Uploading archive {fileToUpload} to {remotePath}", LogLevel.Debug);
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _state.AddBackup(baseDirectory, remotePath, false, storageType);
+            long backupSize = new FileInfo(fileToUpload).Length;
+            _state.AddBackup(baseDirectory, remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync(baseDirectory);
 
             foreach (var file in existingFilesToBackup)
@@ -256,7 +274,7 @@ public class Backup
 
             _logger.Log($"Creating temporary archive for full backup: {tempArchive}", LogLevel.Debug);
 
-            await _compressionUtil.CompressFilesAsync(filesToInclude, sourceDirectory, tempArchive);
+            await CompressionUtil.CompressFilesAsync(filesToInclude, sourceDirectory, tempArchive);
 
             string fileToUpload = tempArchive;
             if (_config.Encryption.Enabled && _passwordProvider != null)
@@ -268,7 +286,7 @@ public class Backup
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await _compressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(tempArchive, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 archiveFileName = Path.GetFileName(encryptedPath);
 
@@ -283,7 +301,8 @@ public class Backup
             _logger.Log($"Uploading full backup archive {fileToUpload} to {remotePath}", LogLevel.Debug);
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _state.AddBackup(sourceDirectory, remotePath, false, storageType);
+            long backupSize = new FileInfo(fileToUpload).Length;
+            _state.AddBackup(sourceDirectory, remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync(sourceDirectory);
 
             File.Delete(fileToUpload);

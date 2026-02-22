@@ -6,10 +6,10 @@ public class FileHasher
 {
     private const int BUFFER_SIZE = 81920;
 
-    public async Task<string> ComputeHashAsync(string filePath)
+    public static async Task<string> ComputeHashAsync(string filePath)
     {
         using var sha256 = SHA256.Create();
-        using var stream = File.OpenRead(filePath);
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
         var hash = await sha256.ComputeHashAsync(stream);
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
@@ -38,7 +38,7 @@ public class FileHasher
         return new Dictionary<string, string>(results);
     }
 
-    public async Task<bool> IsContentDifferentAsync(string fileA, string fileB)
+    public static async Task<bool> IsContentDifferentAsync(string fileA, string fileB)
     {
         var infoA = new FileInfo(fileA);
         var infoB = new FileInfo(fileB);

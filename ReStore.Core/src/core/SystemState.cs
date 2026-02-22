@@ -17,16 +17,16 @@ public class FileMetadata
 internal class PersistentStateData
 {
     public DateTime LastBackupTime { get; set; }
-    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
-    public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
+    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, FileMetadata> FileMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public partial class SystemState
 {
     public DateTime LastBackupTime { get; set; }
     public List<string> TrackedDirectories { get; set; } = [];
-    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = [];
-    public Dictionary<string, FileMetadata> FileMetadata { get; set; } = [];
+    public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, FileMetadata> FileMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     private string _stateFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -129,7 +129,7 @@ public partial class SystemState
     [GeneratedRegex(@"(\d{14})(?:[^\d]|$)")]
     private static partial Regex TimestampRegex();
 
-    public virtual void AddBackup(string directory, string path, bool isDiff)
+    public virtual void AddBackup(string directory, string path, bool isDiff, long sizeBytes = 0)
     {
         lock (_stateLock)
         {
@@ -141,12 +141,13 @@ public partial class SystemState
                 Path = path,
                 Timestamp = DateTime.UtcNow,
                 IsDiff = isDiff,
-                StorageType = null
+                StorageType = null,
+                SizeBytes = sizeBytes
             });
         }
     }
 
-    public virtual void AddBackup(string directory, string path, bool isDiff, string? storageType)
+    public virtual void AddBackup(string directory, string path, bool isDiff, string? storageType, long sizeBytes = 0)
     {
         lock (_stateLock)
         {
@@ -158,7 +159,8 @@ public partial class SystemState
                 Path = path,
                 Timestamp = DateTime.UtcNow,
                 IsDiff = isDiff,
-                StorageType = storageType
+                StorageType = storageType,
+                SizeBytes = sizeBytes
             });
         }
     }
@@ -187,7 +189,8 @@ public partial class SystemState
                     Path = b.Path,
                     Timestamp = b.Timestamp,
                     IsDiff = b.IsDiff,
-                    StorageType = b.StorageType
+                    StorageType = b.StorageType,
+                    SizeBytes = b.SizeBytes
                 })];
         }
     }
@@ -319,8 +322,8 @@ public partial class SystemState
                     lock (_stateLock)
                     {
                         LastBackupTime = stateData.LastBackupTime;
-                        BackupHistory = stateData.BackupHistory ?? [];
-                        FileMetadata = stateData.FileMetadata ?? [];
+                        BackupHistory = stateData.BackupHistory != null ? new(stateData.BackupHistory, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+                        FileMetadata = stateData.FileMetadata != null ? new(stateData.FileMetadata, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
                     }
                     _logger?.Log($"Loaded state: {FileMetadata.Count} file metadata entries, {BackupHistory.Count} backup history entries.", LogLevel.Info);
                 }
@@ -353,8 +356,20 @@ public partial class SystemState
         lock (_stateLock)
         {
             LastBackupTime = DateTime.MinValue;
-            BackupHistory = [];
-            FileMetadata = [];
+            BackupHistory = new(StringComparer.OrdinalIgnoreCase);
+            FileMetadata = new(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    public virtual List<string> GetTrackedFilesInDirectory(string directory)
+    {
+        var normalizedDir = directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        lock (_stateLock)
+        {
+            return FileMetadata.Keys
+                .Where(p => p.Equals(directory, StringComparison.OrdinalIgnoreCase) ||
+                            p.StartsWith(normalizedDir, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
     }
 
@@ -367,73 +382,76 @@ public partial class SystemState
         }
 
         var filesToBackup = new List<string>();
+        DateTime lastFullBackupTime;
+        Dictionary<string, FileMetadata> currentMetadataSnapshot;
 
         lock (_stateLock)
         {
-            DateTime lastFullBackupTime = GetLastFullBackupTime();
+            lastFullBackupTime = GetLastFullBackupTime();
+            currentMetadataSnapshot = new Dictionary<string, FileMetadata>(FileMetadata);
+        }
 
-            foreach (var filePath in allFiles)
+        foreach (var filePath in allFiles)
+        {
+            try
             {
-                try
+                var fileInfo = new FileInfo(filePath);
+                if (!fileInfo.Exists)
+                    continue;
+
+                bool shouldBackup = false;
+
+                if (!currentMetadataSnapshot.TryGetValue(filePath, out var previousMetadata))
                 {
-                    var fileInfo = new FileInfo(filePath);
-                    if (!fileInfo.Exists)
-                        continue;
-
-                    bool shouldBackup = false;
-
-                    if (!FileMetadata.TryGetValue(filePath, out var previousMetadata))
+                    _logger?.Log($"New file detected: {filePath}", LogLevel.Debug);
+                    shouldBackup = true;
+                }
+                else
+                {
+                    if (backupType == BackupType.Incremental)
                     {
-                        _logger?.Log($"New file detected: {filePath}", LogLevel.Debug);
-                        shouldBackup = true;
-                    }
-                    else
-                    {
-                        if (backupType == BackupType.Incremental)
+                        if (fileInfo.Length != previousMetadata.Size)
                         {
-                            if (fileInfo.Length != previousMetadata.Size)
+                            _logger?.Log($"File changed (Incremental, size): {filePath}", LogLevel.Debug);
+                            shouldBackup = true;
+                        }
+                        else if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified)
+                        {
+                            if (!string.IsNullOrEmpty(previousMetadata.Hash))
                             {
-                                _logger?.Log($"File changed (Incremental, size): {filePath}", LogLevel.Debug);
-                                shouldBackup = true;
-                            }
-                            else if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified)
-                            {
-                                if (!string.IsNullOrEmpty(previousMetadata.Hash))
+                                var currentHash = CalculateFileHash(filePath);
+                                if (!string.IsNullOrEmpty(currentHash) && currentHash != previousMetadata.Hash)
                                 {
-                                    var currentHash = CalculateFileHash(filePath);
-                                    if (!string.IsNullOrEmpty(currentHash) && currentHash != previousMetadata.Hash)
-                                    {
-                                        _logger?.Log($"File changed (Incremental, hash): {filePath}", LogLevel.Debug);
-                                        shouldBackup = true;
-                                    }
-                                }
-                                else
-                                {
-                                    _logger?.Log($"File changed (Incremental, timestamp): {filePath}", LogLevel.Debug);
+                                    _logger?.Log($"File changed (Incremental, hash): {filePath}", LogLevel.Debug);
                                     shouldBackup = true;
                                 }
                             }
-                        }
-                        else if (backupType == BackupType.Differential)
-                        {
-                            if (fileInfo.LastWriteTimeUtc > lastFullBackupTime)
+                            else
                             {
-                                _logger?.Log($"File changed (Differential): {filePath}", LogLevel.Debug);
+                                _logger?.Log($"File changed (Incremental, timestamp): {filePath}", LogLevel.Debug);
                                 shouldBackup = true;
                             }
                         }
                     }
-
-                    if (shouldBackup)
+                    else if (backupType == BackupType.Differential)
                     {
-                        filesToBackup.Add(filePath);
+                        if (fileInfo.LastWriteTimeUtc > lastFullBackupTime)
+                        {
+                            _logger?.Log($"File changed (Differential): {filePath}", LogLevel.Debug);
+                            shouldBackup = true;
+                        }
                     }
                 }
-                catch (Exception ex)
+
+                if (shouldBackup)
                 {
-                    _logger?.Log($"Error checking file {filePath}: {ex.Message}. Including in backup.", LogLevel.Warning);
                     filesToBackup.Add(filePath);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Log($"Error checking file {filePath}: {ex.Message}. Including in backup.", LogLevel.Warning);
+                filesToBackup.Add(filePath);
             }
         }
 
@@ -508,7 +526,8 @@ public partial class SystemState
                 Timestamp = backup.Timestamp,
                 IsDiff = backup.IsDiff,
                 StorageType = backup.StorageType
-            }).ToList());
+            }).ToList(),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, FileMetadata> CloneFileMetadata(Dictionary<string, FileMetadata> fileMetadata)
@@ -521,7 +540,8 @@ public partial class SystemState
                 Size = item.Value.Size,
                 LastModified = item.Value.LastModified,
                 Hash = item.Value.Hash
-            });
+            },
+            StringComparer.OrdinalIgnoreCase);
     }
 }
 
@@ -531,4 +551,5 @@ public class BackupInfo
     public DateTime Timestamp { get; set; }
     public bool IsDiff { get; set; }
     public string? StorageType { get; set; }
+    public long SizeBytes { get; set; }
 }

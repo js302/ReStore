@@ -21,18 +21,12 @@ public class WindowsSettingsExport
 }
 
 [SupportedOSPlatform("windows")]
-public class WindowsSettingsManager
+public class WindowsSettingsManager(ILogger logger)
 {
-    private readonly ILogger _logger;
-    private readonly Dictionary<string, List<RegistryKeyInfo>> _settingsCategories;
+    private readonly ILogger _logger = logger;
+    private readonly Dictionary<string, List<RegistryKeyInfo>> _settingsCategories = InitializeSettingsCategories();
 
-    public WindowsSettingsManager(ILogger logger)
-    {
-        _logger = logger;
-        _settingsCategories = InitializeSettingsCategories();
-    }
-
-    private Dictionary<string, List<RegistryKeyInfo>> InitializeSettingsCategories()
+    private static Dictionary<string, List<RegistryKeyInfo>> InitializeSettingsCategories()
     {
         return new Dictionary<string, List<RegistryKeyInfo>>
         {
@@ -254,8 +248,8 @@ public class WindowsSettingsManager
 
             if (adminRequired)
             {
-                scriptContent.AddRange(new[]
-                {
+                scriptContent.AddRange(
+                [
                     "$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())",
                     "$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
                     "",
@@ -266,7 +260,7 @@ public class WindowsSettingsManager
                     "    Start-Sleep -Seconds 3",
                     "}",
                     ""
-                });
+                ]);
             }
 
             scriptContent.Add("# Importing user-level settings");
@@ -285,37 +279,37 @@ public class WindowsSettingsManager
 
             if (systemFiles.Count > 0)
             {
-                scriptContent.AddRange(new[]
-                {
+                scriptContent.AddRange(
+                [
                     "# Importing system-level settings (requires admin)",
                     "if ($isAdmin) {"
-                });
+                ]);
 
                 foreach (var (filePath, description) in systemFiles)
                 {
-                    scriptContent.AddRange(new[]
-                    {
+                    scriptContent.AddRange(
+                    [
                         $"    if (Import-RegistryFile \"{filePath}\" \"{description}\") {{",
                         "        $successCount++",
                         "    } else {",
                         "        $failedCount++",
                         "    }",
                         ""
-                    });
+                    ]);
                 }
 
-                scriptContent.AddRange(new[]
-                {
+                scriptContent.AddRange(
+                [
                     "} else {",
                     $"    Write-Host 'Skipped {systemFiles.Count} system-level settings (requires admin)' -ForegroundColor Yellow",
                     $"    $failedCount += {systemFiles.Count}",
                     "}",
                     ""
-                });
+                ]);
             }
 
-            scriptContent.AddRange(new[]
-            {
+            scriptContent.AddRange(
+            [
                 "Write-Host ''",
                 "Write-Host 'Restore Summary:' -ForegroundColor Green",
                 "Write-Host \"Successfully imported: $successCount\" -ForegroundColor Green",
@@ -323,7 +317,7 @@ public class WindowsSettingsManager
                 "",
                 "Write-Host ''",
                 "Write-Host 'NOTE: Some changes may require logging off or restarting Windows to take effect.' -ForegroundColor Yellow"
-            });
+            ]);
 
             await File.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent));
             
@@ -339,7 +333,7 @@ public class WindowsSettingsManager
 
     public List<string> GetAvailableCategories()
     {
-        return _settingsCategories.Keys.ToList();
+        return [.. _settingsCategories.Keys];
     }
 
     public Dictionary<string, List<RegistryKeyInfo>> GetAllCategories()

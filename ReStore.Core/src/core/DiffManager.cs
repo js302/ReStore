@@ -13,7 +13,7 @@ public class DiffManager
     public static async Task<byte[]> CreateDiffAsync(string originalFile, string newFile)
     {
         var fileHasher = new FileHasher();
-        if (!await fileHasher.IsContentDifferentAsync(originalFile, newFile))
+        if (!await FileHasher.IsContentDifferentAsync(originalFile, newFile))
         {
             return [];
         }
@@ -27,10 +27,19 @@ public class DiffManager
 
         byte[] buffer = new byte[CHUNK_SIZE];
         byte[] window = new byte[ROLLING_WINDOW];
-        int bytesRead;
 
-        while ((bytesRead = await newStream.ReadAsync(buffer)) > 0)
+        while (true)
         {
+            int bytesRead = 0;
+            while (bytesRead < CHUNK_SIZE)
+            {
+                int read = await newStream.ReadAsync(buffer.AsMemory(bytesRead, CHUNK_SIZE - bytesRead));
+                if (read == 0) break;
+                bytesRead += read;
+            }
+
+            if (bytesRead == 0) break;
+
             bool matchFound = false;
 
             if (bytesRead == CHUNK_SIZE && bytesRead >= ROLLING_WINDOW)
@@ -110,7 +119,14 @@ public class DiffManager
 
         while (true)
         {
-            int bytesRead = await stream.ReadAsync(buffer);
+            int bytesRead = 0;
+            while (bytesRead < CHUNK_SIZE)
+            {
+                int read = await stream.ReadAsync(buffer.AsMemory(bytesRead, CHUNK_SIZE - bytesRead));
+                if (read == 0) break;
+                bytesRead += read;
+            }
+
             if (bytesRead == 0) break;
 
             if (bytesRead >= ROLLING_WINDOW)
@@ -152,7 +168,13 @@ public class DiffManager
             byte[] origBuffer = new byte[CHUNK_SIZE];
 
             original.Position = origPos;
-            int origRead = await original.ReadAsync(origBuffer);
+            int origRead = 0;
+            while (origRead < currentLength)
+            {
+                int read = await original.ReadAsync(origBuffer.AsMemory(origRead, currentLength - origRead));
+                if (read == 0) break;
+                origRead += read;
+            }
 
             if (origRead != currentLength) return false;
 

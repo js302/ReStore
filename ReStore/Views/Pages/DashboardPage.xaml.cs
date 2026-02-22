@@ -140,39 +140,36 @@ namespace ReStore.Views.Pages
 
         private void UpdateStatistics()
         {
-            Dispatcher.Invoke(() =>
+            if (_state != null)
             {
-                if (_state != null)
-                {
-                    var totalBackups = _state.BackupHistory.Values.Sum(list => list.Count);
-                    TotalBackupsText.Text = totalBackups.ToString();
+                var totalBackups = _state.BackupHistory.Values.Sum(list => list.Count);
+                TotalBackupsText.Text = totalBackups.ToString();
 
-                    if (_state.LastBackupTime != DateTime.MinValue)
-                    {
-                        var timeSince = DateTime.UtcNow - _state.LastBackupTime;
-                        if (timeSince.TotalMinutes < 1)
-                            LastBackupText.Text = "Just now";
-                        else if (timeSince.TotalHours < 1)
-                            LastBackupText.Text = $"{(int)timeSince.TotalMinutes}m ago";
-                        else if (timeSince.TotalDays < 1)
-                            LastBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
-                        else
-                            LastBackupText.Text = _state.LastBackupTime.ToLocalTime().ToString("MMM dd, HH:mm");
-                    }
+                if (_state.LastBackupTime != DateTime.MinValue)
+                {
+                    var timeSince = DateTime.UtcNow - _state.LastBackupTime;
+                    if (timeSince.TotalMinutes < 1)
+                        LastBackupText.Text = "Just now";
+                    else if (timeSince.TotalHours < 1)
+                        LastBackupText.Text = $"{(int)timeSince.TotalMinutes}m ago";
+                    else if (timeSince.TotalDays < 1)
+                        LastBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
                     else
-                    {
-                        LastBackupText.Text = "Never";
-                    }
+                        LastBackupText.Text = _state.LastBackupTime.ToLocalTime().ToString("MMM dd, HH:mm");
                 }
-
-                WatchedDirsText.Text = _configManager.WatchDirectories.Count.ToString();
-
-                var appSettings = AppSettings.Load();
-                if (!string.IsNullOrEmpty(appSettings.DefaultStorage))
+                else
                 {
-                    StorageInfoText.Text = $"Storage: {appSettings.DefaultStorage}";
+                    LastBackupText.Text = "Never";
                 }
-            });
+            }
+
+            WatchedDirsText.Text = _configManager.WatchDirectories.Count.ToString();
+
+            var appSettings = AppSettings.Load();
+            if (!string.IsNullOrEmpty(appSettings.DefaultStorage))
+            {
+                StorageInfoText.Text = $"Storage: {appSettings.DefaultStorage}";
+            }
         }
 
         private async Task RefreshBackupHistoryAsync()
@@ -245,7 +242,7 @@ namespace ReStore.Views.Pages
             }
         }
 
-        private async Task StartWatcherAsync()
+        public async Task StartWatcherAsync()
         {
             try
             {
@@ -269,7 +266,9 @@ namespace ReStore.Views.Pages
                 }
 
                 var sizeAnalyzer = new SizeAnalyzer();
-                _watcher = new FileWatcher(_configManager, this, _state, sizeAnalyzer);
+                var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                passwordProvider.SetEncryptionMode(true);
+                _watcher = new FileWatcher(_configManager, this, _state, sizeAnalyzer, passwordProvider);
                 await _watcher.StartAsync();
 
                 WatcherService.Instance.SetWatcher(_watcher);
@@ -287,7 +286,7 @@ namespace ReStore.Views.Pages
             }
         }
 
-        private void StopWatcher()
+        public void StopWatcher()
         {
             try
             {
@@ -338,7 +337,9 @@ namespace ReStore.Views.Pages
                     }
 
                     var sizeAnalyzer = new SizeAnalyzer();
-                    var backup = new Backup(this, _state, sizeAnalyzer, _configManager);
+                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                    passwordProvider.SetEncryptionMode(true);
+                    var backup = new Backup(this, _state, sizeAnalyzer, _configManager, passwordProvider);
 
                     await backup.BackupDirectoryAsync(folderPath);
 

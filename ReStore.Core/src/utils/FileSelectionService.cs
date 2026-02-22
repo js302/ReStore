@@ -2,27 +2,14 @@ using System.Text.RegularExpressions;
 
 namespace ReStore.Core.src.utils;
 
-public class FileSelectionService
+public class FileSelectionService(ILogger logger, IConfigManager configManager)
 {
-    private readonly ILogger _logger;
-    private readonly IConfigManager _configManager;
-
-    public FileSelectionService(ILogger logger, IConfigManager configManager)
-    {
-        _logger = logger;
-        _configManager = configManager;
-    }
+    private readonly ILogger _logger = logger;
+    private readonly IConfigManager _configManager = configManager;
 
     public bool ShouldExcludeFile(string filePath)
     {
-        // Normalize path for comparison
         filePath = filePath.Replace('/', '\\');
-
-        // Check if file exists
-        if (!File.Exists(filePath) && !Directory.Exists(filePath))
-        {
-            return true;
-        }
 
         // Check exclude paths from config
         if (_configManager.ExcludedPaths.Any(p => IsPathWithinRoot(filePath, NormalizePath(p))))
@@ -31,19 +18,18 @@ public class FileSelectionService
         }
 
         // Check system or hidden attributes
-        if (File.Exists(filePath))
+        try
         {
-            try
+            var fileInfo = new FileInfo(filePath);
+            if (fileInfo.Exists)
             {
-                var attr = File.GetAttributes(filePath);
-                if ((attr & FileAttributes.System) == FileAttributes.System ||
-                    (attr & FileAttributes.Hidden) == FileAttributes.Hidden)
+                if ((fileInfo.Attributes & FileAttributes.System) == FileAttributes.System ||
+                    (fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
                 {
                     return true;
                 }
 
                 // Check file size
-                var fileInfo = new FileInfo(filePath);
                 long maxFileSizeBytes = _configManager.MaxFileSizeMB * 1024 * 1024L;
                 if (fileInfo.Length > maxFileSizeBytes)
                 {
@@ -51,11 +37,23 @@ public class FileSelectionService
                     return true;
                 }
             }
-            catch (Exception ex)
+            else
             {
-                _logger.Log($"Error accessing file {filePath}: {ex.Message}", LogLevel.Warning);
-                return true;
+                var dirInfo = new DirectoryInfo(filePath);
+                if (dirInfo.Exists)
+                {
+                    if ((dirInfo.Attributes & FileAttributes.System) == FileAttributes.System ||
+                        (dirInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
+                    {
+                        return true;
+                    }
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Error accessing file/directory {filePath}: {ex.Message}", LogLevel.Warning);
+            return true;
         }
 
         // Check exclude patterns
@@ -175,7 +173,6 @@ public class FileSelectionService
         }
     }
 
-    // Static utility method that can be used by other classes
     public static bool IsWildcardMatch(string fileName, string pattern)
     {
         string regexPattern = "^" + Regex.Escape(pattern)

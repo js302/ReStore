@@ -84,7 +84,7 @@ namespace ReStore.Views
             TrayManager.SetWatcherActions(
                 startAction: () =>
                 {
-                    Dispatcher.Invoke(() =>
+                    Dispatcher.InvokeAsync(async () =>
                     {
                         Show();
                         WindowState = WindowState.Normal;
@@ -92,21 +92,16 @@ namespace ReStore.Views
                         var frame = FindName("ContentFrame") as Frame;
                         if (frame?.Content is Pages.DashboardPage dashboard)
                         {
-                            var startBtn = dashboard.FindName("StartWatcherBtn") as Button;
-                            startBtn?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                            await dashboard.StartWatcherAsync();
                         }
                         else
                         {
-                            frame?.Navigate(new Pages.DashboardPage());
-                            Dispatcher.InvokeAsync(async () =>
+                            var newDashboard = new Pages.DashboardPage();
+                            frame?.Navigate(newDashboard);
+                            newDashboard.Loaded += async (s, e) =>
                             {
-                                await System.Threading.Tasks.Task.Delay(100);
-                                if (frame?.Content is Pages.DashboardPage db)
-                                {
-                                    var startBtn = db.FindName("StartWatcherBtn") as Button;
-                                    startBtn?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                                }
-                            });
+                                await newDashboard.StartWatcherAsync();
+                            };
                         }
                     });
                 },
@@ -117,8 +112,7 @@ namespace ReStore.Views
                         var frame = FindName("ContentFrame") as Frame;
                         if (frame?.Content is Pages.DashboardPage dashboard)
                         {
-                            var stopBtn = dashboard.FindName("StopWatcherBtn") as Button;
-                            stopBtn?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                            dashboard.StopWatcher();
                         }
                     });
                 },

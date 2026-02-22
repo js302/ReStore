@@ -1,19 +1,13 @@
 using ReStore.Core.src.utils;
-using System;
 using System.Windows;
 
 namespace ReStore.Services;
 
-public class GuiPasswordProvider : IPasswordProvider, ILogger
+public class GuiPasswordProvider(bool promptUser = true) : IPasswordProvider, ILogger
 {
     private string? _password;
-    private readonly bool _promptUser;
+    private readonly bool _promptUser = promptUser;
     private bool _isForEncryption = false;
-
-    public GuiPasswordProvider(bool promptUser = true)
-    {
-        _promptUser = promptUser;
-    }
 
     public void SetPassword(string? password)
     {

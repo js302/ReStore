@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Threading.Tasks;
 using System.IO.Pipes;
 using System.IO;
 using System.Windows;
@@ -20,12 +19,11 @@ namespace ReStore
         private Thread? _pipeServerThread;
         private bool _isRunning = true;
 
-        public static Services.GuiPasswordProvider? GlobalPasswordProvider { get; private set; }
+        public static GuiPasswordProvider? GlobalPasswordProvider { get; private set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
-            bool createdNew;
-            _instanceMutex = new Mutex(true, MUTEX_NAME, out createdNew);
+            _instanceMutex = new Mutex(true, MUTEX_NAME, out bool createdNew);
             _ownsMutex = createdNew;
 
             if (!createdNew)
@@ -44,10 +42,10 @@ namespace ReStore
 
             base.OnStartup(e);
 
-            ReStore.Core.src.utils.ConfigInitializer.EnsureConfigurationSetup();
+            Core.src.utils.ConfigInitializer.EnsureConfigurationSetup();
 
             // Initialize global password provider
-            GlobalPasswordProvider = new Services.GuiPasswordProvider();
+            GlobalPasswordProvider = new GuiPasswordProvider();
 
             AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             {
@@ -93,8 +91,10 @@ namespace ReStore
                 mainWindow.Show();
             }
 
-            _pipeServerThread = new Thread(ListenForCommands);
-            _pipeServerThread.IsBackground = true;
+            _pipeServerThread = new Thread(ListenForCommands)
+            {
+                IsBackground = true
+            };
             _pipeServerThread.Start();
         }
 
@@ -104,23 +104,19 @@ namespace ReStore
             {
                 try
                 {
-                    using (var pipeServer = new NamedPipeServerStream(PIPE_NAME, PipeDirection.In, 1))
+                    using var pipeServer = new NamedPipeServerStream(PIPE_NAME, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly);
+                    pipeServer.WaitForConnection();
+
+                    using var reader = new StreamReader(pipeServer);
+                    var command = reader.ReadToEnd();
+
+                    Dispatcher.Invoke(() =>
                     {
-                        pipeServer.WaitForConnection();
-
-                        using (var reader = new StreamReader(pipeServer))
+                        if (MainWindow is MainWindow mw)
                         {
-                            var command = reader.ReadToEnd();
-
-                            Dispatcher.Invoke(() =>
-                            {
-                                if (MainWindow is MainWindow mw)
-                                {
-                                    HandleCommand(command, mw);
-                                }
-                            });
+                            HandleCommand(command, mw);
                         }
-                    }
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -131,7 +127,7 @@ namespace ReStore
 
         private void SendCommandToExistingInstance(string[] args)
         {
-            var command = "";
+            string? command;
             if (args.Length > 0 && args[0] == "--share" && args.Length > 1)
             {
                 command = $"--share \"{args[1]}\"";
@@ -143,20 +139,16 @@ namespace ReStore
             SendCommandToExistingInstance(command);
         }
 
-        private void SendCommandToExistingInstance(string command)
+        private static void SendCommandToExistingInstance(string command)
         {
             try
             {
-                using (var pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.Out))
-                {
-                    pipeClient.Connect(1000);
+                using var pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.Out);
+                pipeClient.Connect(1000);
 
-                    using (var writer = new StreamWriter(pipeClient))
-                    {
-                        writer.Write(command);
-                        writer.Flush();
-                    }
-                }
+                using var writer = new StreamWriter(pipeClient);
+                writer.Write(command);
+                writer.Flush();
             }
             catch (Exception ex)
             {
@@ -164,7 +156,7 @@ namespace ReStore
             }
         }
 
-        private void BringExistingInstanceToFront()
+        private static void BringExistingInstanceToFront()
         {
             SendCommandToExistingInstance("/show");
         }
@@ -229,20 +221,24 @@ namespace ReStore
         {
             mainWindow.Dispatcher.InvokeAsync(async () =>
             {
-                await System.Threading.Tasks.Task.Delay(100);
                 var frame = mainWindow.FindName("ContentFrame") as System.Windows.Controls.Frame;
 
                 if (frame?.Content is not DashboardPage)
                 {
-                    frame?.Navigate(new DashboardPage());
-                    await System.Threading.Tasks.Task.Delay(100);
-                }
+                    var dashboard = new DashboardPage();
+                    frame?.Navigate(dashboard);
 
-                if (frame?.Content is DashboardPage dashboard)
+                    // Wait for the page to load before executing action
+                    dashboard.Loaded += async (s, e) =>
+                    {
+                        if (start) await dashboard.StartWatcherAsync();
+                        else dashboard.StopWatcher();
+                    };
+                }
+                else if (frame?.Content is DashboardPage dashboard)
                 {
-                    var btnName = start ? "StartWatcherBtn" : "StopWatcherBtn";
-                    var btn = dashboard.FindName(btnName) as System.Windows.Controls.Button;
-                    btn?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    if (start) await dashboard.StartWatcherAsync();
+                    else dashboard.StopWatcher();
                 }
             });
         }

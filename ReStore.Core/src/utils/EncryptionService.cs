@@ -43,7 +43,7 @@ public class EncryptionService
         _logger.Log($"Encrypting file: {Path.GetFileName(inputPath)}", LogLevel.Debug);
 
         salt ??= RandomNumberGenerator.GetBytes(SALT_SIZE_BYTES);
-        
+
         var kek = DeriveKeyFromPassword(password, salt);
         var dek = RandomNumberGenerator.GetBytes(KEY_SIZE_BYTES);
         var iv = RandomNumberGenerator.GetBytes(IV_SIZE_BYTES);
@@ -98,19 +98,15 @@ public class EncryptionService
 
             while ((bytesRead = inputStream.Read(buffer, 0, buffer.Length)) > 0)
             {
-                // Derive unique IV for this chunk
                 var chunkIV = DeriveChunkIV(iv, chunkIndex);
 
                 var ciphertext = new byte[bytesRead];
                 var plaintextSpan = buffer.AsSpan(0, bytesRead);
-                
+
                 aesGcm.Encrypt(chunkIV, plaintextSpan, ciphertext, tag);
 
-                // Write Chunk Length (4 bytes)
                 outputStream.Write(BitConverter.GetBytes(bytesRead));
-                // Write Tag (16 bytes)
                 outputStream.Write(tag);
-                // Write Ciphertext
                 outputStream.Write(ciphertext);
 
                 chunkIndex++;
@@ -118,7 +114,7 @@ public class EncryptionService
         });
     }
 
-    private async Task DecryptFileWithDEKAsync(string inputPath, string outputPath, byte[] key, byte[] iv)
+    private static async Task DecryptFileWithDEKAsync(string inputPath, string outputPath, byte[] key, byte[] iv)
     {
         await Task.Run(() =>
         {
@@ -127,7 +123,11 @@ public class EncryptionService
             using var outputStream = File.Create(outputPath);
 
             var storedIV = new byte[IV_SIZE_BYTES];
-            if (inputStream.Read(storedIV, 0, IV_SIZE_BYTES) != IV_SIZE_BYTES)
+            try
+            {
+                inputStream.ReadExactly(storedIV, 0, IV_SIZE_BYTES);
+            }
+            catch (EndOfStreamException)
             {
                 throw new InvalidOperationException("Invalid encrypted file format (missing IV)");
             }
@@ -136,21 +136,37 @@ public class EncryptionService
             var tag = new byte[TAG_SIZE_BYTES];
             long chunkIndex = 0;
 
-            while (inputStream.Read(lengthBuffer, 0, 4) == 4)
+            while (true)
             {
+                int bytesRead = inputStream.Read(lengthBuffer, 0, 4);
+                if (bytesRead == 0) break;
+
+                if (bytesRead < 4)
+                {
+                    inputStream.ReadExactly(lengthBuffer, bytesRead, 4 - bytesRead);
+                }
+
                 int chunkLength = BitConverter.ToInt32(lengthBuffer, 0);
                 if (chunkLength < 0 || chunkLength > CHUNK_SIZE)
                 {
-                        throw new InvalidOperationException($"Invalid chunk length: {chunkLength}");
+                    throw new InvalidOperationException($"Invalid chunk length: {chunkLength}");
                 }
 
-                if (inputStream.Read(tag, 0, TAG_SIZE_BYTES) != TAG_SIZE_BYTES)
+                try
+                {
+                    inputStream.ReadExactly(tag, 0, TAG_SIZE_BYTES);
+                }
+                catch (EndOfStreamException)
                 {
                     throw new InvalidOperationException("Unexpected EOF reading tag");
                 }
 
                 var ciphertext = new byte[chunkLength];
-                if (inputStream.Read(ciphertext, 0, chunkLength) != chunkLength)
+                try
+                {
+                    inputStream.ReadExactly(ciphertext, 0, chunkLength);
+                }
+                catch (EndOfStreamException)
                 {
                     throw new InvalidOperationException("Unexpected EOF reading ciphertext");
                 }
@@ -180,26 +196,26 @@ public class EncryptionService
         // This avoids modifying the original IV array and ensures unique IVs per chunk
         var chunkIV = new byte[IV_SIZE_BYTES];
         Array.Copy(baseIV, chunkIV, IV_SIZE_BYTES);
-        
+
         // Increment the last 8 bytes (64 bits) of the 96-bit IV
         ulong currentLow = 0;
         for (int i = 0; i < 8; i++)
         {
             currentLow = (currentLow << 8) | chunkIV[IV_SIZE_BYTES - 8 + i];
         }
-        
+
         currentLow += (ulong)chunkIndex;
-        
+
         for (int i = 0; i < 8; i++)
         {
             chunkIV[IV_SIZE_BYTES - 1 - i] = (byte)(currentLow & 0xFF);
             currentLow >>= 8;
         }
-        
+
         return chunkIV;
     }
 
-    private byte[] EncryptDEK(byte[] dek, byte[] kek)
+    private static byte[] EncryptDEK(byte[] dek, byte[] kek)
     {
         using var aesGcm = new AesGcm(kek, TAG_SIZE_BYTES);
         var iv = RandomNumberGenerator.GetBytes(IV_SIZE_BYTES);
@@ -216,10 +232,10 @@ public class EncryptionService
         return result;
     }
 
-    private byte[] DecryptDEK(byte[] encryptedData, byte[] kek)
+    private static byte[] DecryptDEK(byte[] encryptedData, byte[] kek)
     {
         using var aesGcm = new AesGcm(kek, TAG_SIZE_BYTES);
-        
+
         var iv = new byte[IV_SIZE_BYTES];
         var tag = new byte[TAG_SIZE_BYTES];
         var encryptedDEK = new byte[encryptedData.Length - IV_SIZE_BYTES - TAG_SIZE_BYTES];
@@ -229,7 +245,7 @@ public class EncryptionService
         Buffer.BlockCopy(encryptedData, IV_SIZE_BYTES + TAG_SIZE_BYTES, encryptedDEK, 0, encryptedDEK.Length);
 
         var dek = new byte[encryptedDEK.Length];
-        
+
         try
         {
             aesGcm.Decrypt(iv, encryptedDEK, tag, dek);
@@ -241,7 +257,7 @@ public class EncryptionService
         }
     }
 
-    public async Task SaveMetadataAsync(EncryptionMetadata metadata, string metadataPath)
+    public static async Task SaveMetadataAsync(EncryptionMetadata metadata, string metadataPath)
     {
         var json = System.Text.Json.JsonSerializer.Serialize(metadata, new System.Text.Json.JsonSerializerOptions
         {
@@ -250,7 +266,7 @@ public class EncryptionService
         await File.WriteAllTextAsync(metadataPath, json);
     }
 
-    public async Task<EncryptionMetadata> LoadMetadataAsync(string metadataPath)
+    public static async Task<EncryptionMetadata> LoadMetadataAsync(string metadataPath)
     {
         if (!File.Exists(metadataPath))
         {
@@ -259,7 +275,7 @@ public class EncryptionService
 
         var json = await File.ReadAllTextAsync(metadataPath);
         var metadata = System.Text.Json.JsonSerializer.Deserialize<EncryptionMetadata>(json);
-        
+
         if (metadata == null)
         {
             throw new InvalidOperationException("Failed to parse encryption metadata");
@@ -291,22 +307,22 @@ public class EncryptionService
     public string CreatePasswordVerificationToken(string password, byte[] salt, int iterations = DEFAULT_ITERATIONS)
     {
         const string VERIFICATION_TEXT = "ReStore_Password_Verification_Token";
-        
+
         var kek = DeriveKeyFromPassword(password, salt, iterations);
         var iv = RandomNumberGenerator.GetBytes(IV_SIZE_BYTES);
-        
+
         using var aesGcm = new AesGcm(kek, TAG_SIZE_BYTES);
         var plaintext = System.Text.Encoding.UTF8.GetBytes(VERIFICATION_TEXT);
         var ciphertext = new byte[plaintext.Length];
         var tag = new byte[TAG_SIZE_BYTES];
-        
+
         aesGcm.Encrypt(iv, plaintext, ciphertext, tag);
-        
+
         var combined = new byte[iv.Length + tag.Length + ciphertext.Length];
         Buffer.BlockCopy(iv, 0, combined, 0, iv.Length);
         Buffer.BlockCopy(tag, 0, combined, iv.Length, tag.Length);
         Buffer.BlockCopy(ciphertext, 0, combined, iv.Length + tag.Length, ciphertext.Length);
-        
+
         return Convert.ToBase64String(combined);
     }
 
@@ -315,24 +331,24 @@ public class EncryptionService
         try
         {
             const string VERIFICATION_TEXT = "ReStore_Password_Verification_Token";
-            
+
             var kek = DeriveKeyFromPassword(password, salt, iterations);
             var combined = Convert.FromBase64String(verificationToken);
-            
+
             var iv = new byte[IV_SIZE_BYTES];
             var tag = new byte[TAG_SIZE_BYTES];
             var ciphertext = new byte[combined.Length - IV_SIZE_BYTES - TAG_SIZE_BYTES];
-            
+
             Buffer.BlockCopy(combined, 0, iv, 0, IV_SIZE_BYTES);
             Buffer.BlockCopy(combined, IV_SIZE_BYTES, tag, 0, TAG_SIZE_BYTES);
             Buffer.BlockCopy(combined, IV_SIZE_BYTES + TAG_SIZE_BYTES, ciphertext, 0, ciphertext.Length);
-            
+
             using var aesGcm = new AesGcm(kek, TAG_SIZE_BYTES);
             var plaintext = new byte[ciphertext.Length];
-            
+
             aesGcm.Decrypt(iv, ciphertext, tag, plaintext);
             var decryptedText = System.Text.Encoding.UTF8.GetString(plaintext);
-            
+
             return decryptedText == VERIFICATION_TEXT;
         }
         catch (CryptographicException)

@@ -108,7 +108,7 @@ public class SystemBackupManager
 
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
-            await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
+            await CompressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
             string fileToUpload = zipPath;
             if (_config.Encryption.Enabled && _passwordProvider != null)
@@ -120,7 +120,7 @@ public class SystemBackupManager
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
 
@@ -133,7 +133,8 @@ public class SystemBackupManager
 
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _systemState.AddBackup("system_programs", remotePath, false, storageType);
+            long backupSize = new FileInfo(fileToUpload).Length;
+            _systemState.AddBackup("system_programs", remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync("system_programs");
 
             File.Delete(fileToUpload);
@@ -191,7 +192,7 @@ public class SystemBackupManager
 
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
-            await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
+            await CompressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
             string fileToUpload = zipPath;
             if (_config.Encryption.Enabled && _passwordProvider != null)
@@ -203,7 +204,7 @@ public class SystemBackupManager
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
 
@@ -216,7 +217,8 @@ public class SystemBackupManager
 
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _systemState.AddBackup("system_environment", remotePath, false, storageType);
+            long backupSize = new FileInfo(fileToUpload).Length;
+            _systemState.AddBackup("system_environment", remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync("system_environment");
 
             File.Delete(fileToUpload);
@@ -509,13 +511,14 @@ public class SystemBackupManager
             tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", $"{restoreTimestamp}_{restoreUniqueId}");
             Directory.CreateDirectory(tempDir);
 
-            var zipPath = Path.Combine(tempDir, "backup.zip");
+            var isEncrypted = backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase);
+            var zipPath = Path.Combine(tempDir, isEncrypted ? "backup.zip.enc" : "backup.zip");
             await storage.DownloadAsync(backupPath, zipPath);
 
             var extractDir = Path.Combine(tempDir, "extracted");
             var compressionUtil = new CompressionUtil();
 
-            if (backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+            if (isEncrypted)
             {
                 _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
                 var metadataPath = backupPath + ".meta";
@@ -533,11 +536,20 @@ public class SystemBackupManager
                     throw new InvalidOperationException("Password required to decrypt backup");
                 }
 
-                await compressionUtil.DecryptAndDecompressAsync(zipPath, password, extractDir, _logger);
+                try
+                {
+                    await CompressionUtil.DecryptAndDecompressAsync(zipPath, password, extractDir, _logger);
+                }
+                catch (Exception ex)
+                {
+                    _passwordProvider.ClearPassword();
+                    _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
+                    throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
+                }
             }
             else
             {
-                await compressionUtil.DecompressAsync(zipPath, extractDir);
+                await CompressionUtil.DecompressAsync(zipPath, extractDir);
             }
 
             if (component == "programs")
@@ -638,7 +650,7 @@ public class SystemBackupManager
 
             var compressionUtil = new CompressionUtil();
             var filesToCompress = Directory.GetFiles(tempDir).ToList();
-            await compressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
+            await CompressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
             string fileToUpload = zipPath;
             if (_config.Encryption.Enabled && _passwordProvider != null)
@@ -650,7 +662,7 @@ public class SystemBackupManager
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await compressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
 
@@ -663,7 +675,8 @@ public class SystemBackupManager
 
             await storage.UploadAsync(fileToUpload, remotePath);
 
-            _systemState.AddBackup("system_settings", remotePath, false, storageType);
+            long backupSize = new FileInfo(fileToUpload).Length;
+            _systemState.AddBackup("system_settings", remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync("system_settings");
 
             File.Delete(fileToUpload);

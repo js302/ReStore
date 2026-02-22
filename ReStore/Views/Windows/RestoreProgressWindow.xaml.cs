@@ -1,8 +1,6 @@
-using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using ReStore.Core.src.backup;
 using ReStore.Core.src.core;
@@ -37,7 +35,7 @@ namespace ReStore.Views.Windows
         public void Log(string message, LogLevel level = LogLevel.Info)
         {
             var logLine = $"[{DateTime.Now:HH:mm:ss}] [{level}] {message}";
-            
+
             Dispatcher.Invoke(() =>
             {
                 _logBuffer.AppendLine(logLine);
@@ -57,12 +55,12 @@ namespace ReStore.Views.Windows
                 Directory.CreateDirectory(tempDir);
 
                 Log($"Created temporary directory: {tempDir}", LogLevel.Debug);
-                
+
                 var isEncrypted = _backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase);
                 var downloadPath = Path.Combine(tempDir, isEncrypted ? "backup.zip.enc" : "backup.zip");
-                
+
                 await _storage.DownloadAsync(_backupPath, downloadPath);
-                
+
                 // If encrypted, also download the metadata file
                 if (isEncrypted)
                 {
@@ -71,33 +69,33 @@ namespace ReStore.Views.Windows
                     Log("Downloading encryption metadata...", LogLevel.Debug);
                     await _storage.DownloadAsync(remoteMetadataPath, metadataPath);
                 }
-                
+
                 Log("Download complete. Extracting archive...", LogLevel.Info);
                 DetailText.Text = "Extracting backup files...";
 
                 var extractDir = Path.Combine(tempDir, "extracted");
                 var compressionUtil = new CompressionUtil();
-                
+
                 if (isEncrypted)
                 {
                     Log("Backup is encrypted, requesting password...", LogLevel.Info);
-                    
+
                     if (_passwordProvider == null)
                     {
                         throw new InvalidOperationException("This backup is encrypted but no password provider is available.");
                     }
-                    
+
                     var password = await _passwordProvider.GetPasswordAsync();
                     if (string.IsNullOrEmpty(password))
                     {
                         throw new OperationCanceledException("Password required to decrypt backup.");
                     }
-                    
+
                     DetailText.Text = "Decrypting and extracting backup...";
-                    
+
                     try
                     {
-                        await compressionUtil.DecryptAndDecompressAsync(downloadPath, password, extractDir, this);
+                        await CompressionUtil.DecryptAndDecompressAsync(downloadPath, password, extractDir, this);
                     }
                     catch (Exception ex)
                     {
@@ -109,7 +107,7 @@ namespace ReStore.Views.Windows
                 }
                 else
                 {
-                    await compressionUtil.DecompressAsync(downloadPath, extractDir);
+                    await CompressionUtil.DecompressAsync(downloadPath, extractDir);
                 }
 
                 _scriptsFolder = extractDir;
@@ -143,7 +141,7 @@ namespace ReStore.Views.Windows
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Foreground = System.Windows.Media.Brushes.Red;
                 CloseButton.IsEnabled = true;
-                
+
                 Log($"Restore failed: {ex.Message}", LogLevel.Error);
                 MessageBox.Show($"Restore failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
@@ -169,13 +167,13 @@ namespace ReStore.Views.Windows
             if (OperatingSystem.IsWindows())
             {
                 var restoreManager = new ProgramRestoreManager(this);
-                
+
                 // Do a dry run first to see what we're dealing with
                 DetailText.Text = "Analyzing programs to restore...";
                 var dryRunResult = await restoreManager.RestoreProgramsFromJsonAsync(jsonPath, wingetOnly: false, dryRun: true);
-                
+
                 TotalCountText.Text = (dryRunResult.WingetPrograms + dryRunResult.ManualPrograms).ToString();
-                
+
                 Log($"Found {dryRunResult.WingetPrograms} winget programs and {dryRunResult.ManualPrograms} manual programs", LogLevel.Info);
 
                 // Ask user if they want to proceed with winget installation
@@ -193,7 +191,7 @@ namespace ReStore.Views.Windows
                     ProgressBar.IsIndeterminate = true;
 
                     var installResult = await restoreManager.RestoreProgramsFromJsonAsync(jsonPath, wingetOnly: false, dryRun: false);
-                    
+
                     SuccessCountText.Text = installResult.SuccessfulInstalls.ToString();
                     FailedCountText.Text = installResult.FailedInstalls.ToString();
 
@@ -237,7 +235,7 @@ namespace ReStore.Views.Windows
             try
             {
                 var envManager = new EnvironmentVariablesManager(this);
-                
+
                 // Read the JSON to count variables
                 var json = await File.ReadAllTextAsync(jsonPath);
                 var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
@@ -246,7 +244,7 @@ namespace ReStore.Views.Windows
                 {
                     variableCount = variablesElement.GetArrayLength();
                 }
-                
+
                 TotalCountText.Text = variableCount.ToString();
                 Log($"Found {variableCount} environment variables", LogLevel.Info);
 
@@ -261,9 +259,9 @@ namespace ReStore.Views.Windows
                 if (result == MessageBoxResult.Yes)
                 {
                     DetailText.Text = "Restoring environment variables...";
-                    
+
                     await envManager.RestoreEnvironmentVariablesAsync(jsonPath);
-                    
+
                     SuccessCountText.Text = variableCount.ToString();
                     Log("Environment variables restored successfully", LogLevel.Info);
                 }

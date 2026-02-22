@@ -22,7 +22,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             throw new ArgumentException("Target directory cannot be null or empty", nameof(targetDirectory));
         }
 
-        string tempDownloadPath = Path.Combine(Path.GetTempPath(), Path.GetFileName(backupPath));
+        string tempDownloadPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}_{Path.GetFileName(backupPath)}");
         try
         {
             _logger.Log($"Starting restore from {backupPath} to {targetDirectory}", LogLevel.Info);
@@ -66,7 +66,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
 
                 try
                 {
-                    await _compressionUtil.DecryptAndDecompressAsync(tempDownloadPath, password, targetDirectory, _logger);
+                    await CompressionUtil.DecryptAndDecompressAsync(tempDownloadPath, password, targetDirectory, _logger);
                 }
                 catch (Exception ex)
                 {
@@ -85,7 +85,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             else
             {
                 _logger.Log($"Decompressing {tempDownloadPath} to {targetDirectory}", LogLevel.Info);
-                await _compressionUtil.DecompressAsync(tempDownloadPath, targetDirectory);
+                await CompressionUtil.DecompressAsync(tempDownloadPath, targetDirectory);
             }
 
             _logger.Log("Restore completed successfully.", LogLevel.Info);

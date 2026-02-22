@@ -31,26 +31,38 @@ public class SizeAnalyzer
     private static long CalculateSize(DirectoryInfo directory)
     {
         long size = 0;
+        var directories = new Stack<DirectoryInfo>();
+        directories.Push(directory);
 
-        try
+        while (directories.Count > 0)
         {
-            foreach (var file in directory.EnumerateFiles("*", SearchOption.AllDirectories))
+            var current = directories.Pop();
+
+            try
             {
-                try
+                foreach (var file in current.EnumerateFiles())
                 {
-                    size += file.Length;
+                    try
+                    {
+                        size += file.Length;
+                    }
+                    catch (UnauthorizedAccessException) { }
+                    catch (FileNotFoundException) { }
                 }
-                catch (UnauthorizedAccessException) { }
-                catch (FileNotFoundException) { }
+
+                foreach (var subDir in current.EnumerateDirectories())
+                {
+                    directories.Push(subDir);
+                }
             }
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Skip directories we can't access
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // Skip directories that no longer exist
+            catch (UnauthorizedAccessException)
+            {
+                // Skip directories we can't access
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Skip directories that no longer exist
+            }
         }
 
         return size;

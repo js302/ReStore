@@ -19,19 +19,14 @@ public class InstalledProgram
 }
 
 [SupportedOSPlatform("windows")]
-public class SystemProgramDiscovery
+public class SystemProgramDiscovery(ILogger logger)
 {
-    private readonly ILogger _logger;
-
-    public SystemProgramDiscovery(ILogger logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger _logger = logger;
 
     public async Task<List<InstalledProgram>> GetAllInstalledProgramsAsync()
     {
         _logger.Log("Discovering installed programs from multiple sources...", LogLevel.Info);
-        
+
         var allPrograms = new Dictionary<string, InstalledProgram>();
 
         // Get programs from winget
@@ -47,14 +42,12 @@ public class SystemProgramDiscovery
         foreach (var program in registryPrograms)
         {
             var key = $"{program.Name}_{program.Publisher}".ToLowerInvariant();
-            if (!allPrograms.ContainsKey(key))
+            if (!allPrograms.TryGetValue(key, out InstalledProgram? existing))
             {
                 allPrograms[key] = program;
             }
             else
             {
-                // Merge information
-                var existing = allPrograms[key];
                 if (string.IsNullOrEmpty(existing.InstallLocation) && !string.IsNullOrEmpty(program.InstallLocation))
                     existing.InstallLocation = program.InstallLocation;
                 if (string.IsNullOrEmpty(existing.UninstallString) && !string.IsNullOrEmpty(program.UninstallString))
@@ -69,18 +62,18 @@ public class SystemProgramDiscovery
 
         var result = allPrograms.Values.OrderBy(p => p.Name).ToList();
         _logger.Log($"Found {result.Count} installed programs total", LogLevel.Info);
-        
+
         return result;
     }
 
     private async Task<List<InstalledProgram>> GetWingetProgramsAsync()
     {
         var programs = new List<InstalledProgram>();
-        
+
         try
         {
             _logger.Log("Querying winget for installed programs...", LogLevel.Debug);
-            
+
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "winget",
@@ -122,33 +115,52 @@ public class SystemProgramDiscovery
     {
         var programs = new List<InstalledProgram>();
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        
-        // Skip header lines
-        var dataLines = lines.Skip(2).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
-        
+
+        var headerLine = lines.FirstOrDefault(l => l.StartsWith("Name") && l.Contains("Id") && l.Contains("Version"));
+        if (headerLine == null) return programs;
+
+        int idIndex = headerLine.IndexOf("Id");
+        int versionIndex = headerLine.IndexOf("Version");
+        int availableIndex = headerLine.IndexOf("Available");
+        int sourceIndex = headerLine.IndexOf("Source");
+
+        var dataLines = lines.SkipWhile(l => !l.StartsWith("---")).Skip(1).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
+
         foreach (var line in dataLines)
         {
             try
             {
-                // Winget output format: Name | Id | Version | Available | Source
-                var parts = line.Split('|', StringSplitOptions.None);
-                if (parts.Length >= 3)
+                if (line.Length < versionIndex) continue;
+
+                var name = line[..idIndex].Trim();
+                var id = line[idIndex..versionIndex].Trim();
+
+                string version = "";
+                if (availableIndex > 0 && line.Length >= availableIndex)
                 {
-                    var name = parts[0].Trim();
-                    var id = parts[1].Trim();
-                    var version = parts[2].Trim();
-                    
-                    if (!string.IsNullOrEmpty(name) && !name.StartsWith("-"))
+                    version = line[versionIndex..availableIndex].Trim();
+                }
+                else if (line.Length > versionIndex)
+                {
+                    version = line[versionIndex..].Trim();
+                }
+
+                string source = "";
+                if (sourceIndex > 0 && line.Length > sourceIndex)
+                {
+                    source = line[sourceIndex..].Trim();
+                }
+
+                if (!string.IsNullOrEmpty(name) && !name.StartsWith("-"))
+                {
+                    programs.Add(new InstalledProgram
                     {
-                        programs.Add(new InstalledProgram
-                        {
-                            Name = name,
-                            Version = version,
-                            WingetId = id,
-                            Source = "winget",
-                            IsWingetAvailable = true
-                        });
-                    }
+                        Name = name,
+                        Version = version,
+                        WingetId = id,
+                        Source = string.IsNullOrEmpty(source) ? "registry" : source,
+                        IsWingetAvailable = !string.IsNullOrEmpty(source) && source.Equals("winget", StringComparison.OrdinalIgnoreCase)
+                    });
                 }
             }
             catch (Exception ex)
@@ -163,11 +175,11 @@ public class SystemProgramDiscovery
     private List<InstalledProgram> GetRegistryPrograms()
     {
         var programs = new List<InstalledProgram>();
-        
+
         try
         {
             _logger.Log("Querying Windows Registry for installed programs...", LogLevel.Debug);
-            
+
             // Check both 32-bit and 64-bit registry locations
             var registryPaths = new[]
             {
@@ -275,14 +287,14 @@ public class SystemProgramDiscovery
         return false;
     }
 
-    private string FormatInstallDate(string? installDate)
+    private static string FormatInstallDate(string? installDate)
     {
         if (string.IsNullOrEmpty(installDate) || installDate.Length != 8)
             return "";
 
         try
         {
-            var year = installDate.Substring(0, 4);
+            var year = installDate[..4];
             var month = installDate.Substring(4, 2);
             var day = installDate.Substring(6, 2);
             return $"{year}-{month}-{day}";
@@ -296,13 +308,13 @@ public class SystemProgramDiscovery
     private async Task CheckWingetAvailabilityAsync(List<InstalledProgram> programs)
     {
         _logger.Log("Checking winget availability for registry programs...", LogLevel.Debug);
-        
+
         try
         {
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "winget",
-                Arguments = "search --disable-interactivity --count 1",
+                Arguments = "--version",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -313,7 +325,7 @@ public class SystemProgramDiscovery
             if (process != null)
             {
                 await process.WaitForExitAsync();
-                
+
                 if (process.ExitCode == 0)
                 {
                     // Winget is available, check each program
@@ -353,7 +365,7 @@ public class SystemProgramDiscovery
             {
                 var output = await process.StandardOutput.ReadToEndAsync();
                 await process.WaitForExitAsync();
-                
+
                 return process.ExitCode == 0 && !output.Contains("No package found");
             }
         }
@@ -361,7 +373,7 @@ public class SystemProgramDiscovery
         {
             _logger.Log($"Error checking winget for {programName}: {ex.Message}", LogLevel.Debug);
         }
-        
+
         return false;
     }
 
@@ -384,7 +396,7 @@ public class SystemProgramDiscovery
             {
                 var output = await process.StandardOutput.ReadToEndAsync();
                 await process.WaitForExitAsync();
-                
+
                 if (process.ExitCode == 0)
                 {
                     var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -404,7 +416,7 @@ public class SystemProgramDiscovery
         {
             _logger.Log($"Error getting winget ID for {programName}: {ex.Message}", LogLevel.Debug);
         }
-        
+
         return "";
     }
 

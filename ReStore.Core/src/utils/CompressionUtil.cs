@@ -4,7 +4,7 @@ namespace ReStore.Core.src.utils;
 
 public class CompressionUtil
 {
-    public async Task CompressDirectoryAsync(string sourceDirectory, string outputZipFile)
+    public static async Task CompressDirectoryAsync(string sourceDirectory, string outputZipFile)
     {
         await Task.Run(() =>
         {
@@ -16,7 +16,7 @@ public class CompressionUtil
         });
     }
 
-    public async Task DecompressAsync(string zipFile, string outputDirectory)
+    public static async Task DecompressAsync(string zipFile, string outputDirectory)
     {
         zipFile = Path.GetFullPath(Environment.ExpandEnvironmentVariables(zipFile));
         outputDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(outputDirectory));
@@ -34,7 +34,7 @@ public class CompressionUtil
         });
     }
 
-    public async Task CompressFilesAsync(IEnumerable<string> filesToInclude, string baseDirectory, string destinationArchivePath)
+    public static async Task CompressFilesAsync(IEnumerable<string> filesToInclude, string baseDirectory, string destinationArchivePath)
     {
         await Task.Run(() =>
         {
@@ -43,53 +43,50 @@ public class CompressionUtil
                 File.Delete(destinationArchivePath);
             }
 
-            using (var fs = new FileStream(destinationArchivePath, FileMode.Create))
-            using (var archive = new ZipArchive(fs, ZipArchiveMode.Create))
+            using var fs = new FileStream(destinationArchivePath, FileMode.Create);
+            using var archive = new ZipArchive(fs, ZipArchiveMode.Create);
+            foreach (var filePath in filesToInclude)
             {
-                foreach (var filePath in filesToInclude)
+                if (!File.Exists(filePath))
                 {
-                    // Ensure the file exists before trying to add it
-                    if (!File.Exists(filePath))
-                    {
-                        // Log this?
-                        continue;
-                    }
-
-                    // Calculate the relative path within the archive
-                    var entryName = Path.GetRelativePath(baseDirectory, filePath);
-                    // Normalize directory separators for zip standard
-                    entryName = entryName.Replace(Path.DirectorySeparatorChar, '/');
-
-                    archive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
+                    continue;
                 }
+
+                // Calculate the relative path within the archive
+                var entryName = Path.GetRelativePath(baseDirectory, filePath);
+                entryName = entryName.Replace(Path.DirectorySeparatorChar, '/');
+
+                archive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
             }
         });
     }
 
-    public async Task<string> CompressAndEncryptAsync(string sourceZip, string password, string salt, ILogger logger)
+    public static async Task<string> CompressAndEncryptAsync(string sourceZip, string password, string salt, ILogger logger)
     {
         var encryptedPath = sourceZip + ".enc";
         var metadataPath = encryptedPath + ".meta";
-        
+
         var saltBytes = Convert.FromBase64String(salt);
         var encryptionService = new EncryptionService(logger);
         var metadata = await encryptionService.EncryptFileAsync(sourceZip, encryptedPath, password, saltBytes);
-        await encryptionService.SaveMetadataAsync(metadata, metadataPath);
-        
+        await EncryptionService.SaveMetadataAsync(metadata, metadataPath);
+
         File.Delete(sourceZip);
-        
+
         return encryptedPath;
     }
 
-    public async Task<string> DecryptAndDecompressAsync(string encryptedZip, string password, string outputDirectory, ILogger logger)
+    public static async Task<string> DecryptAndDecompressAsync(string encryptedZip, string password, string outputDirectory, ILogger logger)
     {
-        var decryptedZip = encryptedZip.Replace(".enc", "");
+        var decryptedZip = encryptedZip.EndsWith(".enc", StringComparison.OrdinalIgnoreCase)
+            ? encryptedZip.Substring(0, encryptedZip.Length - 4)
+            : encryptedZip + ".decrypted";
         var metadataPath = encryptedZip + ".meta";
-        
+
         var encryptionService = new EncryptionService(logger);
-        var metadata = await encryptionService.LoadMetadataAsync(metadataPath);
+        var metadata = await EncryptionService.LoadMetadataAsync(metadataPath);
         await encryptionService.DecryptFileAsync(encryptedZip, decryptedZip, password, metadata);
-        
+
         try
         {
             await DecompressAsync(decryptedZip, outputDirectory);
@@ -101,7 +98,7 @@ public class CompressionUtil
                 File.Delete(decryptedZip);
             }
         }
-        
+
         return outputDirectory;
     }
 }

@@ -11,6 +11,8 @@
     <PackageId>ReStore.Core</PackageId>
     <Product>ReStore Core</Product>
     <Description>Command-line interface for ReStore backup and restore solution</Description>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

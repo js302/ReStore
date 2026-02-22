@@ -20,6 +20,8 @@
 
         <!-- Optimization Properties -->
         <Optimize>true</Optimize>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
         <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
         <DebuggerSupport>false</DebuggerSupport>
         <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
@@ -32,7 +34,7 @@
         <Company>Jaskaran Singh</Company>
         <Product>ReStore</Product>
         <Description>A backup and restore solution for Windows</Description>
-        <Copyright>Copyright © 2025 Jaskaran Singh</Copyright>
+        <Copyright>Copyright © 2026 Jaskaran Singh</Copyright>
         <PackageProjectUrl>https://github.com/js302/ReStore</PackageProjectUrl>
         <RepositoryUrl>https://github.com/js302/ReStore</RepositoryUrl>
     </PropertyGroup>

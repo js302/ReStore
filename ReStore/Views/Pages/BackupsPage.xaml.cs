@@ -164,7 +164,7 @@ namespace ReStore.Views.Pages
         {
             if (_state == null) return;
 
-            await Task.Run(async () =>
+            await Task.Run(() =>
             {
                 var items = new List<BackupItem>();
 
@@ -173,26 +173,13 @@ namespace ReStore.Views.Pages
                     var directory = kvp.Key;
                     foreach (var backup in kvp.Value)
                     {
-                        long size = 0;
-                        if (_storage != null)
-                        {
-                            try
-                            {
-                                size = await GetBackupSizeAsync(backup.Path);
-                            }
-                            catch
-                            {
-                                size = 0;
-                            }
-                        }
-
                         items.Add(new BackupItem
                         {
-                            Directory = System.IO.Path.GetFileName(directory),
+                            Directory = Path.GetFileName(directory),
                             Path = backup.Path,
                             Timestamp = backup.Timestamp,
                             IsDiff = backup.IsDiff,
-                            SizeBytes = size,
+                            SizeBytes = backup.SizeBytes,
                             IsSelected = false
                         });
                     }
@@ -204,33 +191,6 @@ namespace ReStore.Views.Pages
                     ApplyFilters();
                 });
             });
-        }
-
-        private async Task<long> GetBackupSizeAsync(string path)
-        {
-            if (_storage == null) return 0;
-
-            try
-            {
-                return await Task.Run(() =>
-                {
-                    var localPath = Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
-
-                    if (_storage.GetType().Name.Contains("LocalStorage"))
-                    {
-                        if (File.Exists(path))
-                        {
-                            return new FileInfo(path).Length;
-                        }
-                    }
-
-                    return 0;
-                });
-            }
-            catch
-            {
-                return 0;
-            }
         }
 
         private void ApplyFilters()
@@ -356,7 +316,7 @@ namespace ReStore.Views.Pages
                     {
                         if (_storage == null) return;
 
-                        var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+                        var passwordProvider = App.GlobalPasswordProvider ?? new GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
                         var restore = new Restore(_logger, _storage, passwordProvider);
                         await restore.RestoreFromBackupAsync(backup.Path, targetPath);
@@ -432,13 +392,10 @@ namespace ReStore.Views.Pages
 
                     if (_state != null)
                     {
-                        foreach (var kvp in _state.BackupHistory.ToList())
+                        var groups = _state.GetBackupGroups();
+                        foreach (var group in groups)
                         {
-                            var toRemove = kvp.Value.Where(b => b.Path == backup.Path).ToList();
-                            foreach (var b in toRemove)
-                            {
-                                kvp.Value.Remove(b);
-                            }
+                            _state.RemoveBackupsFromGroup(group, [backup.Path]);
                         }
                         await _state.SaveStateAsync();
                     }
@@ -497,13 +454,10 @@ namespace ReStore.Views.Pages
 
                         if (_state != null)
                         {
-                            foreach (var kvp in _state.BackupHistory.ToList())
+                            var groups = _state.GetBackupGroups();
+                            foreach (var group in groups)
                             {
-                                var toRemove = kvp.Value.Where(b => b.Path == backup.Path).ToList();
-                                foreach (var b in toRemove)
-                                {
-                                    kvp.Value.Remove(b);
-                                }
+                                _state.RemoveBackupsFromGroup(group, [backup.Path]);
                             }
                         }
 
