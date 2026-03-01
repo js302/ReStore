@@ -15,7 +15,7 @@ Both share a unified configuration system stored at `%USERPROFILE%\ReStore\confi
 
 - [Component Overview](components.md) - High-level component diagram and relationships
 - [Data Flows](data-flows.md) - Backup, restore, and encryption data flow diagrams
-- [Encryption Architecture](encryption-architecture.md) - Security model and cryptographic details
+- [Encryption Architecture](encryption.md) - Security model and cryptographic details
 - [Configuration & State](configuration-state.md) - File formats and persistence layer
 - [Technology Stack](technology-stack.md) - Dependencies and frameworks
 

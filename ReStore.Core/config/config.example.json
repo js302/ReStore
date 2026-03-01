@@ -61,7 +61,7 @@
   "encryption": {
     "enabled": false,
     "salt": null,
-    "keyDerivationIterations": 100000,
+    "keyDerivationIterations": 1000000,
     "verificationToken": null
   },
   "excludedPaths": [

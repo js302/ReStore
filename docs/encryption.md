@@ -5,7 +5,7 @@ ReStore supports enterprise-grade AES-256-GCM encryption to secure your backups 
 ## Encryption Features
 
 - **Algorithm**: AES-256-GCM (Galois/Counter Mode) - provides both confidentiality and authentication
-- **Key Derivation**: PBKDF2-SHA256 with 100,000 iterations for secure password-based key generation
+- **Key Derivation**: PBKDF2-SHA256 with 1,000,000 iterations for secure password-based key generation
 - **Hybrid Architecture**: Each backup uses a unique Data Encryption Key (DEK) that is encrypted with a Key Encryption Key (KEK) derived from your password
 - **Authenticated Encryption**: Built-in authentication prevents tampering with encrypted backups
 - **File Format**: Encrypted backups are stored with `.enc` extension and include a `.enc.meta` metadata file
@@ -33,7 +33,7 @@ Edit `%USERPROFILE%\ReStore\config.json`:
   "encryption": {
     "enabled": true,
     "salt": "base64_encoded_salt_will_be_generated",
-    "keyDerivationIterations": 100000,
+    "keyDerivationIterations": 1000000,
     "verificationToken": "base64_encoded_verification_token_will_be_generated"
   }
 }

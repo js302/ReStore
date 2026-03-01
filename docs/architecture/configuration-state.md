@@ -20,7 +20,13 @@ Main configuration file for backup settings, storage providers, and encryption.
 
 ```json
 {
-  "watchDirectories": ["C:\\Users\\..."],
+  "watchDirectories": [
+    {
+      "path": "C:\\Users\\...",
+      "storageType": "gdrive"
+    }
+  ],
+  "globalStorageType": "local",
   "backupInterval": "01:00:00",
   "sizeThresholdMB": 500,
   "maxFileSizeMB": 100,
@@ -31,7 +37,7 @@ Main configuration file for backup settings, storage providers, and encryption.
     "enabled": false,
     "salt": null,
     "verificationToken": null,
-    "keyDerivationIterations": 100000
+    "keyDerivationIterations": 1000000
   },
   "retention": {
     "enabled": false,
@@ -108,7 +114,13 @@ Main configuration file for backup settings, storage providers, and encryption.
     "enabled": true,
     "includePrograms": true,
     "includeEnvironmentVariables": true,
-    "backupInterval": "24:00:00"
+    "includeWindowsSettings": true,
+    "backupInterval": "24:00:00",
+    "excludeSystemPrograms": [],
+    "storageType": null,
+    "programsStorageType": null,
+    "environmentStorageType": null,
+    "settingsStorageType": null
   }
 }
 ```
