@@ -29,7 +29,7 @@
 
         <!-- Application Identity -->
         <PackageId>ReStore</PackageId>
-        <Version>1.5.0</Version>
+        <Version>1.5.1</Version>
         <Authors>Jaskaran Singh</Authors>
         <Company>Jaskaran Singh</Company>
         <Product>ReStore</Product>
