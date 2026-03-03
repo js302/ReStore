@@ -29,7 +29,6 @@ public class SystemProgramDiscovery(ILogger logger)
 
         var allPrograms = new Dictionary<string, InstalledProgram>();
 
-        // Get programs from winget
         var wingetPrograms = await GetWingetProgramsAsync();
         foreach (var program in wingetPrograms)
         {
@@ -37,7 +36,6 @@ public class SystemProgramDiscovery(ILogger logger)
             allPrograms[key] = program;
         }
 
-        // Get programs from registry
         var registryPrograms = GetRegistryPrograms();
         foreach (var program in registryPrograms)
         {
@@ -57,7 +55,6 @@ public class SystemProgramDiscovery(ILogger logger)
             }
         }
 
-        // Check which registry programs are available in winget
         await CheckWingetAvailabilityAsync(allPrograms.Values.Where(p => p.Source != "winget").ToList());
 
         var result = allPrograms.Values.OrderBy(p => p.Name).ToList();
@@ -105,7 +102,7 @@ public class SystemProgramDiscovery(ILogger logger)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error running winget: {ex.Message}", LogLevel.Warning);
+            _logger.Log($"Error running winget: {ex.GetType().Name}: {ex.Message}", LogLevel.Warning);
         }
 
         return programs;
@@ -165,7 +162,7 @@ public class SystemProgramDiscovery(ILogger logger)
             }
             catch (Exception ex)
             {
-                _logger.Log($"Error parsing winget line '{line}': {ex.Message}", LogLevel.Debug);
+                _logger.Log($"Error parsing winget line '{line}': {ex.GetType().Name}: {ex.Message}", LogLevel.Debug);
             }
         }
 
@@ -199,7 +196,7 @@ public class SystemProgramDiscovery(ILogger logger)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error reading registry: {ex.Message}", LogLevel.Warning);
+            _logger.Log($"Error reading registry: {ex.GetType().Name}: {ex.Message}", LogLevel.Warning);
         }
 
         return programs;
@@ -245,14 +242,14 @@ public class SystemProgramDiscovery(ILogger logger)
                     }
                     catch (Exception ex)
                     {
-                        _logger.Log($"Error reading registry subkey {subkeyName}: {ex.Message}", LogLevel.Debug);
+                        _logger.Log($"Error reading registry subkey {subkeyName}: {ex.GetType().Name}: {ex.Message}", LogLevel.Debug);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error accessing registry path {path}: {ex.Message}", LogLevel.Debug);
+            _logger.Log($"Error accessing registry path {path}: {ex.GetType().Name}: {ex.Message}", LogLevel.Debug);
         }
 
         return programs;
@@ -342,7 +339,7 @@ public class SystemProgramDiscovery(ILogger logger)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error checking winget availability: {ex.Message}", LogLevel.Debug);
+            _logger.Log($"Error checking winget availability: {ex.GetType().Name}: {ex.Message}", LogLevel.Debug);
         }
     }
 
@@ -371,7 +368,7 @@ public class SystemProgramDiscovery(ILogger logger)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error checking winget for {programName}: {ex.Message}", LogLevel.Debug);
+            _logger.Log($"Error checking winget for {programName}: {ex.GetType().Name}: {ex.Message}", LogLevel.Debug);
         }
 
         return false;
@@ -414,7 +411,7 @@ public class SystemProgramDiscovery(ILogger logger)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error getting winget ID for {programName}: {ex.Message}", LogLevel.Debug);
+            _logger.Log($"Error getting winget ID for {programName}: {ex.GetType().Name}: {ex.Message}", LogLevel.Debug);
         }
 
         return "";
@@ -446,7 +443,7 @@ public class SystemProgramDiscovery(ILogger logger)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error exporting programs to JSON: {ex.Message}", LogLevel.Error);
+            _logger.Log($"Error exporting programs to JSON: {ex.GetType().Name}: {ex.Message}", LogLevel.Error);
             throw;
         }
     }

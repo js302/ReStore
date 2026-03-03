@@ -34,7 +34,6 @@ namespace ReStore.Views.Pages
             {
                 _isLoading = true;
 
-                // Theme selector
                 ThemeSelector.SelectedIndex = _themeSettings.Preference switch
                 {
                     ThemePreference.Light => 1,
@@ -42,7 +41,6 @@ namespace ReStore.Views.Pages
                     _ => 0
                 };
 
-                // Storage sources
                 ShowConfiguredOnly.IsChecked = _appSettings.ShowOnlyConfiguredProviders;
                 MinimizeToTrayCheckBox.IsChecked = _appSettings.MinimizeToTray;
                 RunAtStartupCheckBox.IsChecked = IsRunAtStartupEnabled();
@@ -133,7 +131,6 @@ namespace ReStore.Views.Pages
             {
                 if (StorageCombo.SelectedItem is string s)
                 {
-                    // Persist base key without annotation
                     var baseKey = s.Split(' ')[0];
                     _appSettings.DefaultStorage = baseKey;
                     _appSettings.Save();
@@ -192,10 +189,6 @@ namespace ReStore.Views.Pages
                     MessageBox.Show($"Could not open config file location: {ex.Message}");
                 }
             };
-
-
-
-            // Save handlers
             SaveLocalBtn.Click += async (_, __) => await SaveProviderAsync("local", new()
             {
                 ["path"] = LocalPathBox.Text

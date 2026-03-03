@@ -6,12 +6,20 @@ public class FileHasher
 {
     private const int BUFFER_SIZE = 81920;
 
+    public static string ComputeHash(string filePath)
+    {
+        using var sha256 = SHA256.Create();
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var hash = sha256.ComputeHash(stream);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
     public static async Task<string> ComputeHashAsync(string filePath)
     {
         using var sha256 = SHA256.Create();
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
         var hash = await sha256.ComputeHashAsync(stream);
-        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     public async Task<Dictionary<string, string>> ComputeDirectoryHashesAsync(string directory, int maxConcurrency = 4)

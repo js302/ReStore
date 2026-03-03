@@ -88,7 +88,7 @@ namespace ReStore.Services
                 }
                 catch (ArgumentException)
                 {
-                    // Key doesn't exist, nothing to delete - this is fine
+                    // Key doesn't exist, nothing to delete
                 }
 
                 return (true, null);

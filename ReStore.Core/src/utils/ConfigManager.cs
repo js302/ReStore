@@ -139,6 +139,34 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
     public async Task LoadAsync()
     {
+        await EnsureConfigFileExistsAsync();
+
+        var jsonString = await File.ReadAllTextAsync(CONFIG_PATH);
+        using var jsonDoc = JsonDocument.Parse(jsonString);
+        var root = jsonDoc.RootElement;
+
+        try
+        {
+            LoadWatchDirectories(root);
+            LoadCoreBackupSettings(root);
+            LoadStorageSettings(root);
+            LoadExclusions(root);
+            LoadBackupTypeAndLimits(root);
+            LoadSystemBackupSettings(root);
+            LoadEncryptionSettings(root);
+            LoadRetentionSettings(root);
+
+            _isLoaded = true;
+            logger.Log("Configuration loaded successfully", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to load configuration", ex);
+        }
+    }
+
+    private async Task EnsureConfigFileExistsAsync()
+    {
         var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
         var configExists = File.Exists(CONFIG_PATH);
 
@@ -159,176 +187,178 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     "Please rename it to 'config.json' and configure your backup settings.");
             }
         }
+    }
 
-        var jsonString = await File.ReadAllTextAsync(CONFIG_PATH);
-        using var jsonDoc = JsonDocument.Parse(jsonString);
-        var root = jsonDoc.RootElement;
+    private void LoadWatchDirectories(JsonElement root)
+    {
+        var watchDirsElement = root.GetProperty("watchDirectories");
+        WatchDirectories = [];
 
-        try
+        foreach (var element in watchDirsElement.EnumerateArray())
         {
-            // Load watch directories with optional per-path storage
-            var watchDirsElement = root.GetProperty("watchDirectories");
-            WatchDirectories = [];
-
-            foreach (var element in watchDirsElement.EnumerateArray())
+            if (element.ValueKind == JsonValueKind.String)
             {
-                if (element.ValueKind == JsonValueKind.String)
+                WatchDirectories.Add(new WatchDirectoryConfig
                 {
-                    // Legacy format: just a string path
-                    WatchDirectories.Add(new WatchDirectoryConfig
-                    {
-                        Path = Environment.ExpandEnvironmentVariables(element.GetString() ?? string.Empty),
-                        StorageType = null
-                    });
-                }
-                else if (element.ValueKind == JsonValueKind.Object)
+                    Path = Environment.ExpandEnvironmentVariables(element.GetString() ?? string.Empty),
+                    StorageType = null
+                });
+            }
+            else if (element.ValueKind == JsonValueKind.Object)
+            {
+                var config = JsonSerializer.Deserialize<WatchDirectoryConfig>(element, _readOptions);
+                if (config != null)
                 {
-                    // New format: object with path and storageType
-                    var config = JsonSerializer.Deserialize<WatchDirectoryConfig>(element, _readOptions);
-                    if (config != null)
-                    {
-                        config.Path = Environment.ExpandEnvironmentVariables(config.Path);
-                        WatchDirectories.Add(config);
-                    }
+                    config.Path = Environment.ExpandEnvironmentVariables(config.Path);
+                    WatchDirectories.Add(config);
                 }
             }
-
-            BackupInterval = TimeSpan.Parse(root.GetProperty("backupInterval").GetString() ?? "01:00:00");
-            SizeThresholdMB = root.GetProperty("sizeThresholdMB").GetInt64();
-
-            var storageSources = root.GetProperty("storageSources");
-
-            StorageSources = JsonSerializer.Deserialize<Dictionary<string, StorageConfig>>(
-                storageSources,
-                _readOptions) ?? throw new JsonException("Failed to deserialize storage sources");
-
-            // Load global storage type AFTER StorageSources so the fallback works
-            if (root.TryGetProperty("globalStorageType", out var globalStorageElement))
-            {
-                GlobalStorageType = globalStorageElement.GetString() ?? "local";
-            }
-            else
-            {
-                GlobalStorageType = StorageSources.Keys.FirstOrDefault() ?? "local";
-            }
-
-            foreach (var source in StorageSources.Values)
-            {
-                source.Path = Environment.ExpandEnvironmentVariables(source.Path);
-                source.Options = source.Options.ToDictionary(x => x.Key, x => Environment.ExpandEnvironmentVariables(x.Value));
-            }
-
-            // Load backup configuration
-            if (root.TryGetProperty("excludedPatterns", out var excludedPatternsElement))
-            {
-                ExcludedPatterns = JsonSerializer.Deserialize<List<string>>(excludedPatternsElement, _readOptions) ?? [];
-            }
-            else
-            {
-                SetDefaultExcludedPatterns();
-            }
-
-            if (root.TryGetProperty("excludedPaths", out var excludedPathsElement))
-            {
-                ExcludedPaths = JsonSerializer.Deserialize<List<string>>(excludedPathsElement, _readOptions) ?? [];
-                ExcludedPaths = ExcludedPaths.Select(p => Environment.ExpandEnvironmentVariables(p)).ToList();
-            }
-            else
-            {
-                SetDefaultExcludedPaths();
-            }
-
-            if (root.TryGetProperty("backupType", out var backupTypeElement))
-            {
-                BackupType = Enum.Parse<BackupType>(backupTypeElement.GetString() ?? "Incremental", true);
-            }
-
-            if (root.TryGetProperty("maxFileSizeMB", out var maxFileSizeElement))
-            {
-                MaxFileSizeMB = maxFileSizeElement.GetInt32();
-            }
-
-            // Load system backup configuration
-            if (root.TryGetProperty("systemBackup", out var systemBackupElement))
-            {
-                SystemBackup = new SystemBackupConfig();
-
-                if (systemBackupElement.TryGetProperty("enabled", out var enabled))
-                    SystemBackup.Enabled = enabled.GetBoolean();
-
-                if (systemBackupElement.TryGetProperty("includePrograms", out var includePrograms))
-                    SystemBackup.IncludePrograms = includePrograms.GetBoolean();
-
-                if (systemBackupElement.TryGetProperty("includeEnvironmentVariables", out var includeEnv))
-                    SystemBackup.IncludeEnvironmentVariables = includeEnv.GetBoolean();
-
-                if (systemBackupElement.TryGetProperty("includeWindowsSettings", out var includeSettings))
-                    SystemBackup.IncludeWindowsSettings = includeSettings.GetBoolean();
-
-                if (systemBackupElement.TryGetProperty("backupInterval", out var sysBackupInterval))
-                    SystemBackup.BackupInterval = TimeSpan.Parse(sysBackupInterval.GetString() ?? "24:00:00");
-
-                if (systemBackupElement.TryGetProperty("excludeSystemPrograms", out var excludePrograms))
-                {
-                    SystemBackup.ExcludeSystemPrograms = JsonSerializer.Deserialize<List<string>>(excludePrograms, _readOptions) ?? [];
-                }
-
-                if (systemBackupElement.TryGetProperty("storageType", out var storageType))
-                    SystemBackup.StorageType = storageType.GetString();
-
-                if (systemBackupElement.TryGetProperty("programsStorageType", out var programsStorage))
-                    SystemBackup.ProgramsStorageType = programsStorage.GetString();
-
-                if (systemBackupElement.TryGetProperty("environmentStorageType", out var envStorage))
-                    SystemBackup.EnvironmentStorageType = envStorage.GetString();
-
-                if (systemBackupElement.TryGetProperty("settingsStorageType", out var settingsStorage))
-                    SystemBackup.SettingsStorageType = settingsStorage.GetString();
-            }
-            else
-            {
-                SetDefaultSystemBackupConfig();
-            }
-
-            // Load encryption configuration
-            if (root.TryGetProperty("encryption", out var encryptionElement))
-            {
-                Encryption = new EncryptionConfig();
-
-                if (encryptionElement.TryGetProperty("enabled", out var encEnabled))
-                    Encryption.Enabled = encEnabled.GetBoolean();
-
-                if (encryptionElement.TryGetProperty("salt", out var salt))
-                    Encryption.Salt = salt.GetString();
-
-                if (encryptionElement.TryGetProperty("keyDerivationIterations", out var iterations))
-                    Encryption.KeyDerivationIterations = iterations.GetInt32();
-
-                if (encryptionElement.TryGetProperty("verificationToken", out var verificationToken))
-                    Encryption.VerificationToken = verificationToken.GetString();
-            }
-
-            // Load retention configuration
-            if (root.TryGetProperty("retention", out var retentionElement))
-            {
-                Retention = new RetentionConfig();
-
-                if (retentionElement.TryGetProperty("enabled", out var retentionEnabled))
-                    Retention.Enabled = retentionEnabled.GetBoolean();
-
-                if (retentionElement.TryGetProperty("keepLastPerDirectory", out var keepLast))
-                    Retention.KeepLastPerDirectory = keepLast.GetInt32();
-
-                if (retentionElement.TryGetProperty("maxAgeDays", out var maxAgeDays))
-                    Retention.MaxAgeDays = maxAgeDays.GetInt32();
-            }
-
-            _isLoaded = true;
-            logger.Log("Configuration loaded successfully", LogLevel.Info);
         }
-        catch (Exception ex)
+    }
+
+    private void LoadCoreBackupSettings(JsonElement root)
+    {
+        BackupInterval = TimeSpan.Parse(root.GetProperty("backupInterval").GetString() ?? "01:00:00");
+        SizeThresholdMB = root.GetProperty("sizeThresholdMB").GetInt64();
+    }
+
+    private void LoadStorageSettings(JsonElement root)
+    {
+        var storageSources = root.GetProperty("storageSources");
+
+        StorageSources = JsonSerializer.Deserialize<Dictionary<string, StorageConfig>>(
+            storageSources,
+            _readOptions) ?? throw new JsonException("Failed to deserialize storage sources");
+
+        if (root.TryGetProperty("globalStorageType", out var globalStorageElement))
         {
-            throw new InvalidOperationException("Failed to load configuration", ex);
+            GlobalStorageType = globalStorageElement.GetString() ?? "local";
+        }
+        else
+        {
+            GlobalStorageType = StorageSources.Keys.FirstOrDefault() ?? "local";
+        }
+
+        foreach (var source in StorageSources.Values)
+        {
+            source.Path = Environment.ExpandEnvironmentVariables(source.Path);
+            source.Options = source.Options.ToDictionary(x => x.Key, x => Environment.ExpandEnvironmentVariables(x.Value));
+        }
+    }
+
+    private void LoadExclusions(JsonElement root)
+    {
+        if (root.TryGetProperty("excludedPatterns", out var excludedPatternsElement))
+        {
+            ExcludedPatterns = JsonSerializer.Deserialize<List<string>>(excludedPatternsElement, _readOptions) ?? [];
+        }
+        else
+        {
+            SetDefaultExcludedPatterns();
+        }
+
+        if (root.TryGetProperty("excludedPaths", out var excludedPathsElement))
+        {
+            ExcludedPaths = JsonSerializer.Deserialize<List<string>>(excludedPathsElement, _readOptions) ?? [];
+            ExcludedPaths = ExcludedPaths.Select(p => Environment.ExpandEnvironmentVariables(p)).ToList();
+        }
+        else
+        {
+            SetDefaultExcludedPaths();
+        }
+    }
+
+    private void LoadBackupTypeAndLimits(JsonElement root)
+    {
+        if (root.TryGetProperty("backupType", out var backupTypeElement))
+        {
+            BackupType = Enum.Parse<BackupType>(backupTypeElement.GetString() ?? "Incremental", true);
+        }
+
+        if (root.TryGetProperty("maxFileSizeMB", out var maxFileSizeElement))
+        {
+            MaxFileSizeMB = maxFileSizeElement.GetInt32();
+        }
+    }
+
+    private void LoadSystemBackupSettings(JsonElement root)
+    {
+        if (root.TryGetProperty("systemBackup", out var systemBackupElement))
+        {
+            SystemBackup = new SystemBackupConfig();
+
+            if (systemBackupElement.TryGetProperty("enabled", out var enabled))
+                SystemBackup.Enabled = enabled.GetBoolean();
+
+            if (systemBackupElement.TryGetProperty("includePrograms", out var includePrograms))
+                SystemBackup.IncludePrograms = includePrograms.GetBoolean();
+
+            if (systemBackupElement.TryGetProperty("includeEnvironmentVariables", out var includeEnv))
+                SystemBackup.IncludeEnvironmentVariables = includeEnv.GetBoolean();
+
+            if (systemBackupElement.TryGetProperty("includeWindowsSettings", out var includeSettings))
+                SystemBackup.IncludeWindowsSettings = includeSettings.GetBoolean();
+
+            if (systemBackupElement.TryGetProperty("backupInterval", out var sysBackupInterval))
+                SystemBackup.BackupInterval = TimeSpan.Parse(sysBackupInterval.GetString() ?? "24:00:00");
+
+            if (systemBackupElement.TryGetProperty("excludeSystemPrograms", out var excludePrograms))
+            {
+                SystemBackup.ExcludeSystemPrograms = JsonSerializer.Deserialize<List<string>>(excludePrograms, _readOptions) ?? [];
+            }
+
+            if (systemBackupElement.TryGetProperty("storageType", out var storageType))
+                SystemBackup.StorageType = storageType.GetString();
+
+            if (systemBackupElement.TryGetProperty("programsStorageType", out var programsStorage))
+                SystemBackup.ProgramsStorageType = programsStorage.GetString();
+
+            if (systemBackupElement.TryGetProperty("environmentStorageType", out var envStorage))
+                SystemBackup.EnvironmentStorageType = envStorage.GetString();
+
+            if (systemBackupElement.TryGetProperty("settingsStorageType", out var settingsStorage))
+                SystemBackup.SettingsStorageType = settingsStorage.GetString();
+        }
+        else
+        {
+            SetDefaultSystemBackupConfig();
+        }
+    }
+
+    private void LoadEncryptionSettings(JsonElement root)
+    {
+        if (root.TryGetProperty("encryption", out var encryptionElement))
+        {
+            Encryption = new EncryptionConfig();
+
+            if (encryptionElement.TryGetProperty("enabled", out var encEnabled))
+                Encryption.Enabled = encEnabled.GetBoolean();
+
+            if (encryptionElement.TryGetProperty("salt", out var salt))
+                Encryption.Salt = salt.GetString();
+
+            if (encryptionElement.TryGetProperty("keyDerivationIterations", out var iterations))
+                Encryption.KeyDerivationIterations = iterations.GetInt32();
+
+            if (encryptionElement.TryGetProperty("verificationToken", out var verificationToken))
+                Encryption.VerificationToken = verificationToken.GetString();
+        }
+    }
+
+    private void LoadRetentionSettings(JsonElement root)
+    {
+        if (root.TryGetProperty("retention", out var retentionElement))
+        {
+            Retention = new RetentionConfig();
+
+            if (retentionElement.TryGetProperty("enabled", out var retentionEnabled))
+                Retention.Enabled = retentionEnabled.GetBoolean();
+
+            if (retentionElement.TryGetProperty("keepLastPerDirectory", out var keepLast))
+                Retention.KeepLastPerDirectory = keepLast.GetInt32();
+
+            if (retentionElement.TryGetProperty("maxAgeDays", out var maxAgeDays))
+                Retention.MaxAgeDays = maxAgeDays.GetInt32();
         }
     }
 

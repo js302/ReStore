@@ -26,14 +26,9 @@ public class ConfigValidationResult
     public bool HasIssues => Errors.Count > 0 || Warnings.Count > 0;
 }
 
-public class ConfigValidator
+public class ConfigValidator(ILogger logger)
 {
-    private readonly ILogger _logger;
-
-    public ConfigValidator(ILogger logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger _logger = logger;
 
     public ConfigValidationResult ValidateConfiguration(IConfigManager config)
     {
@@ -58,7 +53,7 @@ public class ConfigValidator
         return result;
     }
 
-    private void ValidateWatchDirectories(List<WatchDirectoryConfig> watchDirectories, ConfigValidationResult result)
+    private static void ValidateWatchDirectories(List<WatchDirectoryConfig> watchDirectories, ConfigValidationResult result)
     {
         if (watchDirectories == null || watchDirectories.Count == 0)
         {
@@ -101,7 +96,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateBackupSettings(IConfigManager config, ConfigValidationResult result)
+    private static void ValidateBackupSettings(IConfigManager config, ConfigValidationResult result)
     {
         // Validate backup interval
         if (config.BackupInterval <= TimeSpan.Zero)
@@ -218,7 +213,7 @@ public class ConfigValidator
             return;
         }
 
-        // Skip validation for storage sources that are not configured (have placeholder values)
+        // Skip validation for storage sources that are not configured
         if (IsStorageSourceUnconfigured(sourceName, config))
         {
             result.AddInfo($"Storage source '{sourceName}' is not configured (skipped validation).");
@@ -260,7 +255,7 @@ public class ConfigValidator
         }
     }
 
-    private bool IsStorageSourceUnconfigured(string sourceName, StorageConfig config)
+    private static bool IsStorageSourceUnconfigured(string sourceName, StorageConfig config)
     {
         // Check if this is a non-local storage with placeholder values
         if (sourceName.ToLowerInvariant() == "local")
@@ -275,7 +270,7 @@ public class ConfigValidator
             opt.Value.Contains("your_", StringComparison.OrdinalIgnoreCase));
     }
 
-    private void ValidateLocalStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateLocalStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         try
         {
@@ -312,7 +307,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateGoogleDriveStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateGoogleDriveStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "client_id", "client_secret" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -320,17 +315,17 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"Google Drive storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
 
-        if (config.Options.ContainsKey("token_folder"))
+        if (config.Options.TryGetValue("token_folder", out string? value))
         {
             try
             {
-                var tokenFolder = Environment.ExpandEnvironmentVariables(config.Options["token_folder"]);
+                var tokenFolder = Environment.ExpandEnvironmentVariables(value);
                 var tokenDir = Path.GetDirectoryName(tokenFolder);
                 if (!string.IsNullOrEmpty(tokenDir) && !Directory.Exists(tokenDir))
                 {
@@ -345,7 +340,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateS3Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateS3Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "accessKeyId", "secretAccessKey", "region", "bucketName" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -353,16 +348,15 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"S3 storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
 
         // Validate region format
-        if (config.Options.ContainsKey("region") && !config.Options["region"].Contains("your_"))
+        if (config.Options.TryGetValue("region", out string? region) && !region.Contains("your_"))
         {
-            var region = config.Options["region"];
             if (!IsValidAwsRegion(region))
             {
                 result.AddWarning($"S3 storage '{sourceName}' has potentially invalid AWS region: {region}");
@@ -370,9 +364,8 @@ public class ConfigValidator
         }
 
         // Validate bucket name format
-        if (config.Options.ContainsKey("bucketName") && !config.Options["bucketName"].Contains("your_"))
+        if (config.Options.TryGetValue("bucketName", out string? bucketName) && !bucketName.Contains("your_"))
         {
-            var bucketName = config.Options["bucketName"];
             if (!IsValidS3BucketName(bucketName))
             {
                 result.AddError($"S3 storage '{sourceName}' has invalid bucket name: {bucketName}");
@@ -380,7 +373,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateGitHubStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateGitHubStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "token", "repo", "owner" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -388,14 +381,14 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"GitHub storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
     }
 
-    private void ValidateAzureStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateAzureStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "connectionString", "containerName" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -403,14 +396,14 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"Azure storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
     }
 
-    private void ValidateGcpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateGcpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "bucketName" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -418,15 +411,14 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"GCP storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
 
-        if (config.Options.ContainsKey("credentialPath"))
+        if (config.Options.TryGetValue("credentialPath", out string? path))
         {
-            var path = config.Options["credentialPath"];
             if (!string.IsNullOrWhiteSpace(path) && !File.Exists(path))
             {
                 result.AddWarning($"GCP credential file not found: {path}");
@@ -434,7 +426,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateDropboxStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateDropboxStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         // Dropbox needs either accessToken OR (appKey + appSecret + refreshToken)
         var hasAccessToken = config.Options.ContainsKey("accessToken") && !string.IsNullOrWhiteSpace(config.Options["accessToken"]);
@@ -448,7 +440,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateSftpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateSftpStorage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "host", "username" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -456,7 +448,7 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"SFTP storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
@@ -477,7 +469,7 @@ public class ConfigValidator
         }
     }
 
-    private void ValidateB2Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
+    private static void ValidateB2Storage(string sourceName, StorageConfig config, ConfigValidationResult result)
     {
         var requiredOptions = new[] { "keyId", "applicationKey", "bucketName" };
         var missingOptions = requiredOptions.Where(opt =>
@@ -485,14 +477,14 @@ public class ConfigValidator
             string.IsNullOrWhiteSpace(config.Options[opt]) ||
             config.Options[opt].Contains("your_")).ToList();
 
-        if (missingOptions.Any())
+        if (missingOptions.Count != 0)
         {
             result.AddWarning($"Backblaze B2 storage '{sourceName}' is not configured (missing: {string.Join(", ", missingOptions)})");
             return;
         }
     }
 
-    private void ValidateExclusionSettings(IConfigManager config, ConfigValidationResult result)
+    private static void ValidateExclusionSettings(IConfigManager config, ConfigValidationResult result)
     {
         // Validate excluded patterns
         if (config.ExcludedPatterns != null)
@@ -550,7 +542,7 @@ public class ConfigValidator
         }
     }
 
-    private bool IsValidAwsRegion(string region)
+    private static bool IsValidAwsRegion(string region)
     {
         if (string.IsNullOrWhiteSpace(region)) return false;
 
@@ -604,7 +596,7 @@ public class ConfigValidator
                || region.StartsWith("me-", StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool IsValidS3BucketName(string bucketName)
+    private static bool IsValidS3BucketName(string bucketName)
     {
         if (string.IsNullOrWhiteSpace(bucketName) || bucketName.Length < 3 || bucketName.Length > 63)
             return false;

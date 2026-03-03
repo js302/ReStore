@@ -72,7 +72,7 @@ public class StorageFactory
     public StorageFactory(ILogger logger)
     {
         _logger = logger;
-        _storageCreators = new()
+        _storageCreators = new(StringComparer.OrdinalIgnoreCase)
         {
             ["s3"] = logger => new S3Storage(logger),
             ["github"] = logger => new GitHubStorage(logger),
@@ -88,7 +88,7 @@ public class StorageFactory
 
     public async Task<IStorage> CreateStorageAsync(string storageType, StorageConfig config)
     {
-        if (!_storageCreators.TryGetValue(storageType.ToLower(), out var creator))
+        if (!_storageCreators.TryGetValue(storageType, out var creator))
         {
             throw new ArgumentException($"Unsupported storage type: {storageType}");
         }

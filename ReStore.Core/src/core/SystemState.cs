@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Security.Cryptography;
 using ReStore.Core.src.utils;
 using System.Text.Json.Serialization;
 
@@ -482,10 +481,7 @@ public partial class SystemState
     {
         try
         {
-            using var sha256 = SHA256.Create();
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            byte[] hash = await sha256.ComputeHashAsync(stream);
-            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            return await FileHasher.ComputeHashAsync(filePath);
         }
         catch (IOException)
         {
@@ -501,10 +497,7 @@ public partial class SystemState
     {
         try
         {
-            using var sha256 = SHA256.Create();
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            byte[] hash = sha256.ComputeHash(stream);
-            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            return FileHasher.ComputeHash(filePath);
         }
         catch (IOException)
         {

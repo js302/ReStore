@@ -52,7 +52,7 @@ public class FileSelectionService(ILogger logger, IConfigManager configManager)
         }
         catch (Exception ex)
         {
-            _logger.Log($"Error accessing file/directory {filePath}: {ex.Message}", LogLevel.Warning);
+            _logger.Log($"Error accessing file/directory {filePath}: {ex.GetType().Name}: {ex.Message}", LogLevel.Warning);
             return true;
         }
 
@@ -98,7 +98,7 @@ public class FileSelectionService(ILogger logger, IConfigManager configManager)
                         }
                         catch (Exception ex)
                         {
-                            _logger.Log($"Error evaluating file {file}: {ex.Message}", LogLevel.Warning);
+                            _logger.Log($"Error evaluating file {file}: {ex.GetType().Name}: {ex.Message}", LogLevel.Warning);
                         }
                     }
                 }
@@ -109,7 +109,7 @@ public class FileSelectionService(ILogger logger, IConfigManager configManager)
             }
             catch (Exception ex)
             {
-                _logger.Log($"Error accessing path {includePath}: {ex.Message}", LogLevel.Error);
+                _logger.Log($"Error accessing path {includePath}: {ex.GetType().Name}: {ex.Message}", LogLevel.Error);
             }
         }
 

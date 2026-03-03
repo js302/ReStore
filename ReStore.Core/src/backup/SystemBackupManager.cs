@@ -484,86 +484,15 @@ public class SystemBackupManager
         string? tempDir = null;
         try
         {
-            var normalizedBackupType = backupType.Trim().ToLowerInvariant();
-            var normalizedBackupPath = backupPath.Replace('\\', '/').ToLowerInvariant();
-            var component = normalizedBackupType switch
-            {
-                "system_programs" => "programs",
-                "system_environment" => "environment",
-                "system_settings" => "settings",
-                "all" when normalizedBackupPath.Contains("/programs/") => "programs",
-                "all" when normalizedBackupPath.Contains("/environment/") => "environment",
-                "all" when normalizedBackupPath.Contains("/settings/") => "settings",
-                _ => normalizedBackupType
-            };
-
-            if (component is not ("programs" or "environment" or "settings"))
-            {
-                throw new ArgumentException($"Unsupported system restore type: {backupType}. Use programs, environment, or settings.", nameof(backupType));
-            }
+            var component = ResolveRestoreComponent(backupType, backupPath);
 
             var storageType = storageTypeOverride ?? GetStorageTypeForComponent(component);
             storage = await _config.CreateStorageAsync(storageType);
             _logger.Log($"Using {storageType} storage for restore", LogLevel.Info);
 
-            var restoreTimestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            var restoreUniqueId = Guid.NewGuid().ToString("N");
-            tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", $"{restoreTimestamp}_{restoreUniqueId}");
-            Directory.CreateDirectory(tempDir);
-
-            var isEncrypted = backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase);
-            var zipPath = Path.Combine(tempDir, isEncrypted ? "backup.zip.enc" : "backup.zip");
-            await storage.DownloadAsync(backupPath, zipPath);
-
-            var extractDir = Path.Combine(tempDir, "extracted");
-            var compressionUtil = new CompressionUtil();
-
-            if (isEncrypted)
-            {
-                _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
-                var metadataPath = backupPath + ".meta";
-                var tempMetadataPath = zipPath + ".meta";
-                await storage.DownloadAsync(metadataPath, tempMetadataPath);
-
-                if (_passwordProvider == null)
-                {
-                    throw new InvalidOperationException("Encrypted backup detected but no password provider available");
-                }
-
-                var password = await _passwordProvider.GetPasswordAsync();
-                if (string.IsNullOrEmpty(password))
-                {
-                    throw new InvalidOperationException("Password required to decrypt backup");
-                }
-
-                try
-                {
-                    await CompressionUtil.DecryptAndDecompressAsync(zipPath, password, extractDir, _logger);
-                }
-                catch (Exception ex)
-                {
-                    _passwordProvider.ClearPassword();
-                    _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
-                    throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
-                }
-            }
-            else
-            {
-                await CompressionUtil.DecompressAsync(zipPath, extractDir);
-            }
-
-            if (component == "programs")
-            {
-                await RestoreProgramsAsync(extractDir);
-            }
-            else if (component == "environment")
-            {
-                await RestoreEnvironmentVariablesAsync(extractDir);
-            }
-            else if (component == "settings")
-            {
-                await RestoreWindowsSettingsAsync(extractDir);
-            }
+            tempDir = CreateRestoreTempDirectory();
+            var extractDir = await DownloadAndExtractRestoreBackupAsync(storage, backupPath, tempDir);
+            await RestoreComponentAsync(component, extractDir);
 
             _logger.Log($"System restore of {backupType} completed successfully", LogLevel.Info);
         }
@@ -575,18 +504,122 @@ public class SystemBackupManager
         finally
         {
             storage?.Dispose();
+            CleanupRestoreTempDirectory(tempDir);
+        }
+    }
 
-            if (!string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
-            {
-                try
-                {
-                    Directory.Delete(tempDir, true);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log($"Failed to cleanup temporary restore directory {tempDir}: {ex.Message}", LogLevel.Warning);
-                }
-            }
+    private static string ResolveRestoreComponent(string backupType, string backupPath)
+    {
+        var normalizedBackupType = backupType.Trim().ToLowerInvariant();
+        var normalizedBackupPath = backupPath.Replace('\\', '/').ToLowerInvariant();
+        var component = normalizedBackupType switch
+        {
+            "system_programs" => "programs",
+            "system_environment" => "environment",
+            "system_settings" => "settings",
+            "all" when normalizedBackupPath.Contains("/programs/") => "programs",
+            "all" when normalizedBackupPath.Contains("/environment/") => "environment",
+            "all" when normalizedBackupPath.Contains("/settings/") => "settings",
+            _ => normalizedBackupType
+        };
+
+        if (component is not ("programs" or "environment" or "settings"))
+        {
+            throw new ArgumentException($"Unsupported system restore type: {backupType}. Use programs, environment, or settings.", nameof(backupType));
+        }
+
+        return component;
+    }
+
+    private static string CreateRestoreTempDirectory()
+    {
+        var restoreTimestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+        var restoreUniqueId = Guid.NewGuid().ToString("N");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", $"{restoreTimestamp}_{restoreUniqueId}");
+        Directory.CreateDirectory(tempDir);
+        return tempDir;
+    }
+
+    private async Task<string> DownloadAndExtractRestoreBackupAsync(IStorage storage, string backupPath, string tempDir)
+    {
+        var isEncrypted = backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase);
+        var zipPath = Path.Combine(tempDir, isEncrypted ? "backup.zip.enc" : "backup.zip");
+        await storage.DownloadAsync(backupPath, zipPath);
+
+        var extractDir = Path.Combine(tempDir, "extracted");
+
+        if (isEncrypted)
+        {
+            await DownloadAndDecryptBackupAsync(storage, backupPath, zipPath, extractDir);
+        }
+        else
+        {
+            await CompressionUtil.DecompressAsync(zipPath, extractDir);
+        }
+
+        return extractDir;
+    }
+
+    private async Task DownloadAndDecryptBackupAsync(IStorage storage, string backupPath, string zipPath, string extractDir)
+    {
+        _logger.Log("Backup is encrypted, decrypting...", LogLevel.Info);
+        var metadataPath = backupPath + ".meta";
+        var tempMetadataPath = zipPath + ".meta";
+        await storage.DownloadAsync(metadataPath, tempMetadataPath);
+
+        if (_passwordProvider == null)
+        {
+            throw new InvalidOperationException("Encrypted backup detected but no password provider available");
+        }
+
+        var password = await _passwordProvider.GetPasswordAsync();
+        if (string.IsNullOrEmpty(password))
+        {
+            throw new InvalidOperationException("Password required to decrypt backup");
+        }
+
+        try
+        {
+            await CompressionUtil.DecryptAndDecompressAsync(zipPath, password, extractDir, _logger);
+        }
+        catch (Exception ex)
+        {
+            _passwordProvider.ClearPassword();
+            _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
+            throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
+        }
+    }
+
+    private async Task RestoreComponentAsync(string component, string extractDir)
+    {
+        if (component == "programs")
+        {
+            await RestoreProgramsAsync(extractDir);
+        }
+        else if (component == "environment")
+        {
+            await RestoreEnvironmentVariablesAsync(extractDir);
+        }
+        else if (component == "settings")
+        {
+            await RestoreWindowsSettingsAsync(extractDir);
+        }
+    }
+
+    private void CleanupRestoreTempDirectory(string? tempDir)
+    {
+        if (string.IsNullOrEmpty(tempDir) || !Directory.Exists(tempDir))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(tempDir, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Failed to cleanup temporary restore directory {tempDir}: {ex.Message}", LogLevel.Warning);
         }
     }
 
