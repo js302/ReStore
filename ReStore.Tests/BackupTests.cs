@@ -25,6 +25,22 @@ public class BackupTests : IDisposable
 
         _configMock.Setup(c => c.Retention)
             .Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 10, MaxAgeDays = 30 });
+        _configMock.Setup(c => c.WatchDirectories)
+            .Returns(new List<WatchDirectoryConfig>());
+        _configMock.Setup(c => c.ExcludedPaths)
+            .Returns(new List<string>());
+        _configMock.Setup(c => c.ExcludedPatterns)
+            .Returns(new List<string>());
+        _configMock.Setup(c => c.MaxFileSizeMB)
+            .Returns(100);
+        _configMock.Setup(c => c.BackupType)
+            .Returns(BackupType.Incremental);
+        _configMock.Setup(c => c.SizeThresholdMB)
+            .Returns(100);
+        _configMock.Setup(c => c.Encryption)
+            .Returns(new EncryptionConfig { Enabled = false });
+        _configMock.Setup(c => c.GlobalStorageType)
+            .Returns("local");
 
         _testDir = Path.Combine(Path.GetTempPath(), "ReStoreTests_" + Guid.NewGuid());
         Directory.CreateDirectory(_testDir);
@@ -41,16 +57,15 @@ public class BackupTests : IDisposable
     [Fact]
     public async Task BackupDirectoryAsync_ShouldUploadFiles_WhenFilesChanged()
     {
-        // Arrange
         var filePath = Path.Combine(_testDir, "test.txt");
         await File.WriteAllTextAsync(filePath, "test content");
 
         _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
             .ReturnsAsync(_storageMock.Object);
-        
+
         _configMock.Setup(c => c.WatchDirectories)
             .Returns(new List<WatchDirectoryConfig>());
-        
+
         _configMock.Setup(c => c.GlobalStorageType).Returns("local");
         _configMock.Setup(c => c.SizeThresholdMB).Returns(100);
         _configMock.Setup(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });
@@ -61,7 +76,6 @@ public class BackupTests : IDisposable
         _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
             .ReturnsAsync((100, false));
 
-        // Mock GetChangedFiles to return our file
         _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), It.IsAny<BackupType>()))
             .Returns(new List<string> { filePath });
 
@@ -72,10 +86,8 @@ public class BackupTests : IDisposable
             _configMock.Object
         );
 
-        // Act
         await backup.BackupDirectoryAsync(_testDir);
 
-        // Assert
         _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         _stateMock.Verify(s => s.SaveStateAsync(), Times.AtLeastOnce);
     }
@@ -83,7 +95,6 @@ public class BackupTests : IDisposable
     [Fact]
     public async Task BackupDirectoryAsync_ShouldNotUpdateMetadata_WhenUploadFails()
     {
-        // Arrange
         var filePath = Path.Combine(_testDir, "failure-case.txt");
         await File.WriteAllTextAsync(filePath, "test content");
 
@@ -116,11 +127,73 @@ public class BackupTests : IDisposable
             _configMock.Object
         );
 
-        // Act
         var act = () => backup.BackupDirectoryAsync(_testDir);
 
-        // Assert
         await Assert.ThrowsAsync<InvalidOperationException>(act);
         _stateMock.Verify(s => s.AddOrUpdateFileMetadataAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task BackupDirectoryAsync_ShouldThrow_WhenSourceDirectoryIsEmpty()
+    {
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        var action = () => backup.BackupDirectoryAsync(" ");
+
+        await Assert.ThrowsAsync<ArgumentException>(action);
+        _configMock.Verify(c => c.CreateStorageAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task BackupDirectoryAsync_ShouldThrow_WhenSourceDirectoryMissing()
+    {
+        var missingDir = Path.Combine(_testDir, "missing-folder");
+
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        var action = () => backup.BackupDirectoryAsync(missingDir);
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(action);
+    }
+
+    [Fact]
+    public async Task BackupFilesAsync_ShouldThrow_WhenFilesArgumentIsNull()
+    {
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        var action = () => backup.BackupFilesAsync(null!, _testDir);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(action);
+    }
+
+    [Fact]
+    public async Task BackupFilesAsync_ShouldReturnWithoutCreatingStorage_WhenNoFilesProvided()
+    {
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        await backup.BackupFilesAsync([], _testDir);
+
+        _configMock.Verify(c => c.CreateStorageAsync(It.IsAny<string>()), Times.Never);
+        _stateMock.Verify(s => s.SaveStateAsync(), Times.Never);
     }
 }

@@ -30,17 +30,14 @@ public class SystemStateTests : IDisposable
     [Fact]
     public async Task AddOrUpdateFileMetadataAsync_ShouldCalculateHash_WhenFileExists()
     {
-        // Arrange
         var state = new SystemState(_loggerMock.Object);
         state.SetStateFilePath(_stateFile);
         
         var filePath = Path.Combine(_testDir, "test.txt");
         await File.WriteAllTextAsync(filePath, "content");
 
-        // Act
         await state.AddOrUpdateFileMetadataAsync(filePath);
 
-        // Assert
         state.FileMetadata.Should().ContainKey(filePath);
         state.FileMetadata[filePath].Hash.Should().NotBeNullOrEmpty();
     }
@@ -48,30 +45,24 @@ public class SystemStateTests : IDisposable
     [Fact]
     public async Task GetChangedFiles_ShouldReturnFile_WhenHashChanges()
     {
-        // Arrange
         var state = new SystemState(_loggerMock.Object);
         state.SetStateFilePath(_stateFile);
         
         var filePath = Path.Combine(_testDir, "test.txt");
         await File.WriteAllTextAsync(filePath, "content1");
         
-        // Initial state
         await state.AddOrUpdateFileMetadataAsync(filePath);
         
-        // Modify file
         await File.WriteAllTextAsync(filePath, "content2");
 
-        // Act
         var changedFiles = state.GetChangedFiles(new List<string> { filePath }, BackupType.Incremental);
 
-        // Assert
         changedFiles.Should().Contain(filePath);
     }
 
     [Fact]
     public async Task SaveAndLoadState_ShouldPersistData()
     {
-        // Arrange
         var state = new SystemState(_loggerMock.Object);
         state.SetStateFilePath(_stateFile);
         
@@ -80,14 +71,12 @@ public class SystemStateTests : IDisposable
         await state.AddOrUpdateFileMetadataAsync(filePath);
         state.AddBackup(_testDir, "remote/path", false);
 
-        // Act
         await state.SaveStateAsync();
         
         var newState = new SystemState(_loggerMock.Object);
         newState.SetStateFilePath(_stateFile);
         await newState.LoadStateAsync();
 
-        // Assert
         newState.FileMetadata.Should().ContainKey(filePath);
         newState.BackupHistory.Should().ContainKey(_testDir);
         newState.FileMetadata[filePath].Hash.Should().Be(state.FileMetadata[filePath].Hash);

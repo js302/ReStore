@@ -31,7 +31,6 @@ public class FileSelectionServiceTests : IDisposable
     [Fact]
     public void ShouldExcludeFile_WhenPatternMatches()
     {
-        // Arrange
         _configMock.Setup(c => c.ExcludedPatterns).Returns(new List<string> { "*.tmp", "*.log" });
         _configMock.Setup(c => c.ExcludedPaths).Returns(new List<string>());
         _configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
@@ -40,17 +39,14 @@ public class FileSelectionServiceTests : IDisposable
         var file = Path.Combine(_testDir, "test.tmp");
         File.WriteAllText(file, "content");
 
-        // Act
         var result = service.ShouldExcludeFile(file);
 
-        // Assert
         result.Should().BeTrue();
     }
 
     [Fact]
     public void ShouldExcludeFile_WhenPathMatches()
     {
-        // Arrange
         var excludePath = Path.Combine(_testDir, "Temp");
         Directory.CreateDirectory(excludePath);
 
@@ -62,17 +58,14 @@ public class FileSelectionServiceTests : IDisposable
         var file = Path.Combine(excludePath, "test.txt");
         File.WriteAllText(file, "content");
 
-        // Act
         var result = service.ShouldExcludeFile(file);
 
-        // Assert
         result.Should().BeTrue();
     }
 
     [Fact]
     public void ShouldExcludeFile_WhenFileIsInsideExcludedDirectoryBoundary()
     {
-        // Arrange
         var excludedRoot = Path.Combine(_testDir, "Data");
         Directory.CreateDirectory(excludedRoot);
 
@@ -85,17 +78,14 @@ public class FileSelectionServiceTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllText(file, "content");
 
-        // Act
         var result = service.ShouldExcludeFile(file);
 
-        // Assert
         result.Should().BeTrue();
     }
 
     [Fact]
     public void ShouldNotExcludeFile_WhenPathOnlySharesPrefixWithExcludedDirectory()
     {
-        // Arrange
         var excludedRoot = Path.Combine(_testDir, "Data");
         var siblingRoot = Path.Combine(_testDir, "DataArchive");
         Directory.CreateDirectory(excludedRoot);
@@ -109,17 +99,14 @@ public class FileSelectionServiceTests : IDisposable
         var file = Path.Combine(siblingRoot, "test.txt");
         File.WriteAllText(file, "content");
 
-        // Act
         var result = service.ShouldExcludeFile(file);
 
-        // Assert
         result.Should().BeFalse();
     }
 
     [Fact]
     public void ShouldIncludeFile_WhenNoRulesMatch()
     {
-        // Arrange
         _configMock.Setup(c => c.ExcludedPatterns).Returns(new List<string> { "*.tmp" });
         _configMock.Setup(c => c.ExcludedPaths).Returns(new List<string>());
         _configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
@@ -128,10 +115,8 @@ public class FileSelectionServiceTests : IDisposable
         var file = Path.Combine(_testDir, "important.docx");
         File.WriteAllText(file, "content");
 
-        // Act
         var result = service.ShouldExcludeFile(file);
 
-        // Assert
         result.Should().BeFalse();
     }
 }

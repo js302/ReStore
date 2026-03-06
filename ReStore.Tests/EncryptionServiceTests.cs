@@ -27,7 +27,6 @@ public class EncryptionServiceTests : IDisposable
     [Fact]
     public async Task EncryptAndDecrypt_ShouldReturnOriginalContent()
     {
-        // Arrange
         var service = new EncryptionService(_loggerMock.Object);
         var originalFile = Path.Combine(_testDir, "original.txt");
         var encryptedFile = Path.Combine(_testDir, "encrypted.bin");
@@ -37,11 +36,9 @@ public class EncryptionServiceTests : IDisposable
 
         await File.WriteAllTextAsync(originalFile, content);
 
-        // Act
         var metadata = await service.EncryptFileAsync(originalFile, encryptedFile, password);
         await service.DecryptFileAsync(encryptedFile, decryptedFile, password, metadata);
 
-        // Assert
         var decryptedContent = await File.ReadAllTextAsync(decryptedFile);
         decryptedContent.Should().Be(content);
     }
@@ -49,7 +46,6 @@ public class EncryptionServiceTests : IDisposable
     [Fact]
     public async Task Decrypt_ShouldFail_WithWrongPassword()
     {
-        // Arrange
         var service = new EncryptionService(_loggerMock.Object);
         var originalFile = Path.Combine(_testDir, "original.txt");
         var encryptedFile = Path.Combine(_testDir, "encrypted.bin");
@@ -60,7 +56,6 @@ public class EncryptionServiceTests : IDisposable
         await File.WriteAllTextAsync(originalFile, "content");
         var metadata = await service.EncryptFileAsync(originalFile, encryptedFile, password);
 
-        // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => 
             service.DecryptFileAsync(encryptedFile, decryptedFile, wrongPassword, metadata));
     }
@@ -68,16 +63,13 @@ public class EncryptionServiceTests : IDisposable
     [Fact]
     public void VerifyPassword_ShouldReturnTrue_ForCorrectPassword()
     {
-        // Arrange
         var service = new EncryptionService(_loggerMock.Object);
         var password = "StrongPassword123!";
         var salt = EncryptionService.GenerateSalt();
         
-        // Act
         var token = service.CreatePasswordVerificationToken(password, salt);
         var isValid = service.VerifyPassword(password, salt, token);
 
-        // Assert
         isValid.Should().BeTrue();
     }
 }

@@ -34,7 +34,6 @@ public class LocalStorageTests : IDisposable
     [Fact]
     public async Task UploadAsync_ShouldThrow_WhenRemotePathEscapesStorageRoot()
     {
-        // Arrange
         var storage = new LocalStorage(_logger);
         await storage.InitializeAsync(new Dictionary<string, string> { ["path"] = _storageRoot });
 
@@ -43,10 +42,8 @@ public class LocalStorageTests : IDisposable
 
         var escapedPath = "..\\outside\\escaped.txt";
 
-        // Act
         var action = () => storage.UploadAsync(sourceFile, escapedPath);
 
-        // Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
         File.Exists(Path.Combine(_outsideRoot, "escaped.txt")).Should().BeFalse();
     }
@@ -54,16 +51,13 @@ public class LocalStorageTests : IDisposable
     [Fact]
     public async Task ExistsAsync_ShouldThrow_WhenRemotePathIsRooted()
     {
-        // Arrange
         var storage = new LocalStorage(_logger);
         await storage.InitializeAsync(new Dictionary<string, string> { ["path"] = _storageRoot });
 
         var rootedPath = Path.Combine(Path.GetPathRoot(_storageRoot)!, "Windows", "Temp", "evil.txt");
 
-        // Act
         var action = () => storage.ExistsAsync(rootedPath);
 
-        // Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
     }
 }

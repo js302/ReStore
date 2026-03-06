@@ -43,13 +43,11 @@ public class FuzzTests : IDisposable
     [Fact]
     public async Task Backup_ShouldHandleChaoticFileStructures()
     {
-        // Arrange - Generate Chaos
         int fileCount = 50;
         var generatedFiles = new List<string>();
 
         for (int i = 0; i < fileCount; i++)
         {
-            // Generate weird filenames (but valid for Windows)
             var fileName = _faker.System.FileName().Replace(":", "").Replace("?", "").Replace("*", "");
             var subDir = _faker.Random.Bool() ? _faker.Random.AlphaNumeric(5) : "";
             
@@ -58,13 +56,11 @@ public class FuzzTests : IDisposable
             
             var filePath = Path.Combine(dirPath, fileName);
             
-            // Random content size (0 to 1MB)
             var content = _faker.Random.String2(_faker.Random.Int(0, 1000));
             await File.WriteAllTextAsync(filePath, content);
             generatedFiles.Add(filePath);
         }
 
-        // Setup Config
         var configMock = new Mock<IConfigManager>();
         configMock.Setup(c => c.Retention)
             .Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 10, MaxAgeDays = 30 });
@@ -75,16 +71,14 @@ public class FuzzTests : IDisposable
         configMock.Setup(c => c.ExcludedPaths).Returns(new List<string>());
         configMock.Setup(c => c.BackupType).Returns(BackupType.Full);
         configMock.Setup(c => c.WatchDirectories).Returns(new List<WatchDirectoryConfig>());
-        configMock.Setup(c => c.MaxFileSizeMB).Returns(100); // Fix: Set max file size
+        configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
 
-        // Setup Storage
         var storage = new LocalStorage(_loggerMock.Object);
         await storage.InitializeAsync(new Dictionary<string, string> { { "path", _backupDir } });
         
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
             .ReturnsAsync(storage);
 
-        // Setup SystemState
         var state = new SystemState(_loggerMock.Object);
         state.SetStateFilePath(Path.Combine(_stateDir, "state.json"));
 
@@ -95,13 +89,10 @@ public class FuzzTests : IDisposable
             configMock.Object
         );
 
-        // Act - Should not throw
         var exception = await Record.ExceptionAsync(() => backup.BackupDirectoryAsync(_sourceDir));
 
-        // Assert
         exception.Should().BeNull();
         
-        // Verify something was uploaded
         var backups = Directory.GetFiles(_backupDir, "*.zip", SearchOption.AllDirectories);
         backups.Should().NotBeEmpty();
     }

@@ -23,7 +23,6 @@ public class SystemBackupManagerTests
         string backupPath,
         string expectedStorageType)
     {
-        // Arrange
         var loggerMock = new Mock<ILogger>();
         var systemStateMock = new Mock<SystemState>(loggerMock.Object);
         var storageMock = new Mock<IStorage>();
@@ -51,18 +50,15 @@ public class SystemBackupManagerTests
             configMock.Object,
             systemStateMock.Object);
 
-        // Act
         await Assert.ThrowsAsync<FileNotFoundException>(() =>
             manager.RestoreSystemAsync(backupType, backupPath));
 
-        // Assert
         configMock.Verify(c => c.CreateStorageAsync(expectedStorageType), Times.Once);
     }
 
     [Fact]
     public async Task RestoreSystemAsync_ShouldThrowArgumentException_WhenAllCannotInferComponentFromPath()
     {
-        // Arrange
         var loggerMock = new Mock<ILogger>();
         var systemStateMock = new Mock<SystemState>(loggerMock.Object);
         var configMock = new Mock<IConfigManager>();
@@ -81,10 +77,8 @@ public class SystemBackupManagerTests
             configMock.Object,
             systemStateMock.Object);
 
-        // Act
         var action = () => manager.RestoreSystemAsync("all", "system_backups/unknown/type_backup_test.zip");
 
-        // Assert
         await Assert.ThrowsAsync<ArgumentException>(action);
         configMock.Verify(c => c.CreateStorageAsync(It.IsAny<string>()), Times.Never);
     }
