@@ -240,6 +240,43 @@ public class ConfigValidatorTests : IDisposable
     }
 
     [Fact]
+    public void ValidateConfiguration_ShouldFail_WhenEncryptionSaltIsMissing()
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.Encryption).Returns(new EncryptionConfig
+        {
+            Enabled = true,
+            Salt = null,
+            KeyDerivationIterations = 1000
+        });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("no salt is configured", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ValidateConfiguration_ShouldFail_WhenEncryptionSettingsAreInvalid()
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.Encryption).Returns(new EncryptionConfig
+        {
+            Enabled = true,
+            Salt = "not-base64",
+            VerificationToken = "also-not-base64",
+            KeyDerivationIterations = 0
+        });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("salt must be a valid Base64", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("verification token must be a valid Base64", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("iterations must be greater than zero", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ValidateConfiguration_ShouldWarn_ForEmptyExclusionEntries()
     {
         var config = CreateBaseConfig();

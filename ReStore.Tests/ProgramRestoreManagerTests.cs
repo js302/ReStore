@@ -64,6 +64,41 @@ public class ProgramRestoreManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RestoreProgramsFromJsonAsync_ShouldReturnFailure_WhenJsonIsInvalid()
+    {
+        var manager = new ProgramRestoreManager(_logger);
+        var jsonPath = Path.Combine(_testRoot, "invalid.json");
+        await File.WriteAllTextAsync(jsonPath, "{ not valid json }");
+
+        var result = await manager.RestoreProgramsFromJsonAsync(jsonPath, dryRun: true);
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().NotBeNullOrWhiteSpace();
+        _logger.Messages.Should().Contain(message => message.Contains("Error restoring programs"));
+    }
+
+    [Fact]
+    public async Task RestoreProgramsFromJsonAsync_ShouldKeepDefaultResult_WhenProgramsPropertyIsNull()
+    {
+        var manager = new ProgramRestoreManager(_logger);
+        var jsonPath = Path.Combine(_testRoot, "null-programs.json");
+
+        await File.WriteAllTextAsync(jsonPath, """
+{
+  "programs": null
+}
+""");
+
+        var result = await manager.RestoreProgramsFromJsonAsync(jsonPath, dryRun: true);
+
+        result.Success.Should().BeTrue();
+        result.WingetPrograms.Should().Be(0);
+        result.ManualPrograms.Should().Be(0);
+        result.SuccessfulInstalls.Should().Be(0);
+        result.FailedInstalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task RestoreProgramsAsync_ShouldMarkManualPrograms_WhenNotWingetOnly()
     {
         var manager = new ProgramRestoreManager(_logger);
@@ -113,6 +148,40 @@ public class ProgramRestoreManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateInstallationReportAsync_ShouldPersistDetailedLists_AndErrorMessage()
+    {
+        var manager = new ProgramRestoreManager(_logger);
+        var reportPath = Path.Combine(_testRoot, "installation-report-detailed.json");
+
+        var result = new ProgramRestoreResult
+        {
+            Success = false,
+            WingetPrograms = 1,
+            ManualPrograms = 1,
+            SuccessfulInstalls = 0,
+            FailedInstalls = 1,
+            ErrorMessage = "winget failed",
+            FailedPrograms =
+            [
+                new InstalledProgram { Name = "FailedApp", WingetId = "Vendor.FailedApp", IsWingetAvailable = true }
+            ],
+            ManualInstallRequired =
+            [
+                new InstalledProgram { Name = "ManualApp", IsWingetAvailable = false }
+            ]
+        };
+
+        await manager.GenerateInstallationReportAsync(result, reportPath);
+
+        var root = JsonSerializer.Deserialize<JsonElement>(await File.ReadAllTextAsync(reportPath));
+        root.GetProperty("errorMessage").GetString().Should().Be("winget failed");
+        root.GetProperty("failedPrograms").EnumerateArray().Should().ContainSingle()
+            .Subject.GetProperty("name").GetString().Should().Be("FailedApp");
+        root.GetProperty("manualInstallRequired").EnumerateArray().Should().ContainSingle()
+            .Subject.GetProperty("name").GetString().Should().Be("ManualApp");
+    }
+
+    [Fact]
     public async Task RestoreProgramsFromJsonAsync_ShouldKeepDefaultResult_WhenProgramsPropertyMissing()
     {
         var manager = new ProgramRestoreManager(_logger);
@@ -137,5 +206,20 @@ public class ProgramRestoreManagerTests : IDisposable
         var result = await manager.CheckProgramStatusAsync([]);
 
         result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RestoreProgramsAsync_ShouldReturnSuccessfulEmptyResult_WhenNoProgramsProvided()
+    {
+        var manager = new ProgramRestoreManager(_logger);
+
+        var result = await manager.RestoreProgramsAsync([], wingetOnly: false, dryRun: false);
+
+        result.Success.Should().BeTrue();
+        result.WingetPrograms.Should().Be(0);
+        result.ManualPrograms.Should().Be(0);
+        result.SuccessfulInstalls.Should().Be(0);
+        result.FailedInstalls.Should().Be(0);
+        result.ManualInstallRequired.Should().BeEmpty();
     }
 }

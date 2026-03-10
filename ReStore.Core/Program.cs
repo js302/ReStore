@@ -61,16 +61,6 @@ Notes:
                 return;
             }
 
-            string? GetStorageOverride(string[] arguments)
-            {
-                var storageIndex = Array.IndexOf(arguments, "--storage");
-                if (storageIndex >= 0 && storageIndex + 1 < arguments.Length)
-                {
-                    return arguments[storageIndex + 1];
-                }
-                return null;
-            }
-
             // Auto-validate configuration for all operations
             var validationResult = configManager.ValidateConfiguration();
             if (!validationResult.IsValid)
@@ -96,7 +86,7 @@ Notes:
             Console.CancelKeyPress += (sender, e) =>
             {
                 logger.Log("Cancellation requested. Shutting down...", LogLevel.Info);
-                e.Cancel = true; // Prevent the process from terminating immediately
+                e.Cancel = true;
                 cts.Cancel();
             };
 
@@ -205,7 +195,7 @@ Notes:
             finally
             {
                 // Ensure state is saved on exit, especially in command mode or graceful shutdown
-                if (!cts.IsCancellationRequested || !isServiceMode) // Avoid saving if service cancelled abruptly? Consider needs.
+                if (!cts.IsCancellationRequested || !isServiceMode)
                 {
                     await systemState.SaveStateAsync();
                 }
@@ -213,7 +203,18 @@ Notes:
             }
         }
 
-        private static IPasswordProvider CreateCliPasswordProvider(IConfigManager config)
+        private static string? GetStorageOverride(string[] arguments)
+        {
+            var storageIndex = Array.IndexOf(arguments, "--storage");
+            if (storageIndex >= 0 && storageIndex + 1 < arguments.Length)
+            {
+                return arguments[storageIndex + 1];
+            }
+
+            return null;
+        }
+
+        private static StaticPasswordProvider CreateCliPasswordProvider(IConfigManager config)
         {
             if (!config.Encryption.Enabled)
             {

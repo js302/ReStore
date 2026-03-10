@@ -42,12 +42,12 @@ public class ConfigInitializerTests
     }
 
     [Fact]
-    public void GetApplicationExampleConfigPath_ShouldReturnNullOrExistingExamplePath()
+    public void ResolveApplicationExampleConfigPath_ShouldReturnNullOrExistingExamplePath()
     {
-        var method = typeof(ConfigInitializer).GetMethod("GetApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic);
+        var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic);
         method.Should().NotBeNull();
 
-        var result = (string?)method!.Invoke(null, null);
+        var result = (string?)method!.Invoke(null, [null]);
 
         if (result == null)
         {
@@ -58,6 +58,135 @@ public class ConfigInitializerTests
             result.Should().EndWith(Path.Combine("config", "config.example.json"));
             File.Exists(result).Should().BeTrue();
         }
+    }
+
+    [Fact]
+    public void ResolveApplicationExampleConfigPath_WithExplicitAssemblyPath_ShouldUseInAppConfigFirst()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "ReStoreConfigInitializer_" + Guid.NewGuid().ToString("N"));
+        var assemblyDir = Path.Combine(testRoot, "bin", "Debug", "net9.0");
+        Directory.CreateDirectory(Path.Combine(assemblyDir, "config"));
+
+        try
+        {
+            var expectedPath = Path.Combine(assemblyDir, "config", "config.example.json");
+            File.WriteAllText(expectedPath, "{}");
+
+            var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(string)], null);
+            method.Should().NotBeNull();
+
+            var result = (string?)method!.Invoke(null, [Path.Combine(assemblyDir, "ReStore.Core.dll")]);
+
+            result.Should().Be(expectedPath);
+        }
+        finally
+        {
+            if (Directory.Exists(testRoot))
+            {
+                Directory.Delete(testRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveApplicationExampleConfigPath_WithBuildOutput_ShouldProbeProjectAncestors()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "ReStoreConfigInitializer_" + Guid.NewGuid().ToString("N"));
+        var projectRoot = Path.Combine(testRoot, "ReStore.Core");
+        var assemblyDir = Path.Combine(projectRoot, "bin", "Debug", "net9.0");
+        Directory.CreateDirectory(assemblyDir);
+        Directory.CreateDirectory(Path.Combine(projectRoot, "config"));
+
+        try
+        {
+            var expectedPath = Path.Combine(projectRoot, "config", "config.example.json");
+            File.WriteAllText(expectedPath, "{}");
+
+            var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(string)], null);
+            method.Should().NotBeNull();
+
+            var result = (string?)method!.Invoke(null, [Path.Combine(assemblyDir, "ReStore.Core.dll")]);
+
+            result.Should().Be(expectedPath);
+        }
+        finally
+        {
+            if (Directory.Exists(testRoot))
+            {
+                Directory.Delete(testRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveApplicationExampleConfigPath_WithReleaseWindowsBuildOutput_ShouldProbeProjectAncestors()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "ReStoreConfigInitializer_" + Guid.NewGuid().ToString("N"));
+        var projectRoot = Path.Combine(testRoot, "ReStore");
+        var assemblyDir = Path.Combine(projectRoot, "bin", "Release", "net9.0-windows");
+        Directory.CreateDirectory(assemblyDir);
+        Directory.CreateDirectory(Path.Combine(projectRoot, "config"));
+
+        try
+        {
+            var expectedPath = Path.Combine(projectRoot, "config", "config.example.json");
+            File.WriteAllText(expectedPath, "{}");
+
+            var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(string)], null);
+            method.Should().NotBeNull();
+
+            var result = (string?)method!.Invoke(null, [Path.Combine(assemblyDir, "ReStore.dll")]);
+
+            result.Should().Be(expectedPath);
+        }
+        finally
+        {
+            if (Directory.Exists(testRoot))
+            {
+                Directory.Delete(testRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveApplicationExampleConfigPath_WithProjectDirectoryContainingCsproj_ShouldUseProjectRoot()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "ReStoreConfigInitializer_" + Guid.NewGuid().ToString("N"));
+        var projectRoot = Path.Combine(testRoot, "ReStore.Core");
+        Directory.CreateDirectory(projectRoot);
+
+        try
+        {
+            File.WriteAllText(Path.Combine(projectRoot, "ReStore.Core.csproj"), "<Project />");
+            var expectedPath = Path.Combine(projectRoot, "config", "config.example.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(expectedPath)!);
+            File.WriteAllText(expectedPath, "{}");
+
+            var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(string)], null);
+            method.Should().NotBeNull();
+
+            var result = (string?)method!.Invoke(null, [Path.Combine(projectRoot, "ReStore.Core.dll")]);
+
+            result.Should().Be(expectedPath);
+        }
+        finally
+        {
+            if (Directory.Exists(testRoot))
+            {
+                Directory.Delete(testRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveApplicationExampleConfigPath_WithMissingDirectory_ShouldReturnNull()
+    {
+        var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(string)], null);
+        method.Should().NotBeNull();
+
+        var result = (string?)method!.Invoke(null, ["ReStore.Core.dll"]);
+
+        result.Should().BeNull();
     }
 
     [Fact]

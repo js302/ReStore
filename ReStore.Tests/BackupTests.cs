@@ -3,6 +3,7 @@ using ReStore.Core.src.core;
 using ReStore.Core.src.utils;
 using ReStore.Core.src.storage;
 using ReStore.Core.src.monitoring;
+using FluentAssertions;
 
 namespace ReStore.Tests;
 
@@ -195,5 +196,137 @@ public class BackupTests : IDisposable
 
         _configMock.Verify(c => c.CreateStorageAsync(It.IsAny<string>()), Times.Never);
         _stateMock.Verify(s => s.SaveStateAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task BackupDirectoryAsync_ShouldUseWatchDirectoryStorageType_WhenConfigured()
+    {
+        var filePath = Path.Combine(_testDir, "watched.txt");
+        await File.WriteAllTextAsync(filePath, "watched content");
+
+        _configMock.Setup(c => c.WatchDirectories)
+            .Returns(
+            [
+                new WatchDirectoryConfig
+                {
+                    Path = _testDir,
+                    StorageType = "s3"
+                }
+            ]);
+
+        _configMock.Setup(c => c.CreateStorageAsync("s3"))
+            .ReturnsAsync(_storageMock.Object);
+
+        _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
+            .ReturnsAsync((100, false));
+
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), BackupType.Incremental))
+            .Returns([filePath]);
+
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        await backup.BackupDirectoryAsync(_testDir);
+
+        _configMock.Verify(c => c.CreateStorageAsync("s3"), Times.Once);
+    }
+
+    [Fact]
+    public async Task BackupDirectoryAsync_ShouldSaveStateWithoutUploading_WhenNoFilesNeedBackup()
+    {
+        var filePath = Path.Combine(_testDir, "unchanged.txt");
+        await File.WriteAllTextAsync(filePath, "unchanged");
+
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
+            .ReturnsAsync(_storageMock.Object);
+
+        _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
+            .ReturnsAsync((100, false));
+
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), BackupType.Incremental))
+            .Returns([]);
+
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        await backup.BackupDirectoryAsync(_testDir);
+
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _stateMock.Verify(s => s.SaveStateAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task BackupFilesAsync_ShouldThrow_WhenBaseDirectoryIsEmpty()
+    {
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        var action = () => backup.BackupFilesAsync([Path.Combine(_testDir, "file.txt")], " ");
+
+        await Assert.ThrowsAsync<ArgumentException>(action);
+    }
+
+    [Fact]
+    public async Task BackupFilesAsync_ShouldUpdateDeletedFilesAndSkipUpload_WhenFilesDisappearBeforeArchive()
+    {
+        var deletedFile = Path.Combine(_testDir, "deleted.txt");
+
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
+            .ReturnsAsync(_storageMock.Object);
+
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        await backup.BackupFilesAsync([deletedFile], _testDir);
+
+        _stateMock.Verify(s => s.AddOrUpdateFileMetadataAsync(deletedFile), Times.Once);
+        _stateMock.Verify(s => s.SaveStateAsync(), Times.Once);
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task BackupFilesAsync_ShouldThrow_WhenEncryptionEnabledButPasswordProviderMissing()
+    {
+        var filePath = Path.Combine(_testDir, "secret.txt");
+        await File.WriteAllTextAsync(filePath, "secret content");
+
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
+            .ReturnsAsync(_storageMock.Object);
+        _configMock.Setup(c => c.Encryption)
+            .Returns(new EncryptionConfig
+            {
+                Enabled = true,
+                Salt = Convert.ToBase64String(EncryptionService.GenerateSalt())
+            });
+
+        var backup = new Backup(
+            _loggerMock.Object,
+            _stateMock.Object,
+            _sizeAnalyzerMock.Object,
+            _configMock.Object
+        );
+
+        var action = () => backup.BackupFilesAsync([filePath], _testDir);
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*no password provider is available*");
+
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 }

@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moq;
 using ReStore.Core.src.core;
 using ReStore.Core.src.monitoring;
+using ReStore.Core.src.storage;
 using ReStore.Core.src.utils;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -39,6 +40,7 @@ public class FileWatcherTests : IDisposable
         _configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });
         _configMock.SetupGet(c => c.SizeThresholdMB).Returns(500);
         _configMock.SetupGet(c => c.BackupType).Returns(BackupType.Incremental);
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(new Mock<IStorage>().Object);
     }
 
     public void Dispose()
@@ -119,6 +121,32 @@ public class FileWatcherTests : IDisposable
 
         var changed = GetChangedFiles(watcher);
         changed.ContainsKey(renamedFile).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcessBackupTimerAsync_ShouldRemoveOldMetadata_ForRenamedFiles()
+    {
+        var storageMock = new Mock<IStorage>();
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(storageMock.Object);
+
+        var oldPath = Path.Combine(_watchDir, "old-name.txt");
+        var newPath = Path.Combine(_watchDir, "new-name.txt");
+        await File.WriteAllTextAsync(oldPath, "content");
+        await _state.AddOrUpdateFileMetadataAsync(oldPath);
+        File.Move(oldPath, newPath);
+
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        await watcher.StartAsync();
+
+        var renamedMethod = typeof(FileWatcher).GetMethod("OnRenamed", BindingFlags.Instance | BindingFlags.NonPublic);
+        renamedMethod!.Invoke(watcher, [this, new RenamedEventArgs(WatcherChangeTypes.Renamed, _watchDir, "new-name.txt", "old-name.txt")]);
+
+        var processMethod = typeof(FileWatcher).GetMethod("ProcessBackupTimerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        var task = (Task)processMethod!.Invoke(watcher, [])!;
+        await task;
+
+        _state.FileMetadata.Should().NotContainKey(oldPath);
+        _state.FileMetadata.Should().ContainKey(newPath);
     }
 
     [Fact]

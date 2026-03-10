@@ -214,24 +214,48 @@ public class ProgramTests
         output.Should().Contain("restore.exe system-restore <backupPath>");
     }
 
+    [Fact]
+    public void GetStorageOverride_ShouldReturnFlagValue_WhenPresent()
+    {
+        var result = InvokeProgramMethod("GetStorageOverride", [new[] { "backup", "C:/Data", "--storage", "s3" }]);
+
+        result.Should().Be("s3");
+    }
+
+    [Fact]
+    public void GetStorageOverride_ShouldReturnNull_WhenFlagIsMissingValue()
+    {
+        var result = InvokeProgramMethod("GetStorageOverride", [new[] { "backup", "C:/Data", "--storage" }]);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetStorageOverride_ShouldReturnNull_WhenFlagNotPresent()
+    {
+        var result = InvokeProgramMethod("GetStorageOverride", [new[] { "backup", "C:/Data" }]);
+
+        result.Should().BeNull();
+    }
+
     private static string CaptureConsoleOutput(Action action)
     {
         CONSOLE_OUT_LOCK.Wait();
+        var originalOut = Console.Out;
         try
         {
-            var originalOut = Console.Out;
             var buffer = new StringBuilder();
             using var writer = new StringWriter(buffer);
 
             Console.SetOut(writer);
             action();
             Console.Out.Flush();
-            Console.SetOut(originalOut);
 
             return buffer.ToString();
         }
         finally
         {
+            Console.SetOut(originalOut);
             CONSOLE_OUT_LOCK.Release();
         }
     }
@@ -239,21 +263,21 @@ public class ProgramTests
     private static async Task<string> CaptureConsoleOutputAsync(Func<Task> action)
     {
         await CONSOLE_OUT_LOCK.WaitAsync();
+        var originalOut = Console.Out;
         try
         {
-            var originalOut = Console.Out;
             var buffer = new StringBuilder();
             using var writer = new StringWriter(buffer);
 
             Console.SetOut(writer);
             await action();
             Console.Out.Flush();
-            Console.SetOut(originalOut);
 
             return buffer.ToString();
         }
         finally
         {
+            Console.SetOut(originalOut);
             CONSOLE_OUT_LOCK.Release();
         }
     }

@@ -53,6 +53,8 @@ public class ShareServiceTests : IDisposable
         var localFile = Path.Combine(_testRoot, "share-me.txt");
         await File.WriteAllTextAsync(localFile, "share content");
 
+        _storageMock.SetupGet(s => s.SupportsSharing).Returns(true);
+
         _storageMock.Setup(s => s.GenerateShareLinkAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()))
             .ReturnsAsync("https://example.com/share");
 
@@ -72,6 +74,8 @@ public class ShareServiceTests : IDisposable
         var localFile = Path.Combine(_testRoot, "cleanup.txt");
         await File.WriteAllTextAsync(localFile, "share content");
 
+        _storageMock.SetupGet(s => s.SupportsSharing).Returns(true);
+
         _storageMock.Setup(s => s.GenerateShareLinkAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()))
             .ThrowsAsync(new InvalidOperationException("link generation failed"));
 
@@ -90,6 +94,8 @@ public class ShareServiceTests : IDisposable
         var localFile = Path.Combine(_testRoot, "cleanup-fails.txt");
         await File.WriteAllTextAsync(localFile, "share content");
 
+        _storageMock.SetupGet(s => s.SupportsSharing).Returns(true);
+
         _storageMock.Setup(s => s.GenerateShareLinkAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()))
             .ThrowsAsync(new InvalidOperationException("link generation failed"));
         _storageMock.Setup(s => s.DeleteAsync(It.IsAny<string>()))
@@ -101,5 +107,22 @@ public class ShareServiceTests : IDisposable
         exception.Message.Should().Be("link generation failed");
         _storageMock.Verify(s => s.DeleteAsync(It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/cleanup-fails.txt"))), Times.Once);
         _storageMock.Verify(s => s.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ShareFileAsync_ShouldThrowBeforeUpload_WhenProviderDoesNotSupportSharing()
+    {
+        var service = new ShareService(_configMock.Object, _loggerMock.Object);
+        var localFile = Path.Combine(_testRoot, "unsupported.txt");
+        await File.WriteAllTextAsync(localFile, "share content");
+
+        _storageMock.SetupGet(s => s.SupportsSharing).Returns(false);
+
+        var action = () => service.ShareFileAsync(localFile, "github", TimeSpan.FromHours(1));
+
+        await action.Should().ThrowAsync<NotSupportedException>()
+            .WithMessage("*does not support file sharing*");
+
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 }

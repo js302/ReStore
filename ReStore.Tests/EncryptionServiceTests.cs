@@ -56,7 +56,7 @@ public class EncryptionServiceTests : IDisposable
         await File.WriteAllTextAsync(originalFile, "content");
         var metadata = await service.EncryptFileAsync(originalFile, encryptedFile, password);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => 
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.DecryptFileAsync(encryptedFile, decryptedFile, wrongPassword, metadata));
     }
 
@@ -66,10 +66,30 @@ public class EncryptionServiceTests : IDisposable
         var service = new EncryptionService(_loggerMock.Object);
         var password = "StrongPassword123!";
         var salt = EncryptionService.GenerateSalt();
-        
+
         var token = service.CreatePasswordVerificationToken(password, salt);
         var isValid = service.VerifyPassword(password, salt, token);
 
         isValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task EncryptFileAsync_ShouldPersistConfiguredKeyDerivationIterations()
+    {
+        var service = new EncryptionService(_loggerMock.Object);
+        var originalFile = Path.Combine(_testDir, "iterated.txt");
+        var encryptedFile = Path.Combine(_testDir, "iterated.bin");
+        const int iterations = 250000;
+
+        await File.WriteAllTextAsync(originalFile, "iteration sensitive content");
+
+        var metadata = await service.EncryptFileAsync(
+            originalFile,
+            encryptedFile,
+            "StrongPassword123!",
+            EncryptionService.GenerateSalt(),
+            iterations);
+
+        metadata.KeyDerivationIterations.Should().Be(iterations);
     }
 }
