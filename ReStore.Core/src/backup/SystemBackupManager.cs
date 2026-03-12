@@ -111,16 +111,17 @@ public class SystemBackupManager
             await CompressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
             string fileToUpload = zipPath;
-            if (_config.Encryption.Enabled && _passwordProvider != null)
+            if (_config.Encryption.Enabled)
             {
+                EnsureEncryptionProviderAvailable();
                 _logger.Log("Encrypting programs backup...", LogLevel.Info);
-                var password = await _passwordProvider.GetPasswordAsync();
+                var password = await _passwordProvider!.GetPasswordAsync();
                 if (string.IsNullOrEmpty(password))
                 {
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger, _config.Encryption.KeyDerivationIterations);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
 
@@ -136,6 +137,7 @@ public class SystemBackupManager
             long backupSize = new FileInfo(fileToUpload).Length;
             _systemState.AddBackup("system_programs", remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync("system_programs");
+            await _systemState.SaveStateAsync();
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
@@ -195,16 +197,17 @@ public class SystemBackupManager
             await CompressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
             string fileToUpload = zipPath;
-            if (_config.Encryption.Enabled && _passwordProvider != null)
+            if (_config.Encryption.Enabled)
             {
+                EnsureEncryptionProviderAvailable();
                 _logger.Log("Encrypting environment backup...", LogLevel.Info);
-                var password = await _passwordProvider.GetPasswordAsync();
+                var password = await _passwordProvider!.GetPasswordAsync();
                 if (string.IsNullOrEmpty(password))
                 {
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger, _config.Encryption.KeyDerivationIterations);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
 
@@ -220,6 +223,7 @@ public class SystemBackupManager
             long backupSize = new FileInfo(fileToUpload).Length;
             _systemState.AddBackup("system_environment", remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync("system_environment");
+            await _systemState.SaveStateAsync();
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
@@ -686,16 +690,17 @@ public class SystemBackupManager
             await CompressionUtil.CompressFilesAsync(filesToCompress, tempDir, zipPath);
 
             string fileToUpload = zipPath;
-            if (_config.Encryption.Enabled && _passwordProvider != null)
+            if (_config.Encryption.Enabled)
             {
+                EnsureEncryptionProviderAvailable();
                 _logger.Log("Encrypting settings backup...", LogLevel.Info);
-                var password = await _passwordProvider.GetPasswordAsync();
+                var password = await _passwordProvider!.GetPasswordAsync();
                 if (string.IsNullOrEmpty(password))
                 {
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
                 }
 
-                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger);
+                var encryptedPath = await CompressionUtil.CompressAndEncryptAsync(zipPath, password, _config.Encryption.Salt!, _logger, _config.Encryption.KeyDerivationIterations);
                 fileToUpload = encryptedPath;
                 remotePath = remotePath.Replace(".zip", ".zip.enc");
 
@@ -711,6 +716,7 @@ public class SystemBackupManager
             long backupSize = new FileInfo(fileToUpload).Length;
             _systemState.AddBackup("system_settings", remotePath, false, storageType, backupSize);
             await _retentionManager.ApplyGroupAsync("system_settings");
+            await _systemState.SaveStateAsync();
 
             File.Delete(fileToUpload);
             if (_config.Encryption.Enabled)
@@ -753,5 +759,13 @@ public class SystemBackupManager
         }
 
         return Task.CompletedTask;
+    }
+
+    private void EnsureEncryptionProviderAvailable()
+    {
+        if (_passwordProvider == null)
+        {
+            throw new InvalidOperationException("Encryption is enabled but no password provider is available");
+        }
     }
 }

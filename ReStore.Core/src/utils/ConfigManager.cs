@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Reflection;
 using ReStore.Core.src.storage;
 
 namespace ReStore.Core.src.utils;
@@ -376,7 +375,11 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
             var configObject = new
             {
-                watchDirectories = WatchDirectories,
+                watchDirectories = WatchDirectories.Select(watchDirectory => new
+                {
+                    path = watchDirectory.Path,
+                    storageType = watchDirectory.StorageType
+                }),
                 globalStorageType = GlobalStorageType,
                 backupInterval = BackupInterval.ToString(),
                 sizeThresholdMB = SizeThresholdMB,
@@ -410,7 +413,14 @@ public class ConfigManager(ILogger logger) : IConfigManager
                 },
                 excludedPatterns = ExcludedPatterns,
                 excludedPaths = ExcludedPaths,
-                storageSources = StorageSources
+                storageSources = StorageSources.ToDictionary(
+                    source => source.Key,
+                    source => new
+                    {
+                        path = source.Value.Path,
+                        options = source.Value.Options
+                    },
+                    StringComparer.OrdinalIgnoreCase)
             };
 
             var jsonString = JsonSerializer.Serialize(configObject, _writeOptions);
@@ -438,7 +448,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
         Directory.CreateDirectory(configDir);
 
         // Try to copy config.example.json from the application directory
-        var examplePath = GetExampleConfigPath();
+        var examplePath = ConfigInitializer.ResolveApplicationExampleConfigPath();
         if (examplePath != null && File.Exists(examplePath))
         {
             try
@@ -556,64 +566,5 @@ public class ConfigManager(ILogger logger) : IConfigManager
     {
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Path.Combine(userProfile, "ReStore", "config.json");
-    }
-
-    private static string? GetExampleConfigPath()
-    {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var assemblyDirectory = Path.GetDirectoryName(assemblyLocation);
-
-        if (string.IsNullOrEmpty(assemblyDirectory))
-        {
-            return null;
-        }
-
-        var currentDir = new DirectoryInfo(assemblyDirectory);
-        DirectoryInfo? projectRoot = null;
-
-        while (currentDir?.Parent != null)
-        {
-            if ((currentDir.Name == "net9.0" || currentDir.Name == "net9.0-windows")
-                && currentDir.Parent?.Name == "Debug" && currentDir.Parent.Parent?.Name == "bin")
-            {
-                projectRoot = currentDir.Parent.Parent.Parent;
-                break;
-            }
-            else if ((currentDir.Name == "net9.0" || currentDir.Name == "net9.0-windows")
-                && currentDir.Parent?.Name == "Release" && currentDir.Parent.Parent?.Name == "bin")
-            {
-                projectRoot = currentDir.Parent.Parent.Parent;
-                break;
-            }
-            else if (currentDir.GetFiles("*.csproj").Length > 0)
-            {
-                projectRoot = currentDir;
-                break;
-            }
-
-            currentDir = currentDir.Parent;
-        }
-
-        if (projectRoot != null && projectRoot.Exists)
-        {
-            var probe = projectRoot;
-            for (int i = 0; i < 3 && probe != null; i++)
-            {
-                var candidate = Path.Combine(probe.FullName, "config", "config.example.json");
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-                probe = probe.Parent;
-            }
-        }
-
-        var inAppConfig = Path.Combine(assemblyDirectory, "config", "config.example.json");
-        if (File.Exists(inAppConfig))
-        {
-            return inAppConfig;
-        }
-
-        return null;
     }
 }

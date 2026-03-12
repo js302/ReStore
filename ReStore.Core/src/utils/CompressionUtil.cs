@@ -61,14 +61,14 @@ public class CompressionUtil
         });
     }
 
-    public static async Task<string> CompressAndEncryptAsync(string sourceZip, string password, string salt, ILogger logger)
+    public static async Task<string> CompressAndEncryptAsync(string sourceZip, string password, string salt, ILogger logger, int keyDerivationIterations = 1_000_000)
     {
         var encryptedPath = sourceZip + ".enc";
         var metadataPath = encryptedPath + ".meta";
 
         var saltBytes = Convert.FromBase64String(salt);
         var encryptionService = new EncryptionService(logger);
-        var metadata = await encryptionService.EncryptFileAsync(sourceZip, encryptedPath, password, saltBytes);
+        var metadata = await encryptionService.EncryptFileAsync(sourceZip, encryptedPath, password, saltBytes, keyDerivationIterations);
         await EncryptionService.SaveMetadataAsync(metadata, metadataPath);
 
         File.Delete(sourceZip);

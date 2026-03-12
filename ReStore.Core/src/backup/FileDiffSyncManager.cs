@@ -10,13 +10,15 @@ public class FileDiffSyncManager(ILogger logger, SystemState systemState, Backup
     private readonly BackupConfigurationManager _backupConfigManager = backupConfigManager;
 
     // Implement GetFilesToBackup using SystemState
-    public List<string> GetFilesToBackup(List<string> allFiles)
+    public List<string> GetFilesToBackup(List<string> allFiles, string? group = null)
     {
         var backupType = _backupConfigManager.Configuration.Type;
         _logger.Log($"Determining files to backup based on type: {backupType}", LogLevel.Debug);
 
         // Delegate the logic to SystemState
-        var filesToBackup = _systemState.GetChangedFiles(allFiles, backupType);
+        var filesToBackup = _systemState.GetChangedFiles(allFiles, backupType, group)
+            ?? _systemState.GetChangedFiles(allFiles, backupType)
+            ?? [];
 
         _logger.Log($"Identified {filesToBackup.Count} files requiring backup.", LogLevel.Info);
         return filesToBackup;

@@ -7,7 +7,7 @@ public static class ConfigInitializer
     private static readonly string USER_CONFIG_DIR = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "ReStore");
-    
+
     private static readonly string USER_STATE_DIR = Path.Combine(USER_CONFIG_DIR, "state");
     private static readonly string USER_CONFIG_PATH = Path.Combine(USER_CONFIG_DIR, "config.json");
     private static readonly string USER_EXAMPLE_CONFIG_PATH = Path.Combine(USER_CONFIG_DIR, "config.example.json");
@@ -24,7 +24,7 @@ public static class ConfigInitializer
 
             if (!configExists)
             {
-                var appExamplePath = GetApplicationExampleConfigPath();
+                var appExamplePath = ResolveApplicationExampleConfigPath();
                 if (appExamplePath != null && File.Exists(appExamplePath))
                 {
                     File.Copy(appExamplePath, USER_CONFIG_PATH, overwrite: false);
@@ -49,11 +49,11 @@ public static class ConfigInitializer
         }
     }
 
-    private static string? GetApplicationExampleConfigPath()
+    internal static string? ResolveApplicationExampleConfigPath(string? assemblyLocation = null)
     {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+        assemblyLocation ??= Assembly.GetExecutingAssembly().Location;
         var assemblyDirectory = Path.GetDirectoryName(assemblyLocation);
-        
+
         if (string.IsNullOrEmpty(assemblyDirectory))
         {
             return null;
@@ -87,7 +87,7 @@ public static class ConfigInitializer
                 projectRoot = currentDir;
                 break;
             }
-            
+
             currentDir = currentDir.Parent;
         }
 

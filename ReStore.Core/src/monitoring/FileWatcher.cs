@@ -14,6 +14,7 @@ public class FileWatcher : IDisposable
     private readonly IPasswordProvider? _passwordProvider;
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly ConcurrentDictionary<string, DateTime> _changedFiles = new();
+    private readonly ConcurrentDictionary<string, string> _renamedFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly FileSelectionService _fileSelectionService;
     private readonly SemaphoreSlim _backupExecutionLock = new(1, 1);
     private Timer? _backupTimer;
@@ -86,6 +87,8 @@ public class FileWatcher : IDisposable
     {
         if (_isDisposed) return;
 
+        _renamedFiles[e.FullPath] = e.OldFullPath;
+
         if (_fileSelectionService.ShouldExcludeFile(e.FullPath))
         {
             return;
@@ -138,7 +141,12 @@ public class FileWatcher : IDisposable
             _logger.Log($"Backup buffer time elapsed. Processing {pathsToBackup.Count} changes.", LogLevel.Info);
 
             var groupedFiles = pathsToBackup
-                .Select(path => new { Path = path, Root = FindWatchedRoot(path) })
+                .Select(path => new
+                {
+                    Path = path,
+                    Root = FindWatchedRoot(path),
+                    PreviousPath = _renamedFiles.TryRemove(path, out var previousPath) ? previousPath : null
+                })
                 .Where(x => x.Root != null)
                 .GroupBy(x => x.Root!)
                 .ToList();
@@ -147,10 +155,20 @@ public class FileWatcher : IDisposable
             {
                 var rootDirectory = group.Key;
                 var filesInGroup = group.Select(x => x.Path).ToList();
+                var previousPaths = group
+                    .Select(x => x.PreviousPath)
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Cast<string>()
+                    .ToList();
 
                 _logger.Log($"Initiating backup for {filesInGroup.Count} changed files under {rootDirectory}", LogLevel.Info);
                 try
                 {
+                    foreach (var previousPath in previousPaths)
+                    {
+                        await _systemState.AddOrUpdateFileMetadataAsync(previousPath);
+                    }
+
                     await _backup.BackupFilesAsync(filesInGroup, rootDirectory);
                 }
                 catch (Exception ex)
@@ -212,6 +230,7 @@ public class FileWatcher : IDisposable
             }
             _watchers.Clear();
             _changedFiles.Clear();
+            _renamedFiles.Clear();
             _backupExecutionLock.Dispose();
             _logger.Log("FileWatcher resources disposed.", LogLevel.Debug);
         }

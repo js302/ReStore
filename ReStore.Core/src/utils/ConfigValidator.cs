@@ -39,6 +39,7 @@ public class ConfigValidator(ILogger logger)
         ValidateWatchDirectories(config.WatchDirectories, result);
         ValidateBackupSettings(config, result);
         ValidateStorageSources(config.StorageSources, result);
+        ValidateEncryptionSettings(config.Encryption, result);
         ValidateExclusionSettings(config, result);
 
         if (result.IsValid)
@@ -538,6 +539,51 @@ public class ConfigValidator(ILogger logger)
                 {
                     result.AddWarning($"Invalid exclusion path '{path}': {ex.Message}");
                 }
+            }
+        }
+    }
+
+    private static void ValidateEncryptionSettings(EncryptionConfig encryption, ConfigValidationResult result)
+    {
+        if (!encryption.Enabled)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(encryption.Salt))
+        {
+            result.AddError("Encryption is enabled but no salt is configured.");
+        }
+        else
+        {
+            try
+            {
+                var saltBytes = Convert.FromBase64String(encryption.Salt);
+                if (saltBytes.Length == 0)
+                {
+                    result.AddError("Encryption salt cannot be empty.");
+                }
+            }
+            catch (FormatException)
+            {
+                result.AddError("Encryption salt must be a valid Base64 string.");
+            }
+        }
+
+        if (encryption.KeyDerivationIterations < 1)
+        {
+            result.AddError("Encryption key derivation iterations must be greater than zero.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(encryption.VerificationToken))
+        {
+            try
+            {
+                _ = Convert.FromBase64String(encryption.VerificationToken);
+            }
+            catch (FormatException)
+            {
+                result.AddError("Encryption verification token must be a valid Base64 string.");
             }
         }
     }

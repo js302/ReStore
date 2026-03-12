@@ -99,7 +99,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
         try
         {
             var listRequest = _driveService!.Files.List();
-            listRequest.Q = $"name='{folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+            listRequest.Q = $"name='{EscapeDriveQueryValue(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false";
             listRequest.Spaces = "drive";
             listRequest.Fields = "files(id, name)";
 
@@ -262,7 +262,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
 
         // Search for the file in the parent folder
         var listRequest = _driveService!.Files.List();
-        listRequest.Q = $"name='{fileName}' and '{parentId}' in parents and trashed=false";
+        listRequest.Q = $"name='{EscapeDriveQueryValue(fileName)}' and '{parentId}' in parents and trashed=false";
         listRequest.Fields = "files(id, name)";
 
         var files = await ExecuteWithRetryAsync(async () => await listRequest.ExecuteAsync());
@@ -299,7 +299,7 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
             }
 
             var listRequest = _driveService!.Files.List();
-            listRequest.Q = $"name='{folderName}' and '{currentParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false";
+            listRequest.Q = $"name='{EscapeDriveQueryValue(folderName)}' and '{currentParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false";
             listRequest.Fields = "files(id, name)";
 
             var folders = await ExecuteWithRetryAsync(async () => await listRequest.ExecuteAsync());
@@ -316,6 +316,11 @@ public class DriveStorage(ILogger logger) : StorageBase(logger)
         }
 
         return currentParentId;
+    }
+
+    private static string EscapeDriveQueryValue(string value)
+    {
+        return value.Replace("\\", "\\\\").Replace("'", "\\'");
     }
 
     private async Task<string> EnsureDirectoryPathExistsAsync(string remotePath)

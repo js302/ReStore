@@ -34,11 +34,13 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             Directory.CreateDirectory(targetDirectory);
             _logger.Log($"Ensured target directory exists: {targetDirectory}", LogLevel.Debug);
 
+            string? tempMetadataPath = null;
+
             if (backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.Log("Backup is encrypted, downloading metadata...", LogLevel.Info);
                 var metadataPath = backupPath + ".meta";
-                var tempMetadataPath = tempDownloadPath + ".meta";
+                tempMetadataPath = tempDownloadPath + ".meta";
 
                 try
                 {
@@ -73,13 +75,6 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                     _passwordProvider.ClearPassword();
                     _logger.Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
                     throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
-                }
-                finally
-                {
-                    if (File.Exists(tempMetadataPath))
-                    {
-                        File.Delete(tempMetadataPath);
-                    }
                 }
             }
             else
@@ -117,6 +112,20 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                 catch (Exception cleanupEx)
                 {
                     _logger.Log($"Failed to clean up temporary file {tempDownloadPath}: {cleanupEx.Message}", LogLevel.Warning);
+                }
+            }
+
+            var metadataTempPath = tempDownloadPath + ".meta";
+            if (File.Exists(metadataTempPath))
+            {
+                try
+                {
+                    File.Delete(metadataTempPath);
+                    _logger.Log($"Cleaned up temporary metadata file: {metadataTempPath}", LogLevel.Debug);
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger.Log($"Failed to clean up temporary metadata file {metadataTempPath}: {cleanupEx.Message}", LogLevel.Warning);
                 }
             }
         }

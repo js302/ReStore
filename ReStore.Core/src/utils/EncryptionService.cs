@@ -38,13 +38,13 @@ public class EncryptionService
         return pbkdf2.GetBytes(KEY_SIZE_BYTES);
     }
 
-    public async Task<EncryptionMetadata> EncryptFileAsync(string inputPath, string outputPath, string password, byte[]? salt = null)
+    public async Task<EncryptionMetadata> EncryptFileAsync(string inputPath, string outputPath, string password, byte[]? salt = null, int iterations = DEFAULT_ITERATIONS)
     {
         _logger.Log($"Encrypting file: {Path.GetFileName(inputPath)}", LogLevel.Debug);
 
         salt ??= RandomNumberGenerator.GetBytes(SALT_SIZE_BYTES);
 
-        var kek = DeriveKeyFromPassword(password, salt);
+        var kek = DeriveKeyFromPassword(password, salt, iterations);
         var dek = RandomNumberGenerator.GetBytes(KEY_SIZE_BYTES);
         var iv = RandomNumberGenerator.GetBytes(IV_SIZE_BYTES);
 
@@ -59,7 +59,7 @@ public class EncryptionService
             EncryptedDEK = encryptedDEK,
             Algorithm = "AES-256-GCM",
             Version = 1,
-            KeyDerivationIterations = DEFAULT_ITERATIONS
+            KeyDerivationIterations = iterations
         };
 
         _logger.Log($"File encrypted successfully: {Path.GetFileName(outputPath)}", LogLevel.Info);

@@ -66,7 +66,7 @@ public class Backup
             var allFiles = GetFilesInDirectory(sourceDirectory);
 
             var filesToBackup = _diffSyncManager != null
-                ? _diffSyncManager.GetFilesToBackup(allFiles)
+                ? _diffSyncManager.GetFilesToBackup(allFiles, sourceDirectory)
                 : allFiles;
 
             // Clean up metadata for files that no longer exist in this directory
@@ -170,10 +170,11 @@ public class Backup
             await CompressionUtil.CompressFilesAsync(existingFilesToBackup, baseDirectory, tempArchive);
 
             string fileToUpload = tempArchive;
-            if (_config.Encryption.Enabled && _passwordProvider != null)
+            if (_config.Encryption.Enabled)
             {
+                EnsureEncryptionProviderAvailable();
                 _logger.Log("Encrypting backup...", LogLevel.Info);
-                var password = await _passwordProvider.GetPasswordAsync();
+                var password = await _passwordProvider!.GetPasswordAsync();
                 if (string.IsNullOrEmpty(password))
                 {
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
@@ -277,10 +278,11 @@ public class Backup
             await CompressionUtil.CompressFilesAsync(filesToInclude, sourceDirectory, tempArchive);
 
             string fileToUpload = tempArchive;
-            if (_config.Encryption.Enabled && _passwordProvider != null)
+            if (_config.Encryption.Enabled)
             {
+                EnsureEncryptionProviderAvailable();
                 _logger.Log("Encrypting backup...", LogLevel.Info);
-                var password = await _passwordProvider.GetPasswordAsync();
+                var password = await _passwordProvider!.GetPasswordAsync();
                 if (string.IsNullOrEmpty(password))
                 {
                     throw new InvalidOperationException("Encryption is enabled but no password was provided");
@@ -321,6 +323,14 @@ public class Backup
         {
             _logger.Log($"Failed to create full backup: {ex.Message}", LogLevel.Error);
             throw;
+        }
+    }
+
+    private void EnsureEncryptionProviderAvailable()
+    {
+        if (_passwordProvider == null)
+        {
+            throw new InvalidOperationException("Encryption is enabled but no password provider is available");
         }
     }
 }

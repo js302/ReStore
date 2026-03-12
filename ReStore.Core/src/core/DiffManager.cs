@@ -3,6 +3,10 @@ using System.Security.Cryptography;
 
 namespace ReStore.Core.src.core;
 
+/// <summary>
+/// Experimental binary diff prototype.
+/// This class is currently tested in isolation but is not wired into the live backup or restore flow.
+/// </summary>
 public class DiffManager
 {
     private const int CHUNK_SIZE = 4096;

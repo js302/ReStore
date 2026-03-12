@@ -194,6 +194,14 @@ public partial class SystemState
         }
     }
 
+    public virtual DateTime GetLastFullBackupTime(string group)
+    {
+        lock (_stateLock)
+        {
+            return GetLastFullBackupTimeLocked(group);
+        }
+    }
+
     public virtual void RemoveBackupsFromGroup(string group, IEnumerable<string> backupPaths)
     {
         var paths = backupPaths.Where(p => !string.IsNullOrWhiteSpace(p)).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -362,17 +370,29 @@ public partial class SystemState
 
     public virtual List<string> GetTrackedFilesInDirectory(string directory)
     {
-        var normalizedDir = directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var normalizedDirectory = NormalizePath(directory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var directoryPrefix = normalizedDirectory + Path.DirectorySeparatorChar;
+
         lock (_stateLock)
         {
             return FileMetadata.Keys
-                .Where(p => p.Equals(directory, StringComparison.OrdinalIgnoreCase) ||
-                            p.StartsWith(normalizedDir, StringComparison.OrdinalIgnoreCase))
+                .Where(path =>
+                {
+                    var normalizedPath = NormalizePath(path);
+                    return normalizedPath.Equals(normalizedDirectory, StringComparison.OrdinalIgnoreCase) ||
+                           normalizedPath.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase);
+                })
                 .ToList();
         }
     }
 
     public virtual List<string> GetChangedFiles(List<string> allFiles, BackupType backupType)
+    {
+        return GetChangedFiles(allFiles, backupType, null);
+    }
+
+    public virtual List<string> GetChangedFiles(List<string> allFiles, BackupType backupType, string? group)
     {
         if (backupType == BackupType.Full)
         {
@@ -386,7 +406,7 @@ public partial class SystemState
 
         lock (_stateLock)
         {
-            lastFullBackupTime = GetLastFullBackupTime();
+            lastFullBackupTime = GetLastFullBackupTimeLocked(group);
             currentMetadataSnapshot = new Dictionary<string, FileMetadata>(FileMetadata);
         }
 
@@ -458,10 +478,17 @@ public partial class SystemState
         return filesToBackup;
     }
 
-    private DateTime GetLastFullBackupTime()
+    private DateTime GetLastFullBackupTimeLocked(string? group)
     {
         DateTime lastFullTime = DateTime.MinValue;
-        foreach (var historyList in BackupHistory.Values)
+
+        IEnumerable<KeyValuePair<string, List<BackupInfo>>> historyGroups = BackupHistory;
+        if (!string.IsNullOrWhiteSpace(group))
+        {
+            historyGroups = BackupHistory.Where(entry => entry.Key.Equals(group, StringComparison.OrdinalIgnoreCase));
+        }
+
+        foreach (var historyList in historyGroups.Select(entry => entry.Value))
         {
             var lastFull = historyList
                 .Where(b => !b.IsDiff)
@@ -535,6 +562,18 @@ public partial class SystemState
                 Hash = item.Value.Hash
             },
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch
+        {
+            return path;
+        }
     }
 }
 

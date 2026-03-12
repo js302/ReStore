@@ -19,13 +19,18 @@ public class ShareService(IConfigManager configManager, ILogger logger)
 
         // Create storage instance
         using var storage = await _configManager.CreateStorageAsync(storageType);
-        
+
+        if (!storage.SupportsSharing)
+        {
+            throw new NotSupportedException($"Storage provider '{storageType}' does not support file sharing.");
+        }
+
         // Define remote path in a "shared" folder
         string fileName = Path.GetFileName(localFilePath);
-        string remotePath = $"shared/{Guid.NewGuid()}/{fileName}"; 
+        string remotePath = $"shared/{Guid.NewGuid()}/{fileName}";
 
         _logger.Log($"Uploading {fileName} to {storageType} for sharing...");
-        
+
         // Upload unencrypted
         await storage.UploadAsync(localFilePath, remotePath);
 
