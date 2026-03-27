@@ -70,9 +70,9 @@
 │  │                   src/core (Core Logic)                        │         │
 │  ├────────────────────────────────────────────────────────────────┤         │
 │  │ • SystemState ← State Management & Persistence                 │         │
-│  │ • Backup ← Backup Operations (Full/Incremental/Differential)   │         │
+│  │ • Backup ← Backup Operations (Full/Incremental/File-Level Diff)│         │
 │  │ • Restore ← Restore Operations                                 │         │
-│  │ • DiffManager ← Differential Backup Logic                      │         │
+│  │ • DiffManager ← Experimental Binary Diff Prototype             │         │
 │  └────────────────────────────────────────────────────────────────┘         │
 │                                                                             │
 │  ┌────────────────────────────────────────────────────────────────┐         │
@@ -114,7 +114,7 @@
 │  │   - BackupWindowsSettingsAsync() ← Registry Settings Backup    │         │
 │  │   - RestoreSystemAsync() ← System Restore with Decryption      │         │
 │  │ • BackupConfigurationManager ← Backup Config                   │         │
-│  │ • FileDiffSyncManager ← Diff Sync Logic                        │         │
+│  │ • FileDiffSyncManager ← File-Level Change Selection            │         │
 │  │ • ProgramRestoreManager ← Program Restore                      │         │
 │  │ • RetentionManager ← Backup Pruning & Retention Policies       │         │
 │  └────────────────────────────────────────────────────────────────┘         │

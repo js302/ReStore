@@ -8,7 +8,7 @@ You can configure ReStore through the GUI settings page or by editing the config
 
 **Global Storage**: Default storage destination for paths without specific configuration
 
-**Backup Type**: Choose between Full, Incremental, or Differential
+**Backup Type**: Choose between Full, Incremental, or Differential. Differential currently means file-level selection since the last full backup in the same watched directory, not binary patch generation.
 
 **Backup Interval**: How often to check for changes (in hours)
 
@@ -63,6 +63,14 @@ All configuration options can be managed through the Settings page:
 - **Global Default Storage**: Set the default storage type for all backups
 - **Watch Directories**: Add/remove folders to monitor with individual storage selection per path
 - **Backup Configuration**: Type (Full/Incremental/Differential), interval, size limits
+
+Behavior note:
+`Full`: backs up all selected files.
+`Incremental`: backs up files that changed since the last recorded version of those files.
+`Differential`: backs up whole files that changed since the last full backup for that watched directory.
+
+The repository also contains an experimental `DiffManager` prototype for binary diff generation, but it is not wired into the production backup flow.
+
 - **Encryption**: Enable/disable AES-256-GCM encryption with password protection for all backups
 - **System Backup**: Enable/disable system state backups with separate storage selection for programs, environment variables, and settings
 - **Retention**: Configure how many backups to keep and max backup age

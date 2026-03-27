@@ -55,3 +55,12 @@ Or run tests for the entire solution:
 ```bash
 dotnet test ReStore.sln
 ```
+
+## Diffing Status
+
+The repository currently contains two different concepts that are easy to confuse:
+
+- `FileDiffSyncManager` in the live backup flow decides which whole files need to be backed up based on backup type and file metadata.
+- `DiffManager` is an experimental binary diff prototype that can create and apply patch blobs in isolation, but it is not used by `Backup`, `Restore`, `FileWatcher`, or any storage provider in production.
+
+If you work on differential backups, be explicit about whether you mean file-level change selection or true binary delta generation.

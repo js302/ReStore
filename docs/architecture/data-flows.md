@@ -88,7 +88,7 @@ SizeAnalyzer checks directory size
   ↓
 FileSelectionService filters files (exclusions)
   ↓
-SystemState.GetChangedFiles() determines files to backup
+SystemState.GetChangedFiles() determines which whole files to backup
   ↓
 CompressionUtil creates zip archive
   ↓
@@ -106,6 +106,12 @@ SystemState.SaveStateAsync() persists state
   ↓
 GUI updates statistics and history
 ```
+
+Current implementation note:
+
+- Incremental and Differential modes currently work at file-selection level.
+- ReStore uploads a fresh archive containing the selected files.
+- The standalone `DiffManager` binary diff prototype is not part of this flow.
 
 ## Restore Flow
 

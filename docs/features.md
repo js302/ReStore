@@ -12,10 +12,12 @@
 
 ## File and Directory Backup
 
-- **Multiple Backup Types**: Full, incremental, and differential backups
+- **Multiple Backup Types**: Full, incremental, and file-level differential backups
 - **Real-time Monitoring**: Automatic backups when files change in watched directories
 - **Smart Filtering**: Exclude patterns and paths you don't want to backup
 - **Size Management**: Configurable thresholds and file size limits
+
+Note: the current Differential mode selects whole files that changed since the last full backup for that watched directory. It does not yet generate binary delta patches between file versions.
 
 ## System State Backup
 

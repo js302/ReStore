@@ -127,17 +127,17 @@ Main configuration file for backup settings, storage providers, and encryption.
 
 ### Configuration Sections
 
-| Section            | Description                                           |
-| ------------------ | ----------------------------------------------------- |
-| `watchDirectories` | Directories to monitor for file changes               |
-| `backupInterval`   | How often automatic backups run (TimeSpan format)     |
-| `backupType`       | `Full`, `Incremental`, or `Differential`              |
-| `excludedPatterns` | Glob patterns to exclude (e.g., `*.tmp`)              |
-| `excludedPaths`    | Absolute paths to exclude                             |
-| `encryption`       | Encryption settings and master salt                   |
-| `retention`        | Automatic backup pruning settings                     |
-| `storageSources`   | Storage provider configurations                       |
-| `systemBackup`     | System backup settings (programs, env vars, registry) |
+| Section            | Description                                                           |
+| ------------------ | --------------------------------------------------------------------- |
+| `watchDirectories` | Directories to monitor for file changes                               |
+| `backupInterval`   | How often automatic backups run (TimeSpan format)                     |
+| `backupType`       | `Full`, `Incremental`, or `Differential` (file-level selection today) |
+| `excludedPatterns` | Glob patterns to exclude (e.g., `*.tmp`)                              |
+| `excludedPaths`    | Absolute paths to exclude                                             |
+| `encryption`       | Encryption settings and master salt                                   |
+| `retention`        | Automatic backup pruning settings                                     |
+| `storageSources`   | Storage provider configurations                                       |
+| `systemBackup`     | System backup settings (programs, env vars, registry)                 |
 
 ## system_state.json (Runtime State)
 
@@ -177,6 +177,8 @@ Tracks backup history and file metadata for change detection.
 | `lastBackupTime` | Timestamp of last backup operation                 |
 | `backupHistory`  | Map of directory → list of backups                 |
 | `fileMetadata`   | Map of file path → metadata (size, hash, modified) |
+
+Important note: `backupType = Differential` currently means "select whole files changed since the last full backup for that watched directory". The persisted runtime state does not currently store or apply binary file patches in the live backup path.
 
 ### Backup Groups
 

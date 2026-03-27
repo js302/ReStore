@@ -70,12 +70,14 @@ Note: Do NOT change the salt after enabling encryption, as it is required for ke
 
 **What Gets Encrypted:**
 
-- **All file and directory backups**: Full, Incremental, and Differential backups
+- **All file and directory backups**: Full, Incremental, and file-level Differential backups
 - **System component backups**:
   - Installed programs list and Winget restore scripts
   - Environment variables (user and system)
   - Windows registry settings (personalization, taskbar, File Explorer, etc.)
 - **Everything**: Once encryption is enabled, all new backups (file and system) are automatically encrypted
+
+Current scope note: encryption applies to the final archive that is uploaded. In today's implementation, Differential mode still uploads whole changed files inside an encrypted archive rather than a binary delta patch.
 
 **Restoration:**
 
