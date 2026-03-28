@@ -1,0 +1,1 @@
+global using MessageBox = ReStore.Services.ModernDialogService;
