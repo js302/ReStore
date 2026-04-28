@@ -92,4 +92,36 @@ public class EncryptionServiceTests : IDisposable
 
         metadata.KeyDerivationIterations.Should().Be(iterations);
     }
+
+    [Fact]
+    public void EncryptChunkDeterministic_ShouldProduceStableCiphertextForSameChunkAndKey()
+    {
+        var service = new EncryptionService(_loggerMock.Object);
+        var masterKey = service.DeriveKeyFromPassword("StrongPassword123!", EncryptionService.GenerateSalt(), 1000);
+
+        var plaintext = System.Text.Encoding.UTF8.GetBytes("chunk payload");
+        const string chunkId = "abc123chunkhash";
+
+        var encryptedA = EncryptionService.EncryptChunkDeterministic(plaintext, masterKey, chunkId);
+        var encryptedB = EncryptionService.EncryptChunkDeterministic(plaintext, masterKey, chunkId);
+
+        encryptedA.Should().Equal(encryptedB);
+    }
+
+    [Fact]
+    public void DecryptChunkDeterministic_ShouldFail_WhenPayloadIsTampered()
+    {
+        var service = new EncryptionService(_loggerMock.Object);
+        var masterKey = service.DeriveKeyFromPassword("StrongPassword123!", EncryptionService.GenerateSalt(), 1000);
+
+        var plaintext = System.Text.Encoding.UTF8.GetBytes("chunk payload");
+        const string chunkId = "abc123chunkhash";
+
+        var encryptedPayload = EncryptionService.EncryptChunkDeterministic(plaintext, masterKey, chunkId);
+        encryptedPayload[^1] ^= 0x01;
+
+        var action = () => EncryptionService.DecryptChunkDeterministic(encryptedPayload, masterKey, chunkId);
+
+        action.Should().Throw<System.Security.Cryptography.CryptographicException>();
+    }
 }

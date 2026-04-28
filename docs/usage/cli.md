@@ -27,13 +27,37 @@ restore backup "C:\Users\YourName\Documents"
 restore backup "C:\Users\YourName\Documents" --storage gdrive
 ```
 
+The backup pipeline writes chunked snapshot artifacts:
+
+- Snapshot manifests under `snapshots/<group-key>/...manifest.json`
+- Snapshot head pointer at `snapshots/<group-key>/HEAD`
+- Deduplicated chunks under `chunks/<prefix>/<chunk-id>.chunk`
+
 ## Restore Files
 
-Restore from a backup:
+Restore from a snapshot manifest or HEAD path:
 
 ```bash
-restore restore "backups/Documents/backup_Documents_20250817120000.zip" "C:\Restore\Documents"
+restore restore "snapshots/documents_abcd1234ef567890/HEAD" "C:\Restore\Documents"
+restore restore "snapshots/documents_abcd1234ef567890/snapshot_20260101010101_abcdef.manifest.json" "C:\Restore\Documents"
 ```
+
+## Verify Snapshot Integrity
+
+Verify manifest and chunk-store integrity without restoring files:
+
+```bash
+restore verify "snapshots/documents_abcd1234ef567890/HEAD"
+restore verify "snapshots/documents_abcd1234ef567890/snapshot_20260101010101_abcdef.manifest.json" --storage s3
+```
+
+Verification checks:
+
+- Manifest root hash validation
+- Chunk existence and content-hash validation
+- Reconstructed file hash and size validation
+
+The command exits with a non-zero exit code if validation fails.
 
 ## System Backup
 
@@ -64,14 +88,19 @@ restore system-restore "system_backups/settings/settings_backup_<timestamp>.zip"
 
 ## CLI Usage with Encryption
 
-When encryption is enabled, the CLI will prompt for your password during restore operations:
+When encryption is enabled, the CLI prompts for your password during restore and verify operations:
 
 ```bash
-# Restore encrypted file backup (will prompt for password)
-restore restore "backups/Documents/backup_Documents_20250817120000.zip.enc" "C:\Restore\Documents"
+# Restore encrypted chunk snapshot
+restore restore "snapshots/documents_abcd1234ef567890/HEAD" "C:\Restore\Documents"
+
+# Verify encrypted chunk snapshot
+restore verify "snapshots/documents_abcd1234ef567890/HEAD"
 
 # Restore encrypted system backups (will prompt for password)
 restore system-restore "system_backups/programs/programs_backup_20250817.zip.enc" programs
 restore system-restore "system_backups/environment/env_backup_20250817.zip.enc" environment
 restore system-restore "system_backups/settings/settings_backup_20250817.zip.enc" settings
 ```
+
+For non-interactive use, set `RESTORE_ENCRYPTION_PASSWORD` before running the command.

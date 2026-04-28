@@ -8,7 +8,7 @@ You can configure ReStore through the GUI settings page or by editing the config
 
 **Global Storage**: Default storage destination for paths without specific configuration
 
-**Backup Type**: Choose between Full, Incremental, or Differential. Differential currently means file-level selection since the last full backup in the same watched directory, not binary patch generation.
+**Backup Type**: Choose between Full, Incremental, or ChunkSnapshot. ChunkSnapshot stores point-in-time manifests and deduplicated chunks.
 
 **Backup Interval**: How often to check for changes (in hours)
 
@@ -21,6 +21,8 @@ You can configure ReStore through the GUI settings page or by editing the config
 **Encryption**: Password-based AES-256-GCM encryption for secure backups
 
 **Retention**: Automatic pruning of old backups. Always keeps at least one backup per group (the newest), even if it exceeds max age.
+
+**Chunk Diffing**: Snapshot manifest version and chunking profile controls (`minChunkSizeKB`, `targetChunkSizeKB`, `maxChunkSizeKB`, rolling hash window, and safety limits).
 
 ## Configuration File Location
 
@@ -37,10 +39,31 @@ This is typically: `C:\Users\YourName\ReStore\config.json`
 When you first launch ReStore (GUI or CLI), it will automatically:
 
 1. Create the `%USERPROFILE%\ReStore` directory
-2. Create `config.json` from the template (if not already present)
-3. You can then configure all settings through:
+2. Copy the latest packaged `config.example.json` into `%USERPROFILE%\ReStore\config.example.json`
+3. Create `config.json` from the template (if not already present)
+4. You can then configure all settings through:
    - **GUI**: Settings page with intuitive controls for all options
    - **Manual**: Edit `config.json` directly in a text editor
+
+## Schema Versioning and Upgrades
+
+ReStore tracks `configSchemaVersion` in `config.json`.
+
+- On startup, ReStore detects older config schemas and applies non-destructive migrations.
+- Before writing migrated config, ReStore creates a backup file under `%USERPROFILE%\ReStore\backups\` named like `config.pre-migration.<timestamp>_<guid>.json`.
+- Migrations preserve existing user values and only inject missing defaults or compatibility mappings.
+
+Current compatibility behavior includes:
+
+- Legacy `backupType: Differential` is mapped to `ChunkSnapshot`
+- Missing `chunkDiffing` blocks are injected with safe defaults
+- Missing/invalid `encryption.keyDerivationIterations` is repaired to `1000000`
+
+You can validate your final config at any time with:
+
+```powershell
+dotnet run --project ReStore.Core -- --validate-config
+```
 
 ## Application Data Location
 
@@ -49,7 +72,9 @@ All application data is stored in a centralized user directory:
 ```
 %USERPROFILE%\ReStore\
 ├── config.json              (Main configuration - shared by GUI and CLI - auto-created on first run)
+├── config.example.json      (Latest packaged reference template)
 ├── appsettings.json         (GUI-specific settings - auto-generated)
+├── backups\                 (Automatic pre-migration config backups)
 └── state\
     └── system_state.json    (Backup metadata and history - auto-generated)
 ```
@@ -62,14 +87,14 @@ All configuration options can be managed through the Settings page:
 - **Storage Providers**: Local, Google Drive, AWS S3, GitHub configuration
 - **Global Default Storage**: Set the default storage type for all backups
 - **Watch Directories**: Add/remove folders to monitor with individual storage selection per path
-- **Backup Configuration**: Type (Full/Incremental/Differential), interval, size limits
+- **Backup Configuration**: Type (Full/Incremental/ChunkSnapshot), interval, size limits, chunking profile
 
 Behavior note:
 `Full`: backs up all selected files.
 `Incremental`: backs up files that changed since the last recorded version of those files.
-`Differential`: backs up whole files that changed since the last full backup for that watched directory.
+`ChunkSnapshot`: records a new manifest snapshot and reuses already-uploaded content-addressed chunks.
 
-The repository also contains an experimental `DiffManager` prototype for binary diff generation, but it is not wired into the production backup flow.
+The repository still contains an experimental `DiffManager` prototype for binary diff generation, but it is not wired into the production backup or restore flow.
 
 - **Encryption**: Enable/disable AES-256-GCM encryption with password protection for all backups
 - **System Backup**: Enable/disable system state backups with separate storage selection for programs, environment variables, and settings

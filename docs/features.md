@@ -4,7 +4,7 @@
 
 - **Modern Dashboard**: Real-time statistics, backup history, and quick actions
 - **Settings Management**: Configure watch directories, backup types, storage providers, and exclusions through an intuitive interface
-- **Backup Browser**: View and manage your backup history with one-click restore
+- **Backup Browser**: View and manage your backup history with restore, open-location, and snapshot verification actions
 - **Automatic CLI Access**: The `restore` command is automatically available in all terminals after installation
 - **Run at Startup**: Option to automatically launch ReStore when Windows starts
 - **System Tray Integration**: Minimize to tray and control the file watcher in the background
@@ -12,12 +12,12 @@
 
 ## File and Directory Backup
 
-- **Multiple Backup Types**: Full, incremental, and file-level differential backups
+- **Multiple Backup Types**: Full, incremental, and chunk snapshot backups
 - **Real-time Monitoring**: Automatic backups when files change in watched directories
 - **Smart Filtering**: Exclude patterns and paths you don't want to backup
 - **Size Management**: Configurable thresholds and file size limits
 
-Note: the current Differential mode selects whole files that changed since the last full backup for that watched directory. It does not yet generate binary delta patches between file versions.
+ChunkSnapshot mode creates point-in-time manifests and reuses previously uploaded chunks to reduce transfer and storage costs. The browser can also verify a snapshot manifest and its chunk store without restoring files.
 
 ## System State Backup
 
@@ -43,7 +43,8 @@ Note: the current Differential mode selects whole files that changed since the l
 ## Smart File Handling
 
 - **Change Detection**: SHA256 hashing to detect file modifications accurately
-- **Compression**: ZIP compression to save storage space
+- **Content-Defined Chunking**: Chunk boundaries adapt to file content for high reuse across snapshots
+- **Chunk Deduplication**: Content-addressed chunk IDs avoid re-uploading unchanged data
 - **Encryption**: AES-256-GCM encryption with password protection for secure backups
 - **History Tracking**: Complete backup history with metadata
 - **Retention Policies**: Automatic pruning of old backups

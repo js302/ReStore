@@ -277,6 +277,32 @@ public class ConfigValidatorTests : IDisposable
     }
 
     [Fact]
+    public void ValidateConfiguration_ShouldFail_WhenChunkDiffingSettingsAreInvalid()
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig
+        {
+            ManifestVersion = 1,
+            MinChunkSizeKB = 128,
+            TargetChunkSizeKB = 64,
+            MaxChunkSizeKB = 32,
+            RollingHashWindowSize = 2,
+            MaxChunksPerFile = 0,
+            MaxFilesPerSnapshot = 0
+        });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("manifestVersion", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("minChunkSizeKB", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("targetChunkSizeKB", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("rollingHashWindowSize", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("maxChunksPerFile", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().Contain(e => e.Contains("maxFilesPerSnapshot", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ValidateConfiguration_ShouldWarn_ForEmptyExclusionEntries()
     {
         var config = CreateBaseConfig();
@@ -317,6 +343,7 @@ public class ConfigValidatorTests : IDisposable
         config.SetupGet(c => c.SystemBackup).Returns(new SystemBackupConfig());
         config.SetupGet(c => c.Encryption).Returns(new EncryptionConfig());
         config.SetupGet(c => c.Retention).Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 5, MaxAgeDays = 30 });
+        config.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig());
         config.SetupGet(c => c.ExcludedPatterns).Returns(["*.tmp", "*.log"]);
         config.SetupGet(c => c.ExcludedPaths).Returns([]);
         config.SetupGet(c => c.StorageSources).Returns(CreateLocalStorageSource());

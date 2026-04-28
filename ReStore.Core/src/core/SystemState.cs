@@ -13,11 +13,63 @@ public class FileMetadata
     public string Hash { get; set; } = "";
 }
 
+public class SnapshotBackupTelemetryAggregate
+{
+    public long SnapshotCount { get; set; }
+    public long FileCount { get; set; }
+    public long ChunkReferences { get; set; }
+    public long UniqueChunks { get; set; }
+    public long UploadedChunks { get; set; }
+    public long UniqueReusedChunks { get; set; }
+    public long StorageHitChunks { get; set; }
+    public long CandidateChunks { get; set; }
+    public DateTime LastUpdatedUtc { get; set; }
+}
+
+public class SnapshotRestoreTelemetryAggregate
+{
+    public long AttemptCount { get; set; }
+    public long SuccessCount { get; set; }
+    public long ValidationFailureCount { get; set; }
+    public long FilesExpected { get; set; }
+    public long FilesRestored { get; set; }
+    public long ChunkReferencesExpected { get; set; }
+    public long ChunkReferencesProcessed { get; set; }
+    public long ChunkDownloads { get; set; }
+    public long ChunkCacheHits { get; set; }
+    public Dictionary<string, long> FailureCategoryCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public DateTime LastUpdatedUtc { get; set; }
+}
+
+public class SnapshotVerificationTelemetryAggregate
+{
+    public long RunCount { get; set; }
+    public long SuccessCount { get; set; }
+    public long ValidationFailureCount { get; set; }
+    public long FileCount { get; set; }
+    public long ChunkReferences { get; set; }
+    public long UniqueChunks { get; set; }
+    public long DownloadedChunks { get; set; }
+    public long MissingChunks { get; set; }
+    public long InvalidChunks { get; set; }
+    public long InvalidFiles { get; set; }
+    public DateTime LastUpdatedUtc { get; set; }
+}
+
+public class SnapshotTelemetryAggregate
+{
+    public SnapshotBackupTelemetryAggregate Backup { get; set; } = new();
+    public SnapshotRestoreTelemetryAggregate Restore { get; set; } = new();
+    public SnapshotVerificationTelemetryAggregate Verification { get; set; } = new();
+}
+
 internal class PersistentStateData
 {
     public DateTime LastBackupTime { get; set; }
     public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, FileMetadata> FileMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> ChunkReferenceCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public SnapshotTelemetryAggregate Telemetry { get; set; } = new();
 }
 
 public partial class SystemState
@@ -26,6 +78,8 @@ public partial class SystemState
     public List<string> TrackedDirectories { get; set; } = [];
     public Dictionary<string, List<BackupInfo>> BackupHistory { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, FileMetadata> FileMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> ChunkReferenceCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public SnapshotTelemetryAggregate Telemetry { get; set; } = new();
 
     private string _stateFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -141,7 +195,9 @@ public partial class SystemState
                 Timestamp = DateTime.UtcNow,
                 IsDiff = isDiff,
                 StorageType = null,
-                SizeBytes = sizeBytes
+                SizeBytes = sizeBytes,
+                ArtifactType = BackupArtifactType.Archive,
+                ChunkIds = []
             });
         }
     }
@@ -159,8 +215,209 @@ public partial class SystemState
                 Timestamp = DateTime.UtcNow,
                 IsDiff = isDiff,
                 StorageType = storageType,
-                SizeBytes = sizeBytes
+                SizeBytes = sizeBytes,
+                ArtifactType = BackupArtifactType.Archive,
+                ChunkIds = []
             });
+        }
+    }
+
+    public virtual void AddSnapshotBackup(
+        string directory,
+        string snapshotId,
+        string manifestPath,
+        string? storageType,
+        IEnumerable<string> chunkIds,
+        long sizeBytes = 0,
+        string? rootHash = null,
+        bool encrypted = false,
+        string? chunkStorageNamespace = null)
+    {
+        var normalizedChunkIds = chunkIds
+            .Where(chunkId => !string.IsNullOrWhiteSpace(chunkId))
+            .Select(chunkId => chunkId.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        lock (_stateLock)
+        {
+            if (!BackupHistory.TryGetValue(directory, out List<BackupInfo>? value))
+            {
+                value = [];
+                BackupHistory[directory] = value;
+            }
+
+            value.Add(new BackupInfo
+            {
+                Path = manifestPath,
+                Timestamp = DateTime.UtcNow,
+                IsDiff = false,
+                StorageType = storageType,
+                SizeBytes = sizeBytes,
+                ArtifactType = BackupArtifactType.SnapshotManifest,
+                SnapshotId = snapshotId,
+                ManifestPath = manifestPath,
+                ChunkIds = normalizedChunkIds,
+                RootHash = rootHash,
+                Encrypted = encrypted,
+                ChunkStorageNamespace = chunkStorageNamespace
+            });
+
+            RegisterChunkReferencesLocked(storageType, chunkStorageNamespace, normalizedChunkIds);
+        }
+    }
+
+    public virtual void RegisterChunkReferences(string? storageType, IEnumerable<string> chunkIds, string? chunkStorageNamespace = null)
+    {
+        var normalizedChunkIds = chunkIds
+            .Where(chunkId => !string.IsNullOrWhiteSpace(chunkId))
+            .Select(chunkId => chunkId.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        lock (_stateLock)
+        {
+            RegisterChunkReferencesLocked(storageType, chunkStorageNamespace, normalizedChunkIds);
+        }
+    }
+
+    public virtual List<string> UnregisterChunkReferences(string? storageType, IEnumerable<string> chunkIds, string? chunkStorageNamespace = null)
+    {
+        var normalizedChunkIds = chunkIds
+            .Where(chunkId => !string.IsNullOrWhiteSpace(chunkId))
+            .Select(chunkId => chunkId.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var unreferencedChunkIds = new List<string>();
+
+        lock (_stateLock)
+        {
+            foreach (var chunkId in normalizedChunkIds)
+            {
+                var referenceKey = BuildChunkReferenceKey(storageType, chunkStorageNamespace, chunkId);
+                if (!ChunkReferenceCounts.TryGetValue(referenceKey, out var count))
+                {
+                    continue;
+                }
+
+                if (count <= 1)
+                {
+                    ChunkReferenceCounts.Remove(referenceKey);
+                    unreferencedChunkIds.Add(chunkId);
+                    continue;
+                }
+
+                ChunkReferenceCounts[referenceKey] = count - 1;
+            }
+        }
+
+        return unreferencedChunkIds;
+    }
+
+    public virtual void RecordSnapshotBackupTelemetry(
+        int fileCount,
+        int chunkReferences,
+        int uniqueChunks,
+        int uploadedChunks,
+        int uniqueReusedChunks,
+        int storageHitChunks,
+        int candidateChunks)
+    {
+        lock (_stateLock)
+        {
+            NormalizeTelemetryLocked();
+
+            var backup = Telemetry.Backup;
+            backup.SnapshotCount++;
+            backup.FileCount += fileCount;
+            backup.ChunkReferences += chunkReferences;
+            backup.UniqueChunks += uniqueChunks;
+            backup.UploadedChunks += uploadedChunks;
+            backup.UniqueReusedChunks += uniqueReusedChunks;
+            backup.StorageHitChunks += storageHitChunks;
+            backup.CandidateChunks += candidateChunks;
+            backup.LastUpdatedUtc = DateTime.UtcNow;
+        }
+    }
+
+    public virtual void RecordRestoreTelemetry(
+        bool success,
+        int filesExpected,
+        int filesRestored,
+        int chunkReferencesExpected,
+        int chunkReferencesProcessed,
+        int chunkDownloads,
+        int chunkCacheHits,
+        string? failureCategory,
+        int validationFailures)
+    {
+        lock (_stateLock)
+        {
+            NormalizeTelemetryLocked();
+
+            var restore = Telemetry.Restore;
+            restore.AttemptCount++;
+            if (success)
+            {
+                restore.SuccessCount++;
+            }
+
+            restore.ValidationFailureCount += validationFailures;
+            restore.FilesExpected += filesExpected;
+            restore.FilesRestored += filesRestored;
+            restore.ChunkReferencesExpected += chunkReferencesExpected;
+            restore.ChunkReferencesProcessed += chunkReferencesProcessed;
+            restore.ChunkDownloads += chunkDownloads;
+            restore.ChunkCacheHits += chunkCacheHits;
+
+            if (!success && !string.IsNullOrWhiteSpace(failureCategory))
+            {
+                if (!restore.FailureCategoryCounts.TryGetValue(failureCategory, out var count))
+                {
+                    restore.FailureCategoryCounts[failureCategory] = 1;
+                }
+                else
+                {
+                    restore.FailureCategoryCounts[failureCategory] = count + 1;
+                }
+            }
+
+            restore.LastUpdatedUtc = DateTime.UtcNow;
+        }
+    }
+
+    public virtual void RecordVerificationTelemetry(
+        bool success,
+        int fileCount,
+        int chunkReferences,
+        int uniqueChunks,
+        int downloadedChunks,
+        int missingChunks,
+        int invalidChunks,
+        int invalidFiles,
+        int validationFailures)
+    {
+        lock (_stateLock)
+        {
+            NormalizeTelemetryLocked();
+
+            var verification = Telemetry.Verification;
+            verification.RunCount++;
+            if (success)
+            {
+                verification.SuccessCount++;
+            }
+
+            verification.ValidationFailureCount += validationFailures;
+            verification.FileCount += fileCount;
+            verification.ChunkReferences += chunkReferences;
+            verification.UniqueChunks += uniqueChunks;
+            verification.DownloadedChunks += downloadedChunks;
+            verification.MissingChunks += missingChunks;
+            verification.InvalidChunks += invalidChunks;
+            verification.InvalidFiles += invalidFiles;
+            verification.LastUpdatedUtc = DateTime.UtcNow;
         }
     }
 
@@ -189,7 +446,14 @@ public partial class SystemState
                     Timestamp = b.Timestamp,
                     IsDiff = b.IsDiff,
                     StorageType = b.StorageType,
-                    SizeBytes = b.SizeBytes
+                    SizeBytes = b.SizeBytes,
+                    ArtifactType = b.ArtifactType,
+                    SnapshotId = b.SnapshotId,
+                    ManifestPath = b.ManifestPath,
+                    ChunkIds = [.. b.ChunkIds],
+                    RootHash = b.RootHash,
+                    Encrypted = b.Encrypted,
+                    ChunkStorageNamespace = b.ChunkStorageNamespace
                 })];
         }
     }
@@ -284,7 +548,9 @@ public partial class SystemState
             {
                 LastBackupTime = LastBackupTime,
                 BackupHistory = CloneBackupHistory(BackupHistory),
-                FileMetadata = CloneFileMetadata(FileMetadata)
+                FileMetadata = CloneFileMetadata(FileMetadata),
+                ChunkReferenceCounts = CloneChunkReferenceCounts(ChunkReferenceCounts),
+                Telemetry = CloneTelemetry(Telemetry)
             };
 
             stateFilePath = _stateFilePath;
@@ -331,6 +597,14 @@ public partial class SystemState
                         LastBackupTime = stateData.LastBackupTime;
                         BackupHistory = stateData.BackupHistory != null ? new(stateData.BackupHistory, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
                         FileMetadata = stateData.FileMetadata != null ? new(stateData.FileMetadata, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+                        ChunkReferenceCounts = stateData.ChunkReferenceCounts != null ? new(stateData.ChunkReferenceCounts, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+                        Telemetry = stateData.Telemetry ?? new SnapshotTelemetryAggregate();
+                        NormalizeTelemetryLocked();
+
+                        if (ChunkReferenceCounts.Count == 0 || ContainsLegacyChunkReferenceKeysLocked())
+                        {
+                            RebuildChunkReferenceCountsLocked();
+                        }
                     }
                     _logger?.Log($"Loaded state: {FileMetadata.Count} file metadata entries, {BackupHistory.Count} backup history entries.", LogLevel.Info);
                 }
@@ -365,6 +639,8 @@ public partial class SystemState
             LastBackupTime = DateTime.MinValue;
             BackupHistory = new(StringComparer.OrdinalIgnoreCase);
             FileMetadata = new(StringComparer.OrdinalIgnoreCase);
+            ChunkReferenceCounts = new(StringComparer.OrdinalIgnoreCase);
+            Telemetry = new SnapshotTelemetryAggregate();
         }
     }
 
@@ -401,12 +677,10 @@ public partial class SystemState
         }
 
         var filesToBackup = new List<string>();
-        DateTime lastFullBackupTime;
         Dictionary<string, FileMetadata> currentMetadataSnapshot;
 
         lock (_stateLock)
         {
-            lastFullBackupTime = GetLastFullBackupTimeLocked(group);
             currentMetadataSnapshot = new Dictionary<string, FileMetadata>(FileMetadata);
         }
 
@@ -452,12 +726,21 @@ public partial class SystemState
                             }
                         }
                     }
-                    else if (backupType == BackupType.Differential)
+                    else if (backupType == BackupType.ChunkSnapshot)
                     {
-                        if (fileInfo.LastWriteTimeUtc > lastFullBackupTime)
+                        if (fileInfo.Length != previousMetadata.Size)
                         {
-                            _logger?.Log($"File changed (Differential): {filePath}", LogLevel.Debug);
+                            _logger?.Log($"File changed (ChunkSnapshot, size): {filePath}", LogLevel.Debug);
                             shouldBackup = true;
+                        }
+                        else if (fileInfo.LastWriteTimeUtc > previousMetadata.LastModified)
+                        {
+                            var currentHash = CalculateFileHash(filePath);
+                            if (!string.IsNullOrEmpty(currentHash) && currentHash != previousMetadata.Hash)
+                            {
+                                _logger?.Log($"File changed (ChunkSnapshot, hash): {filePath}", LogLevel.Debug);
+                                shouldBackup = true;
+                            }
                         }
                     }
                 }
@@ -545,9 +828,69 @@ public partial class SystemState
                 Path = backup.Path,
                 Timestamp = backup.Timestamp,
                 IsDiff = backup.IsDiff,
-                StorageType = backup.StorageType
+                StorageType = backup.StorageType,
+                SizeBytes = backup.SizeBytes,
+                ArtifactType = backup.ArtifactType,
+                SnapshotId = backup.SnapshotId,
+                ManifestPath = backup.ManifestPath,
+                ChunkIds = [.. backup.ChunkIds],
+                RootHash = backup.RootHash,
+                Encrypted = backup.Encrypted,
+                ChunkStorageNamespace = backup.ChunkStorageNamespace
             }).ToList(),
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, int> CloneChunkReferenceCounts(Dictionary<string, int> chunkReferenceCounts)
+    {
+        return new Dictionary<string, int>(chunkReferenceCounts, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static SnapshotTelemetryAggregate CloneTelemetry(SnapshotTelemetryAggregate telemetry)
+    {
+        return new SnapshotTelemetryAggregate
+        {
+            Backup = new SnapshotBackupTelemetryAggregate
+            {
+                SnapshotCount = telemetry.Backup.SnapshotCount,
+                FileCount = telemetry.Backup.FileCount,
+                ChunkReferences = telemetry.Backup.ChunkReferences,
+                UniqueChunks = telemetry.Backup.UniqueChunks,
+                UploadedChunks = telemetry.Backup.UploadedChunks,
+                UniqueReusedChunks = telemetry.Backup.UniqueReusedChunks,
+                StorageHitChunks = telemetry.Backup.StorageHitChunks,
+                CandidateChunks = telemetry.Backup.CandidateChunks,
+                LastUpdatedUtc = telemetry.Backup.LastUpdatedUtc
+            },
+            Restore = new SnapshotRestoreTelemetryAggregate
+            {
+                AttemptCount = telemetry.Restore.AttemptCount,
+                SuccessCount = telemetry.Restore.SuccessCount,
+                ValidationFailureCount = telemetry.Restore.ValidationFailureCount,
+                FilesExpected = telemetry.Restore.FilesExpected,
+                FilesRestored = telemetry.Restore.FilesRestored,
+                ChunkReferencesExpected = telemetry.Restore.ChunkReferencesExpected,
+                ChunkReferencesProcessed = telemetry.Restore.ChunkReferencesProcessed,
+                ChunkDownloads = telemetry.Restore.ChunkDownloads,
+                ChunkCacheHits = telemetry.Restore.ChunkCacheHits,
+                FailureCategoryCounts = new Dictionary<string, long>(telemetry.Restore.FailureCategoryCounts, StringComparer.OrdinalIgnoreCase),
+                LastUpdatedUtc = telemetry.Restore.LastUpdatedUtc
+            },
+            Verification = new SnapshotVerificationTelemetryAggregate
+            {
+                RunCount = telemetry.Verification.RunCount,
+                SuccessCount = telemetry.Verification.SuccessCount,
+                ValidationFailureCount = telemetry.Verification.ValidationFailureCount,
+                FileCount = telemetry.Verification.FileCount,
+                ChunkReferences = telemetry.Verification.ChunkReferences,
+                UniqueChunks = telemetry.Verification.UniqueChunks,
+                DownloadedChunks = telemetry.Verification.DownloadedChunks,
+                MissingChunks = telemetry.Verification.MissingChunks,
+                InvalidChunks = telemetry.Verification.InvalidChunks,
+                InvalidFiles = telemetry.Verification.InvalidFiles,
+                LastUpdatedUtc = telemetry.Verification.LastUpdatedUtc
+            }
+        };
     }
 
     private static Dictionary<string, FileMetadata> CloneFileMetadata(Dictionary<string, FileMetadata> fileMetadata)
@@ -575,6 +918,73 @@ public partial class SystemState
             return path;
         }
     }
+
+    private void RegisterChunkReferencesLocked(string? storageType, string? chunkStorageNamespace, IEnumerable<string> normalizedChunkIds)
+    {
+        foreach (var chunkId in normalizedChunkIds)
+        {
+            var referenceKey = BuildChunkReferenceKey(storageType, chunkStorageNamespace, chunkId);
+            if (!ChunkReferenceCounts.TryGetValue(referenceKey, out var count))
+            {
+                ChunkReferenceCounts[referenceKey] = 1;
+                continue;
+            }
+
+            ChunkReferenceCounts[referenceKey] = count + 1;
+        }
+    }
+
+    private static string BuildChunkReferenceKey(string? storageType, string? chunkStorageNamespace, string chunkId)
+    {
+        var normalizedStorage = string.IsNullOrWhiteSpace(storageType)
+            ? "default"
+            : storageType.Trim().ToLowerInvariant();
+
+        var normalizedNamespace = string.IsNullOrWhiteSpace(chunkStorageNamespace)
+            ? "legacy"
+            : chunkStorageNamespace.Trim().ToLowerInvariant();
+
+        return $"{normalizedStorage}|{normalizedNamespace}|{chunkId}";
+    }
+
+    private void NormalizeTelemetryLocked()
+    {
+        Telemetry ??= new SnapshotTelemetryAggregate();
+        Telemetry.Backup ??= new SnapshotBackupTelemetryAggregate();
+        Telemetry.Restore ??= new SnapshotRestoreTelemetryAggregate();
+        Telemetry.Verification ??= new SnapshotVerificationTelemetryAggregate();
+
+        var categoryCounts = Telemetry.Restore.FailureCategoryCounts ?? [];
+        Telemetry.Restore.FailureCategoryCounts = new Dictionary<string, long>(categoryCounts, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void RebuildChunkReferenceCountsLocked()
+    {
+        ChunkReferenceCounts.Clear();
+
+        foreach (var backup in BackupHistory.Values.SelectMany(backups => backups))
+        {
+            if (backup.ArtifactType != BackupArtifactType.SnapshotManifest || backup.ChunkIds.Count == 0)
+            {
+                continue;
+            }
+
+            RegisterChunkReferencesLocked(backup.StorageType, backup.ChunkStorageNamespace, backup.ChunkIds);
+        }
+    }
+
+    private bool ContainsLegacyChunkReferenceKeysLocked()
+    {
+        foreach (var key in ChunkReferenceCounts.Keys)
+        {
+            if (key.Count(character => character == '|') < 2)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 public class BackupInfo
@@ -584,4 +994,17 @@ public class BackupInfo
     public bool IsDiff { get; set; }
     public string? StorageType { get; set; }
     public long SizeBytes { get; set; }
+    public BackupArtifactType ArtifactType { get; set; } = BackupArtifactType.Archive;
+    public string? SnapshotId { get; set; }
+    public string? ManifestPath { get; set; }
+    public List<string> ChunkIds { get; set; } = [];
+    public string? RootHash { get; set; }
+    public bool Encrypted { get; set; }
+    public string? ChunkStorageNamespace { get; set; }
+}
+
+public enum BackupArtifactType
+{
+    Archive,
+    SnapshotManifest
 }

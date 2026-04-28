@@ -18,7 +18,7 @@ public class ProgramTests
         configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });
 
         var provider = InvokeProgramMethod("CreateCliPasswordProvider", configMock.Object)
-            .Should().BeOfType<StaticPasswordProvider>().Subject;
+            .Should().BeAssignableTo<IPasswordProvider>().Subject;
 
         provider.IsPasswordSet().Should().BeFalse();
         (await provider.GetPasswordAsync()).Should().BeNull();
@@ -40,7 +40,7 @@ public class ProgramTests
             configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig { Enabled = true });
 
             var provider = InvokeProgramMethod("CreateCliPasswordProvider", configMock.Object)
-                .Should().BeOfType<StaticPasswordProvider>().Subject;
+                .Should().BeAssignableTo<IPasswordProvider>().Subject;
 
             provider.IsPasswordSet().Should().BeTrue();
             (await provider.GetPasswordAsync()).Should().Be(expectedPassword);

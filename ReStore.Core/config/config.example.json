@@ -18,10 +18,20 @@
     }
   ],
   "globalStorageType": "local",
+  "configSchemaVersion": 3,
   "backupInterval": "01:00:00",
   "sizeThresholdMB": 500,
   "maxFileSizeMB": 100,
-  "backupType": "Incremental",
+  "backupType": "ChunkSnapshot",
+  "chunkDiffing": {
+    "manifestVersion": 2,
+    "minChunkSizeKB": 32,
+    "targetChunkSizeKB": 128,
+    "maxChunkSizeKB": 512,
+    "rollingHashWindowSize": 64,
+    "maxChunksPerFile": 200000,
+    "maxFilesPerSnapshot": 200000
+  },
   "retention": {
     "enabled": false,
     "keepLastPerDirectory": 5,

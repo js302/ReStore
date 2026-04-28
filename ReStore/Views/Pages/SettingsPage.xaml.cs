@@ -51,7 +51,7 @@ namespace ReStore.Views.Pages
                 LoadBackupConfiguration();
 
                 LoadWatchDirectories();
-                
+
                 LoadGlobalStorage();
 
                 LoadExclusions();
@@ -92,10 +92,10 @@ namespace ReStore.Views.Pages
             MinimizeToTrayCheckBox.Checked += (_, __) =>
             {
                 if (_isLoading) return;
-                
+
                 _appSettings.MinimizeToTray = true;
                 _appSettings.Save();
-                
+
                 if (Application.Current.MainWindow is MainWindow mainWindow)
                 {
                     mainWindow.UpdateTrayManager(true);
@@ -105,10 +105,10 @@ namespace ReStore.Views.Pages
             MinimizeToTrayCheckBox.Unchecked += (_, __) =>
             {
                 if (_isLoading) return;
-                
+
                 _appSettings.MinimizeToTray = false;
                 _appSettings.Save();
-                
+
                 if (Application.Current.MainWindow is MainWindow mainWindow)
                 {
                     mainWindow.UpdateTrayManager(false);
@@ -156,7 +156,7 @@ namespace ReStore.Views.Pages
                 {
                     var configDir = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigDirectory();
                     var configPath = ReStore.Core.src.utils.ConfigInitializer.GetUserConfigPath();
-                    
+
                     if (System.IO.File.Exists(configPath))
                     {
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -175,7 +175,7 @@ namespace ReStore.Views.Pages
                             Arguments = $"\"{configDir}\"",
                             UseShellExecute = true
                         });
-                        
+
                         MessageBox.Show(
                             $"Configuration directory opened.\n\n" +
                             $"No config.json found yet. The application will create an example configuration on next startup.",
@@ -289,7 +289,7 @@ namespace ReStore.Views.Pages
                 {
                     BackupType.Full => 0,
                     BackupType.Incremental => 1,
-                    BackupType.Differential => 2,
+                    BackupType.ChunkSnapshot => 2,
                     _ => 1
                 };
 
@@ -474,8 +474,8 @@ namespace ReStore.Views.Pages
                     {
                         if (!_watchDirectories.Any(w => w.Path == folderPath))
                         {
-                            var newConfig = new WatchDirectoryConfig 
-                            { 
+                            var newConfig = new WatchDirectoryConfig
+                            {
                                 Path = folderPath,
                                 StorageType = null
                             };
@@ -543,7 +543,8 @@ namespace ReStore.Views.Pages
                     backupType = selectedType.Tag?.ToString() switch
                     {
                         "Full" => BackupType.Full,
-                        "Differential" => BackupType.Differential,
+                        "ChunkSnapshot" => BackupType.ChunkSnapshot,
+                        "Differential" => BackupType.ChunkSnapshot,
                         _ => BackupType.Incremental
                     };
                 }
@@ -587,7 +588,7 @@ namespace ReStore.Views.Pages
 
                 var configPath = _configManager.GetConfigFilePath();
                 var jsonString = await System.IO.File.ReadAllTextAsync(configPath);
-                
+
                 using var doc = System.Text.Json.JsonDocument.Parse(jsonString);
                 using var stream = new System.IO.MemoryStream();
                 using var writer = new System.Text.Json.Utf8JsonWriter(stream, new System.Text.Json.JsonWriterOptions { Indented = true });
@@ -1042,10 +1043,10 @@ namespace ReStore.Views.Pages
         private void LoadContextMenuConfiguration()
         {
             var isRegistered = FileContextMenuService.IsContextMenuEnabled();
-            
+
             _appSettings.ContextMenuEnabled = isRegistered;
             _appSettings.Save();
-            
+
             ContextMenuCheckBox.IsChecked = isRegistered;
             ContextMenuStatusText.Text = isRegistered ? "✓ Registered" : "";
         }
@@ -1097,12 +1098,12 @@ namespace ReStore.Views.Pages
         private void LoadEncryptionConfiguration()
         {
             var isEnabled = _configManager.Encryption.Enabled;
-            
+
             EncryptionStatusText.Text = isEnabled ? "Enabled" : "Disabled";
-            EncryptionStatusText.Foreground = isEnabled 
+            EncryptionStatusText.Foreground = isEnabled
                 ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Green)
                 : (System.Windows.Media.Brush)FindResource("TextFillColorSecondaryBrush");
-            
+
             ToggleEncryptionBtn.Content = isEnabled ? "Disable Encryption" : "Enable Encryption";
             EncryptionDetailsExpander.Visibility = isEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -1126,7 +1127,7 @@ namespace ReStore.Views.Pages
                         _configManager.Encryption.Enabled = false;
                         await _configManager.SaveAsync();
                         LoadEncryptionConfiguration();
-                        
+
                         MessageBox.Show(
                             "Encryption has been disabled.\n\n" +
                             "New backups will not be encrypted.",
@@ -1143,22 +1144,22 @@ namespace ReStore.Views.Pages
                         var logger = new Logger();
                         var encryptionService = new ReStore.Core.src.utils.EncryptionService(logger);
                         var verificationToken = encryptionService.CreatePasswordVerificationToken(
-                            setupWindow.Password, 
-                            setupWindow.Salt, 
+                            setupWindow.Password,
+                            setupWindow.Salt,
                             _configManager.Encryption.KeyDerivationIterations);
-                        
+
                         _configManager.Encryption.Enabled = true;
                         _configManager.Encryption.Salt = Convert.ToBase64String(setupWindow.Salt);
                         _configManager.Encryption.VerificationToken = verificationToken;
                         await _configManager.SaveAsync();
-                        
+
                         if (App.GlobalPasswordProvider != null)
                         {
                             App.GlobalPasswordProvider.SetPassword(setupWindow.Password);
                         }
-                        
+
                         LoadEncryptionConfiguration();
-                        
+
                         MessageBox.Show(
                             "Encryption has been enabled successfully!\n\n" +
                             "All new backups will be encrypted with AES-256-GCM.\n\n" +

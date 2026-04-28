@@ -88,6 +88,8 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
                                         <!-- Checkbox -->
@@ -102,7 +104,7 @@
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Directory, Mode=OneWay}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                             <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
-                                                <Run Text="{Binding Timestamp, StringFormat='{}{0:MMM dd, yyyy HH:mm:ss}', Mode=OneWay}"/>
+                                                <Run Text="{Binding TimestampLabel, Mode=OneWay}"/>
                                                 <Run Text="•"/>
                                                 <Run Text="{Binding TypeLabel, Mode=OneWay}"/>
                                                 <Run Text="•"/>
@@ -117,9 +119,11 @@
                                         </Border>
 
                                         <!-- Action Buttons -->
-                                        <Button Grid.Column="4" Content="📥" ToolTip="Restore" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="RestoreBackup_Click"/>
-                                        <Button Grid.Column="5" Content="ℹ️" ToolTip="Details" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="ShowDetails_Click"/>
-                                        <Button Grid.Column="6" Content="🗑️" ToolTip="Delete" FontSize="16" Padding="8" Cursor="Hand" Tag="{Binding}" Click="DeleteBackup_Click"/>
+                                        <Button Grid.Column="4" Content="📥" ToolTip="Restore" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanRestore, Mode=OneWay}" Click="RestoreBackup_Click"/>
+                                        <Button Grid.Column="5" Content="📂" ToolTip="Open Backup Location" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Visibility="{Binding OpenLocationVisibility, Mode=OneWay}" Click="OpenBackupLocation_Click"/>
+                                        <Button Grid.Column="6" Content="✅" ToolTip="Verify Snapshot" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanVerify, Mode=OneWay}" Click="VerifyBackup_Click"/>
+                                        <Button Grid.Column="7" Content="ℹ️" ToolTip="Details" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="ShowDetails_Click"/>
+                                        <Button Grid.Column="8" Content="🗑️" ToolTip="Delete" FontSize="16" Padding="8" Cursor="Hand" Tag="{Binding}" Click="DeleteBackup_Click"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

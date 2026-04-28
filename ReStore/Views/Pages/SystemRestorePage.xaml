@@ -120,7 +120,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" x:Name="StatsText" Text="0 backups" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" VerticalAlignment="Center"/>
-                    <ComboBox Grid.Column="1" x:Name="FilterTypeCombo" Width="150" SelectedIndex="0">
+                    <ComboBox Grid.Column="1" x:Name="FilterTypeCombo" Width="175" SelectedIndex="0">
                         <ComboBoxItem Content="All Types" Tag="all"/>
                         <ComboBoxItem Content="Programs Only" Tag="programs"/>
                         <ComboBoxItem Content="Environment Only" Tag="environment"/>

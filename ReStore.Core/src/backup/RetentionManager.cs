@@ -121,15 +121,104 @@ public class RetentionManager(ILogger logger, IConfigManager config, SystemState
 
     private async Task DeleteBackupFromStorageAsync(IStorage storage, string group, BackupInfo backup)
     {
-        bool backupDeleted = false;
-        
+        bool backupDeleted;
+
+        if (backup.ArtifactType == BackupArtifactType.SnapshotManifest)
+        {
+            backupDeleted = await DeleteSnapshotManifestBackupAsync(storage, backup);
+        }
+        else
+        {
+            backupDeleted = await DeleteArchiveBackupAsync(storage, backup);
+        }
+
+        if (backupDeleted)
+        {
+            _systemState.RemoveBackupsFromGroup(group, [backup.Path]);
+        }
+    }
+
+    private async Task<bool> DeleteSnapshotManifestBackupAsync(IStorage storage, BackupInfo backup)
+    {
+        var manifestPath = string.IsNullOrWhiteSpace(backup.ManifestPath)
+            ? backup.Path
+            : backup.ManifestPath;
+
+        bool manifestDeleted;
+        try
+        {
+            var exists = await storage.ExistsAsync(manifestPath);
+            if (!exists)
+            {
+                _logger.Log($"Retention: snapshot manifest missing in storage (will drop from state): {manifestPath}", LogLevel.Warning);
+                manifestDeleted = true;
+            }
+            else
+            {
+                await storage.DeleteAsync(manifestPath);
+                _logger.Log($"Retention: deleted snapshot manifest: {manifestPath}", LogLevel.Info);
+                manifestDeleted = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Retention: failed deleting snapshot manifest {manifestPath}: {ex.Message}", LogLevel.Warning);
+            return false;
+        }
+
+        if (!manifestDeleted)
+        {
+            return false;
+        }
+
+        var unreferencedChunkIds = _systemState.UnregisterChunkReferences(
+            backup.StorageType,
+            backup.ChunkIds,
+            backup.ChunkStorageNamespace);
+        foreach (var chunkId in unreferencedChunkIds)
+        {
+            string chunkPath;
+            try
+            {
+                chunkPath = SnapshotStoragePaths.GetChunkPath(chunkId, backup.ChunkStorageNamespace);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.Log($"Retention: invalid chunk metadata for '{chunkId}': {ex.Message}", LogLevel.Warning);
+                continue;
+            }
+
+            try
+            {
+                var chunkExists = await storage.ExistsAsync(chunkPath);
+                if (!chunkExists)
+                {
+                    continue;
+                }
+
+                await storage.DeleteAsync(chunkPath);
+                _logger.Log($"Retention: deleted unreferenced chunk: {chunkPath}", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log($"Retention: failed deleting chunk {chunkPath}: {ex.Message}", LogLevel.Warning);
+            }
+        }
+
+        return true;
+    }
+
+    private async Task<bool> DeleteArchiveBackupAsync(IStorage storage, BackupInfo backup)
+    {
+        bool backupDeleted;
+
         try
         {
             var exists = await storage.ExistsAsync(backup.Path);
             if (!exists)
             {
                 _logger.Log($"Retention: backup missing in storage (will drop from state): {backup.Path}", LogLevel.Warning);
-                backupDeleted = true; // Missing files are considered "deleted" for state cleanup
+                backupDeleted = true;
             }
             else
             {
@@ -138,7 +227,6 @@ public class RetentionManager(ILogger logger, IConfigManager config, SystemState
                 backupDeleted = true;
             }
 
-            // Only attempt metadata deletion if backup was successfully deleted
             if (backupDeleted && backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
             {
                 var metadataPath = backup.Path + ".meta";
@@ -154,21 +242,15 @@ public class RetentionManager(ILogger logger, IConfigManager config, SystemState
                 catch (Exception ex)
                 {
                     _logger.Log($"Retention: failed deleting metadata for {backup.Path}: {ex.Message}", LogLevel.Warning);
-                    // Continue - main backup was deleted, metadata orphan is acceptable
                 }
             }
         }
         catch (Exception ex)
         {
             _logger.Log($"Retention: failed deleting {backup.Path}: {ex.Message}", LogLevel.Warning);
-            // Don't update state if deletion failed
-            return;
+            return false;
         }
 
-        // Only update state after successful deletion
-        if (backupDeleted)
-        {
-            _systemState.RemoveBackupsFromGroup(group, [backup.Path]);
-        }
+        return backupDeleted;
     }
 }

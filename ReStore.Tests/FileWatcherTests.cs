@@ -40,6 +40,7 @@ public class FileWatcherTests : IDisposable
         _configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });
         _configMock.SetupGet(c => c.SizeThresholdMB).Returns(500);
         _configMock.SetupGet(c => c.BackupType).Returns(BackupType.Incremental);
+        _configMock.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig());
         _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(new Mock<IStorage>().Object);
     }
 

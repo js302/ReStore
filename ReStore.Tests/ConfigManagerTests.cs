@@ -126,7 +126,7 @@ public class ConfigManagerTests
 
     InvokePrivate(_configManager, "LoadBackupTypeAndLimits", root);
 
-    _configManager.BackupType.Should().Be(BackupType.Differential);
+    _configManager.BackupType.Should().Be(BackupType.ChunkSnapshot);
     _configManager.MaxFileSizeMB.Should().Be(42);
   }
 
@@ -163,7 +163,7 @@ public class ConfigManagerTests
   }
 
   [Fact]
-  public void LoadEncryptionAndRetentionSettings_ShouldPopulateValues()
+  public void LoadEncryptionRetentionAndChunkSettings_ShouldPopulateValues()
   {
     var root = ParseRoot("""
 {
@@ -177,12 +177,22 @@ public class ConfigManagerTests
     "enabled": true,
     "keepLastPerDirectory": 7,
     "maxAgeDays": 14
+  },
+  "chunkDiffing": {
+    "manifestVersion": 3,
+    "minChunkSizeKB": 16,
+    "targetChunkSizeKB": 64,
+    "maxChunkSizeKB": 256,
+    "rollingHashWindowSize": 32,
+    "maxChunksPerFile": 10000,
+    "maxFilesPerSnapshot": 5000
   }
 }
 """);
 
     InvokePrivate(_configManager, "LoadEncryptionSettings", root);
     InvokePrivate(_configManager, "LoadRetentionSettings", root);
+    InvokePrivate(_configManager, "LoadChunkDiffingSettings", root);
 
     _configManager.Encryption.Enabled.Should().BeTrue();
     _configManager.Encryption.Salt.Should().Be("abc");
@@ -192,6 +202,14 @@ public class ConfigManagerTests
     _configManager.Retention.Enabled.Should().BeTrue();
     _configManager.Retention.KeepLastPerDirectory.Should().Be(7);
     _configManager.Retention.MaxAgeDays.Should().Be(14);
+
+    _configManager.ChunkDiffing.ManifestVersion.Should().Be(3);
+    _configManager.ChunkDiffing.MinChunkSizeKB.Should().Be(16);
+    _configManager.ChunkDiffing.TargetChunkSizeKB.Should().Be(64);
+    _configManager.ChunkDiffing.MaxChunkSizeKB.Should().Be(256);
+    _configManager.ChunkDiffing.RollingHashWindowSize.Should().Be(32);
+    _configManager.ChunkDiffing.MaxChunksPerFile.Should().Be(10000);
+    _configManager.ChunkDiffing.MaxFilesPerSnapshot.Should().Be(5000);
   }
 
   [Fact]
@@ -242,7 +260,7 @@ public class ConfigManagerTests
       SetProperty(_configManager, nameof(ConfigManager.BackupInterval), TimeSpan.FromMinutes(15));
       SetProperty(_configManager, nameof(ConfigManager.SizeThresholdMB), 123L);
       SetProperty(_configManager, nameof(ConfigManager.MaxFileSizeMB), 45);
-      SetProperty(_configManager, nameof(ConfigManager.BackupType), BackupType.Differential);
+      SetProperty(_configManager, nameof(ConfigManager.BackupType), BackupType.ChunkSnapshot);
       SetProperty(_configManager, nameof(ConfigManager.ExcludedPatterns), new List<string> { "*.tmp" });
       SetProperty(_configManager, nameof(ConfigManager.ExcludedPaths), new List<string> { @"C:\\Temp" });
       SetProperty(_configManager, nameof(ConfigManager.Retention), new RetentionConfig { Enabled = true, KeepLastPerDirectory = 3, MaxAgeDays = 9 });
@@ -266,6 +284,16 @@ public class ConfigManagerTests
         KeyDerivationIterations = 250000,
         VerificationToken = "token"
       });
+      SetProperty(_configManager, nameof(ConfigManager.ChunkDiffing), new ChunkDiffingConfig
+      {
+        ManifestVersion = 2,
+        MinChunkSizeKB = 16,
+        TargetChunkSizeKB = 64,
+        MaxChunkSizeKB = 128,
+        RollingHashWindowSize = 32,
+        MaxChunksPerFile = 1234,
+        MaxFilesPerSnapshot = 4321
+      });
       SetProperty(_configManager, nameof(ConfigManager.StorageSources), new Dictionary<string, StorageConfig>
       {
         ["local"] = new()
@@ -282,11 +310,12 @@ public class ConfigManagerTests
       using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(configPath));
       var root = doc.RootElement;
 
+      root.GetProperty("configSchemaVersion").GetInt32().Should().Be(ConfigSchemaManager.CURRENT_CONFIG_SCHEMA_VERSION);
       root.GetProperty("globalStorageType").GetString().Should().Be("local");
       root.GetProperty("backupInterval").GetString().Should().Be("00:15:00");
       root.GetProperty("sizeThresholdMB").GetInt64().Should().Be(123);
       root.GetProperty("maxFileSizeMB").GetInt32().Should().Be(45);
-      root.GetProperty("backupType").GetString().Should().Be("Differential");
+      root.GetProperty("backupType").GetString().Should().Be("ChunkSnapshot");
       var watchDirectory = root.GetProperty("watchDirectories").EnumerateArray().Should().ContainSingle().Subject;
       watchDirectory.GetProperty("path").GetString().Should().Be(@"C:\\Data");
       watchDirectory.GetProperty("storageType").GetString().Should().Be("local");
@@ -294,6 +323,10 @@ public class ConfigManagerTests
       root.GetProperty("systemBackup").GetProperty("enabled").GetBoolean().Should().BeTrue();
       root.GetProperty("systemBackup").GetProperty("backupInterval").GetString().Should().Be("06:00:00");
       root.GetProperty("encryption").GetProperty("verificationToken").GetString().Should().Be("token");
+      var chunkDiffing = root.GetProperty("chunkDiffing");
+      chunkDiffing.GetProperty("manifestVersion").GetInt32().Should().Be(2);
+      chunkDiffing.GetProperty("targetChunkSizeKB").GetInt32().Should().Be(64);
+      chunkDiffing.GetProperty("maxChunksPerFile").GetInt32().Should().Be(1234);
       var storageSource = root.GetProperty("storageSources").GetProperty("local");
       storageSource.GetProperty("path").GetString().Should().Be(@"C:\\Backups");
       storageSource.GetProperty("options").GetProperty("path").GetString().Should().Be(@"C:\\Backups");

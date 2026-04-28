@@ -17,12 +17,12 @@
 
 ## Core Dependencies
 
-| Package                      | Purpose                         |
-| ---------------------------- | ------------------------------- |
-| System.IO.Compression        | Zip archive creation/extraction |
-| System.Text.Json             | JSON serialization              |
-| System.Management            | Windows WMI queries             |
-| System.Security.Cryptography | AES-256-GCM, PBKDF2-SHA256      |
+| Package                      | Purpose                                   |
+| ---------------------------- | ----------------------------------------- |
+| System.IO.Compression        | System backup archive creation/extraction |
+| System.Text.Json             | JSON serialization                        |
+| System.Management            | Windows WMI queries                       |
+| System.Security.Cryptography | AES-256-GCM, PBKDF2-SHA256, chunk hashing |
 
 ## Storage Provider SDKs
 

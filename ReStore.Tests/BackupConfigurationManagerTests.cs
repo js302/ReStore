@@ -24,7 +24,7 @@ public class BackupConfigurationManagerTests : IDisposable
         _configMock.SetupGet(c => c.ExcludedPaths).Returns([]);
         _configMock.SetupGet(c => c.ExcludedPatterns).Returns(["*.tmp"]);
         _configMock.SetupGet(c => c.MaxFileSizeMB).Returns(42);
-        _configMock.SetupGet(c => c.BackupType).Returns(BackupType.Differential);
+        _configMock.SetupGet(c => c.BackupType).Returns(BackupType.ChunkSnapshot);
     }
 
     public void Dispose()
@@ -43,7 +43,7 @@ public class BackupConfigurationManagerTests : IDisposable
         manager.Configuration.IncludePaths.Should().Contain(_testRoot);
         manager.Configuration.ExcludePatterns.Should().Contain("*.tmp");
         manager.Configuration.MaxFileSize.Should().Be(42 * 1024 * 1024);
-        manager.Configuration.Type.Should().Be(BackupType.Differential);
+        manager.Configuration.Type.Should().Be(BackupType.ChunkSnapshot);
     }
 
     [Fact]

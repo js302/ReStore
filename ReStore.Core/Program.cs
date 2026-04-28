@@ -11,6 +11,7 @@ namespace ReStore.Core
   restore.exe --service
   restore.exe backup <sourceDir> [--storage <storageType>]
   restore.exe restore <backupPath> <targetDir> [--storage <storageType>]
+  restore.exe verify <snapshotManifestOrHeadPath> [--storage <storageType>]
   restore.exe system-backup [programs|environment|settings|all] [--storage <storageType>]
   restore.exe system-restore <backupPath> [programs|environment|settings] [--storage <storageType>]
   restore.exe --validate-config
@@ -19,6 +20,8 @@ Examples:
   restore.exe --service
   restore.exe backup %USERPROFILE%\Desktop
   restore.exe backup %USERPROFILE%\Documents --storage gdrive
+  restore.exe verify snapshots/documents_abc123/HEAD
+  restore.exe verify snapshots/documents_abc123/snapshot_20260101010101_abcdef.manifest.json --storage s3
   restore.exe system-backup all
   restore.exe system-backup programs --storage local
   restore.exe system-restore system_backups/programs/... programs
@@ -34,10 +37,11 @@ Notes:
         {
             var logger = new Logger();
 
-            ConfigInitializer.EnsureConfigurationSetup(logger);
+            var setupResult = ConfigInitializer.EnsureConfigurationSetup(logger);
 
             var configManager = new ConfigManager(logger);
             await configManager.LoadAsync();
+            PrintConfigurationLifecycleSummary(setupResult, configManager.LastMigrationResult, logger);
 
             if (args.Length == 0)
             {
@@ -53,7 +57,7 @@ Notes:
             }
 
             var isServiceMode = args.Length >= 1 && args[0] == "--service";
-            var commandMode = args.Length >= 1 && (args[0] == "backup" || args[0] == "restore" || args[0] == "system-backup" || args[0] == "system-restore");
+            var commandMode = args.Length >= 1 && (args[0] == "backup" || args[0] == "restore" || args[0] == "verify" || args[0] == "system-backup" || args[0] == "system-restore");
 
             if (!isServiceMode && !commandMode)
             {
@@ -130,8 +134,44 @@ Notes:
                             var restorePasswordProvider = CreateCliPasswordProvider(configManager);
                             using (var storage = await configManager.CreateStorageAsync(restoreStorageType))
                             {
-                                var restore = new Restore(logger, storage, restorePasswordProvider);
+                                var restore = new Restore(logger, storage, restorePasswordProvider, systemState);
                                 await restore.RestoreFromBackupAsync(args[1], args[2]);
+                            }
+                            break;
+
+                        case "verify":
+                            if (args.Length < 2)
+                            {
+                                Console.WriteLine(USAGE_MESSAGE);
+                                break;
+                            }
+
+                            var verifyStorageType = storageOverride ?? configManager.GlobalStorageType;
+                            var verifyPasswordProvider = CreateCliPasswordProvider(configManager);
+                            using (var storage = await configManager.CreateStorageAsync(verifyStorageType))
+                            {
+                                var verifier = new SnapshotIntegrityVerifier(logger, storage, verifyPasswordProvider, systemState);
+                                var verificationResult = await verifier.VerifyAsync(args[1]);
+
+                                if (verificationResult.IsValid)
+                                {
+                                    logger.Log(
+                                        $"Snapshot verification passed for '{verificationResult.ResolvedManifestPath}' (snapshot: {verificationResult.SnapshotId}).",
+                                        LogLevel.Info);
+                                }
+                                else
+                                {
+                                    logger.Log(
+                                        $"Snapshot verification failed for '{verificationResult.ResolvedManifestPath}'. Errors: {verificationResult.Errors.Count}.",
+                                        LogLevel.Error);
+
+                                    foreach (var error in verificationResult.Errors)
+                                    {
+                                        logger.Log($"Verify Error: {error}", LogLevel.Error);
+                                    }
+
+                                    Environment.ExitCode = 1;
+                                }
                             }
                             break;
 
@@ -214,22 +254,60 @@ Notes:
             return null;
         }
 
-        private static StaticPasswordProvider CreateCliPasswordProvider(IConfigManager config)
+        private static IPasswordProvider CreateCliPasswordProvider(IConfigManager config)
         {
-            if (!config.Encryption.Enabled)
+            return new CliPasswordProvider(config.Encryption.Enabled);
+        }
+
+        private sealed class CliPasswordProvider : IPasswordProvider
+        {
+            private readonly bool _encryptionEnabled;
+            private string? _cachedPassword;
+
+            public CliPasswordProvider(bool encryptionEnabled)
             {
-                return new StaticPasswordProvider(null);
+                _encryptionEnabled = encryptionEnabled;
             }
 
-            var envPassword = Environment.GetEnvironmentVariable("RESTORE_ENCRYPTION_PASSWORD");
-            if (!string.IsNullOrEmpty(envPassword))
+            public Task<string?> GetPasswordAsync()
             {
-                return new StaticPasswordProvider(envPassword);
+                if (!_encryptionEnabled)
+                {
+                    return Task.FromResult<string?>(null);
+                }
+
+                if (!string.IsNullOrWhiteSpace(_cachedPassword))
+                {
+                    return Task.FromResult<string?>(_cachedPassword);
+                }
+
+                var envPassword = Environment.GetEnvironmentVariable("RESTORE_ENCRYPTION_PASSWORD");
+                if (!string.IsNullOrWhiteSpace(envPassword))
+                {
+                    _cachedPassword = envPassword;
+                    return Task.FromResult<string?>(_cachedPassword);
+                }
+
+                Console.Write("Enter encryption password: ");
+                _cachedPassword = ReadPasswordFromConsole();
+                return Task.FromResult<string?>(_cachedPassword);
             }
 
-            Console.Write("Enter encryption password: ");
-            var password = ReadPasswordFromConsole();
-            return new StaticPasswordProvider(password);
+            public bool IsPasswordSet()
+            {
+                if (!_encryptionEnabled)
+                {
+                    return false;
+                }
+
+                return !string.IsNullOrWhiteSpace(_cachedPassword)
+                    || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RESTORE_ENCRYPTION_PASSWORD"));
+            }
+
+            public void ClearPassword()
+            {
+                _cachedPassword = null;
+            }
         }
 
         private static string ReadPasswordFromConsole()
@@ -255,6 +333,44 @@ Notes:
                 }
             }
             return password.ToString();
+        }
+
+        private static void PrintConfigurationLifecycleSummary(
+            ConfigSetupResult setupResult,
+            ConfigMigrationResult? migrationResult,
+            Logger logger)
+        {
+            if (setupResult.ConfigCreated)
+            {
+                logger.Log($"Configuration initialized at: {ConfigInitializer.GetUserConfigPath()}", LogLevel.Info);
+            }
+
+            if (setupResult.ExampleConfigUpdated)
+            {
+                logger.Log($"Updated local config.example.json reference at: {ConfigInitializer.GetUserExampleConfigPath()}", LogLevel.Debug);
+            }
+
+            if (migrationResult == null)
+            {
+                return;
+            }
+
+            if (migrationResult.MigrationApplied)
+            {
+                logger.Log(
+                    $"Configuration migration applied ({migrationResult.SourceSchemaVersion} -> {migrationResult.TargetSchemaVersion}).",
+                    LogLevel.Info);
+
+                if (!string.IsNullOrWhiteSpace(migrationResult.BackupPath))
+                {
+                    logger.Log($"Migration backup file: {migrationResult.BackupPath}", LogLevel.Info);
+                }
+            }
+
+            foreach (var warning in migrationResult.Warnings)
+            {
+                logger.Log(warning, LogLevel.Warning);
+            }
         }
 
         private static void ValidateConfiguration(IConfigManager configManager, ILogger logger)

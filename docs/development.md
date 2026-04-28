@@ -36,7 +36,8 @@ The project is built with .NET 9.0 and uses:
 - WPF for the GUI with the WPF-UI library
 - JSON for configuration
 - SHA256 hashing for change detection
-- ZIP compression for backups
+- Content-defined chunking and snapshot manifests for user-file backups
+- ZIP compression for system backup components
 
 To extend storage support, implement the `IStorage` interface and register your provider in the configuration.
 
@@ -60,7 +61,8 @@ dotnet test ReStore.sln
 
 The repository currently contains two different concepts that are easy to confuse:
 
-- `FileDiffSyncManager` in the live backup flow decides which whole files need to be backed up based on backup type and file metadata.
+- `ChunkSnapshot` in the live backup flow creates point-in-time manifests and reuses previously uploaded content-addressed chunks.
+- `verify` is a first-class CLI command for validating a manifest, its chunks, and the reconstructed file hashes without restoring content.
 - `DiffManager` is an experimental binary diff prototype that can create and apply patch blobs in isolation, but it is not used by `Backup`, `Restore`, `FileWatcher`, or any storage provider in production.
 
-If you work on differential backups, be explicit about whether you mean file-level change selection or true binary delta generation.
+If you work on diffing features, be explicit about whether you mean production chunk-manifest snapshots or experimental binary patch-chain research.

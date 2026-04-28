@@ -6,6 +6,7 @@ using ReStore.Views;
 using ReStore.Views.Pages;
 using ReStore.Services;
 using ReStore.Interop;
+using ReStore.Core.src.utils;
 
 namespace ReStore
 {
@@ -42,7 +43,27 @@ namespace ReStore
 
             base.OnStartup(e);
 
-            Core.src.utils.ConfigInitializer.EnsureConfigurationSetup();
+            var startupLogger = new Logger();
+            var configSetupResult = ConfigInitializer.EnsureConfigurationSetup(startupLogger);
+            ConfigMigrationResult? configMigrationResult = null;
+
+            try
+            {
+                var startupConfigManager = new ConfigManager(startupLogger);
+                startupConfigManager.LoadAsync().GetAwaiter().GetResult();
+                configMigrationResult = startupConfigManager.LastMigrationResult;
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Config preflight load failed: {ex}");
+                MessageBox.Show(
+                    $"Configuration initialization encountered an issue. You may need to review your config file.\n\n{ex.Message}\n\nPath: {ConfigInitializer.GetUserConfigPath()}",
+                    "ReStore Configuration",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            var lifecycleMessage = BuildConfigurationLifecycleMessage(configSetupResult, configMigrationResult);
 
             // Initialize global password provider
             GlobalPasswordProvider = new GuiPasswordProvider();
@@ -89,6 +110,15 @@ namespace ReStore
                 }
 
                 mainWindow.Show();
+
+                if (!string.IsNullOrWhiteSpace(lifecycleMessage))
+                {
+                    MessageBox.Show(
+                        lifecycleMessage,
+                        "ReStore Configuration",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
             }
 
             _pipeServerThread = new Thread(ListenForCommands)
@@ -267,6 +297,38 @@ namespace ReStore
             _instanceMutex?.Dispose();
 
             base.OnExit(e);
+        }
+
+        private static string? BuildConfigurationLifecycleMessage(
+            ConfigSetupResult setupResult,
+            ConfigMigrationResult? migrationResult)
+        {
+            var lines = new List<string>();
+
+            if (setupResult.ConfigCreated)
+            {
+                lines.Add("Created your initial configuration file.");
+                lines.Add($"Path: {ConfigInitializer.GetUserConfigPath()}");
+            }
+
+            if (migrationResult?.MigrationApplied == true)
+            {
+                lines.Add($"Upgraded configuration schema from v{migrationResult.SourceSchemaVersion} to v{migrationResult.TargetSchemaVersion}.");
+
+                if (!string.IsNullOrWhiteSpace(migrationResult.BackupPath))
+                {
+                    lines.Add($"Backup: {migrationResult.BackupPath}");
+                }
+            }
+
+            if (lines.Count == 0)
+            {
+                return null;
+            }
+
+            lines.Add(string.Empty);
+            lines.Add("Open Settings to review or adjust your configuration.");
+            return string.Join(Environment.NewLine, lines);
         }
     }
 }

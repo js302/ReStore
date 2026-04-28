@@ -8,7 +8,9 @@ ReStore supports enterprise-grade AES-256-GCM encryption to secure your backups 
 - **Key Derivation**: PBKDF2-SHA256 with 1,000,000 iterations for secure password-based key generation
 - **Hybrid Architecture**: Each backup uses a unique Data Encryption Key (DEK) that is encrypted with a Key Encryption Key (KEK) derived from your password
 - **Authenticated Encryption**: Built-in authentication prevents tampering with encrypted backups
-- **File Format**: Encrypted backups are stored with `.enc` extension and include a `.enc.meta` metadata file
+- **Artifact Format**:
+  - User-file backups: encrypted deterministic chunk objects referenced by snapshot manifests
+  - System backups: encrypted `.enc` archives with `.enc.meta` metadata files
 
 ## Enabling Encryption
 
@@ -46,16 +48,18 @@ Note: Do NOT change the salt after enabling encryption, as it is required for ke
 
 1. **First Time Setup**: When you enable encryption, you set a master password and a random salt is generated
 2. **During Backup**:
-   - A unique DEK is generated for each backup
-   - Files are compressed into a ZIP archive
-   - The ZIP is encrypted with the DEK using AES-256-GCM
-   - The DEK is encrypted with the KEK (derived from your password + salt)
-   - Encrypted backup (`.enc`) and metadata (`.enc.meta`) files are stored
+
+- A KEK is derived from your password + salt
+- User-file backups are chunked and chunks are encrypted deterministically using AES-256-GCM-derived per-chunk material
+- Snapshot manifests reference encrypted chunk objects
+- System backups continue to use encrypted archives (`.enc`) with metadata (`.enc.meta`)
+
 3. **During Restore**:
-   - You're prompted for your password
-   - The KEK is derived from your password + stored salt
-   - The DEK is decrypted using the KEK
-   - The backup is decrypted and decompressed to restore your files
+
+- You're prompted for your password
+- The KEK is derived from your password + stored salt
+- User-file restore decrypts and validates chunks before reconstructing files
+- System backup restore decrypts archive payloads and then restores content
 
 ## Password Requirements
 
@@ -70,14 +74,12 @@ Note: Do NOT change the salt after enabling encryption, as it is required for ke
 
 **What Gets Encrypted:**
 
-- **All file and directory backups**: Full, Incremental, and file-level Differential backups
+- **All user-file snapshots**: Full, Incremental, and ChunkSnapshot backup modes
 - **System component backups**:
   - Installed programs list and Winget restore scripts
   - Environment variables (user and system)
   - Windows registry settings (personalization, taskbar, File Explorer, etc.)
 - **Everything**: Once encryption is enabled, all new backups (file and system) are automatically encrypted
-
-Current scope note: encryption applies to the final archive that is uploaded. In today's implementation, Differential mode still uploads whole changed files inside an encrypted archive rather than a binary delta patch.
 
 **Restoration:**
 
@@ -113,19 +115,18 @@ To disable encryption:
 
 ## Risk Scenarios
 
-**Scenario 1**: Config file lost, but .enc.meta files intact
+**Scenario 1**: Config file lost, but snapshot manifests and system `.enc.meta` files intact
 
-- Can restore all encrypted backups (metadata has the salt)
-- Cannot create new encrypted backups (no verification token or master salt)
-- Solution: User can disable and then re-enable encryption with the same password (generates new master salt + token)
+- Existing encrypted snapshots and system backups remain recoverable (salt/metadata is present in artifacts)
+- New encrypted backups require re-establishing encryption settings in config
 
-**Scenario 2**: .enc.meta file lost, but .enc file intact
+**Scenario 2**: Required metadata or chunk artifact is missing
 
-- Data is PERMANENTLY LOST - no way to decrypt without salt, IV, and EncryptedDEK
-- Solution: No recovery possible
+- Missing system `.enc.meta` files make corresponding encrypted system archives unrecoverable
+- Missing snapshot chunk objects make corresponding files unrecoverable
 
 **Scenario 3**: Config salt modified accidentally
 
-- Can still restore old backups (they have their own salt in metadata)
-- New backups will use wrong salt and won't decrypt with original password
+- Existing encrypted backups remain restorable if artifact metadata is intact
+- New backups may be created with incompatible key material
 - This is a data corruption scenario

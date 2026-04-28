@@ -40,6 +40,7 @@ public class ConfigValidator(ILogger logger)
         ValidateBackupSettings(config, result);
         ValidateStorageSources(config.StorageSources, result);
         ValidateEncryptionSettings(config.Encryption, result);
+        ValidateChunkDiffingSettings(config.ChunkDiffing ?? new ChunkDiffingConfig(), result);
         ValidateExclusionSettings(config, result);
 
         if (result.IsValid)
@@ -585,6 +586,64 @@ public class ConfigValidator(ILogger logger)
             {
                 result.AddError("Encryption verification token must be a valid Base64 string.");
             }
+        }
+    }
+
+    private static void ValidateChunkDiffingSettings(ChunkDiffingConfig chunkDiffing, ConfigValidationResult result)
+    {
+        if (chunkDiffing.ManifestVersion < 2)
+        {
+            result.AddError("chunkDiffing.manifestVersion must be 2 or greater for chunk snapshot manifests.");
+        }
+
+        if (chunkDiffing.MinChunkSizeKB < 1)
+        {
+            result.AddError("chunkDiffing.minChunkSizeKB must be greater than zero.");
+        }
+
+        if (chunkDiffing.TargetChunkSizeKB < 1)
+        {
+            result.AddError("chunkDiffing.targetChunkSizeKB must be greater than zero.");
+        }
+
+        if (chunkDiffing.MaxChunkSizeKB < 1)
+        {
+            result.AddError("chunkDiffing.maxChunkSizeKB must be greater than zero.");
+        }
+
+        if (chunkDiffing.MinChunkSizeKB > chunkDiffing.TargetChunkSizeKB)
+        {
+            result.AddError("chunkDiffing.minChunkSizeKB must be less than or equal to targetChunkSizeKB.");
+        }
+
+        if (chunkDiffing.TargetChunkSizeKB > chunkDiffing.MaxChunkSizeKB)
+        {
+            result.AddError("chunkDiffing.targetChunkSizeKB must be less than or equal to maxChunkSizeKB.");
+        }
+
+        if (chunkDiffing.RollingHashWindowSize < 8 || chunkDiffing.RollingHashWindowSize > 512)
+        {
+            result.AddError("chunkDiffing.rollingHashWindowSize must be between 8 and 512.");
+        }
+
+        if (chunkDiffing.MaxChunksPerFile < 1)
+        {
+            result.AddError("chunkDiffing.maxChunksPerFile must be greater than zero.");
+        }
+
+        if (chunkDiffing.MaxFilesPerSnapshot < 1)
+        {
+            result.AddError("chunkDiffing.maxFilesPerSnapshot must be greater than zero.");
+        }
+
+        if (chunkDiffing.MaxChunkSizeKB > 8192)
+        {
+            result.AddWarning("chunkDiffing.maxChunkSizeKB is very large (> 8MB) and may reduce deduplication effectiveness.");
+        }
+
+        if (chunkDiffing.MaxFilesPerSnapshot > 1_000_000)
+        {
+            result.AddWarning("chunkDiffing.maxFilesPerSnapshot is very large (> 1,000,000) and may increase manifest processing time.");
         }
     }
 

@@ -22,7 +22,7 @@ For building from source, see [Installation Docs](docs/installation.md).
 - **Multi-Cloud Support**: Backup to S3, Google Drive, Azure, Dropbox, and more.
 - **CLI Access**: Full command-line interface for scripting and automation.
 - **System Backup**: Save installed programs, environment variables, and Windows settings.
-- **Smart Backup**: Full, incremental, and file-level differential backup selection with compression.
+- **Smart Backup**: Full, incremental, and chunk snapshot backup selection with content-defined chunk reuse.
 - **Encryption**: AES-256-GCM encryption for secure backups.
 - **File Sharing**: Right-click in file explorer to share files via your cloud storage.
 
@@ -70,7 +70,7 @@ For building from source, see [Installation Docs](docs/installation.md).
 
 **[Limitations](docs/limitations.md)**: Known limitations.
 
-Current note: the shipped "Differential" mode is file-level selection since the last full backup for a watched directory. The standalone binary diff engine is still experimental and is not used by the live backup flow.
+Current note: the shipped user-file backup mode is `ChunkSnapshot`, which writes snapshot manifests plus deduplicated chunk objects. Legacy `Differential` configs are migrated to `ChunkSnapshot`, and the standalone binary diff engine remains experimental.
 
 ## License
 

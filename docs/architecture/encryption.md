@@ -58,7 +58,9 @@ Verification Token          Encrypted DEK (stored in .enc.meta)
 | File                  | Contents                                          | Storage Location         |
 | --------------------- | ------------------------------------------------- | ------------------------ |
 | `config.json`         | `encryption.salt`, `encryption.verificationToken` | `%USERPROFILE%\ReStore\` |
-| `backup.zip.enc`      | Encrypted backup data                             | Remote storage           |
+| `*.chunk`             | Encrypted deterministic chunk payloads            | Remote storage           |
+| `*.manifest.json`     | Snapshot metadata and content-address references  | Remote storage           |
+| `backup.zip.enc`      | Encrypted system backup archive data              | Remote storage           |
 | `backup.zip.enc.meta` | Encryption metadata (salt, IV, encryptedDEK)      | Remote storage           |
 
 ## Metadata Structure
@@ -81,16 +83,19 @@ The `.enc.meta` file contains JSON with the following structure:
 To decrypt a backup, you need:
 
 1. **Password** - User must remember this
-2. **`.enc.meta` file** - Contains salt, IV, and encrypted DEK
-3. **`.enc` file** - The encrypted backup data
+2. **`.enc.meta` file** - Contains salt, IV, and encrypted DEK for system archives
+3. **`.enc` file** - The encrypted system backup data
+4. **Snapshot manifest** - Required for user-file restores and verification
+5. **Chunk objects** - Required for user-file restores and verification
 
 ### Recovery Scenarios
 
-| Scenario                   | Outcome                                              |
-| -------------------------- | ---------------------------------------------------- |
-| Lost master salt in config | Can still decrypt old backups (metadata has salt)    |
-| Lost `.enc.meta` file      | Backup permanently lost (no way to decrypt)          |
-| Lost password              | All backups permanently lost (no recovery mechanism) |
+| Scenario                   | Outcome                                            |
+| -------------------------- | -------------------------------------------------- |
+| Lost master salt in config | Can still decrypt old backups (metadata has salt)  |
+| Lost `.enc.meta` file      | System archive backup permanently lost             |
+| Lost chunk object          | User-file snapshot file(s) cannot be reconstructed |
+| Lost password              | All encrypted backups permanently lost             |
 
 ## Implementation Details
 

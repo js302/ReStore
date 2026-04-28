@@ -15,6 +15,7 @@ Both share a unified configuration system stored at `%USERPROFILE%\ReStore\confi
 
 - [Component Overview](components.md) - High-level component diagram and relationships
 - [Data Flows](data-flows.md) - Backup, restore, and encryption data flow diagrams
+- [Chunk Manifest](chunk-manifest.md) - Snapshot/chunk artifact model and integrity contract
 - [Encryption Architecture](encryption.md) - Security model and cryptographic details
 - [Configuration & State](configuration-state.md) - File formats and persistence layer
 - [Technology Stack](technology-stack.md) - Dependencies and frameworks
@@ -43,10 +44,13 @@ ReStore.Core/                # Core Library + CLI
 
 ### Key Files
 
-| File                | Purpose                          |
-| ------------------- | -------------------------------- |
-| `config.json`       | Application configuration        |
-| `system_state.json` | Backup history and file metadata |
-| `.enc.meta`         | Encryption metadata per backup   |
-| `appsettings.json`  | GUI-specific settings            |
-| `theme.json`        | Theme preferences                |
+| File                | Purpose                                        |
+| ------------------- | ---------------------------------------------- |
+| `config.json`       | Application configuration                      |
+| `system_state.json` | Backup history and file metadata               |
+| `*.manifest.json`   | User-file snapshot manifests                   |
+| `HEAD`              | Latest snapshot pointer per group              |
+| `chunks/*/*.chunk`  | Deduplicated content chunks                    |
+| `.enc.meta`         | Encryption metadata for system archive backups |
+| `appsettings.json`  | GUI-specific settings                          |
+| `theme.json`        | Theme preferences                              |

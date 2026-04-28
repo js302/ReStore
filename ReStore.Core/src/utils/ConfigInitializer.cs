@@ -2,6 +2,13 @@ using System.Reflection;
 
 namespace ReStore.Core.src.utils;
 
+public sealed class ConfigSetupResult
+{
+    public bool ConfigCreated { get; set; }
+    public bool ExampleConfigUpdated { get; set; }
+    public string? ConfigSourcePath { get; set; }
+}
+
 public static class ConfigInitializer
 {
     private static readonly string USER_CONFIG_DIR = Path.Combine(
@@ -12,24 +19,45 @@ public static class ConfigInitializer
     private static readonly string USER_CONFIG_PATH = Path.Combine(USER_CONFIG_DIR, "config.json");
     private static readonly string USER_EXAMPLE_CONFIG_PATH = Path.Combine(USER_CONFIG_DIR, "config.example.json");
 
-    public static void EnsureConfigurationSetup(ILogger? logger = null)
+    public static ConfigSetupResult EnsureConfigurationSetup(ILogger? logger = null)
     {
+        var setupResult = new ConfigSetupResult();
+
         try
         {
             Directory.CreateDirectory(USER_CONFIG_DIR);
             Directory.CreateDirectory(USER_STATE_DIR);
             logger?.Log($"Ensured ReStore directories exist at: {USER_CONFIG_DIR}", LogLevel.Debug);
 
+            var appExamplePath = ResolveApplicationExampleConfigPath();
+            if (appExamplePath != null && File.Exists(appExamplePath))
+            {
+                if (ShouldRefreshUserExampleConfig(appExamplePath))
+                {
+                    File.Copy(appExamplePath, USER_EXAMPLE_CONFIG_PATH, overwrite: true);
+                    setupResult.ExampleConfigUpdated = true;
+                    logger?.Log($"Updated user example configuration at: {USER_EXAMPLE_CONFIG_PATH}", LogLevel.Debug);
+                }
+            }
+
             var configExists = File.Exists(USER_CONFIG_PATH);
 
             if (!configExists)
             {
-                var appExamplePath = ResolveApplicationExampleConfigPath();
                 if (appExamplePath != null && File.Exists(appExamplePath))
                 {
                     File.Copy(appExamplePath, USER_CONFIG_PATH, overwrite: false);
+                    setupResult.ConfigCreated = true;
+                    setupResult.ConfigSourcePath = appExamplePath;
                     logger?.Log($"Created initial configuration at: {USER_CONFIG_PATH}", LogLevel.Info);
                     logger?.Log("You can modify the configuration through the GUI settings or by editing the config.json file.", LogLevel.Info);
+                }
+                else if (File.Exists(USER_EXAMPLE_CONFIG_PATH))
+                {
+                    File.Copy(USER_EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH, overwrite: false);
+                    setupResult.ConfigCreated = true;
+                    setupResult.ConfigSourcePath = USER_EXAMPLE_CONFIG_PATH;
+                    logger?.Log($"Created initial configuration from user example at: {USER_CONFIG_PATH}", LogLevel.Info);
                 }
                 else
                 {
@@ -47,6 +75,8 @@ public static class ConfigInitializer
         {
             logger?.Log($"Error during configuration setup: {ex.Message}", LogLevel.Error);
         }
+
+        return setupResult;
     }
 
     internal static string? ResolveApplicationExampleConfigPath(string? assemblyLocation = null)
@@ -112,4 +142,22 @@ public static class ConfigInitializer
     public static string GetUserStateDirectory() => USER_STATE_DIR;
     public static string GetUserConfigPath() => USER_CONFIG_PATH;
     public static string GetUserExampleConfigPath() => USER_EXAMPLE_CONFIG_PATH;
+
+    private static bool ShouldRefreshUserExampleConfig(string sourceExamplePath)
+    {
+        if (!File.Exists(USER_EXAMPLE_CONFIG_PATH))
+        {
+            return true;
+        }
+
+        var sourceBytes = File.ReadAllBytes(sourceExamplePath);
+        var targetBytes = File.ReadAllBytes(USER_EXAMPLE_CONFIG_PATH);
+
+        if (sourceBytes.Length != targetBytes.Length)
+        {
+            return true;
+        }
+
+        return !sourceBytes.AsSpan().SequenceEqual(targetBytes);
+    }
 }

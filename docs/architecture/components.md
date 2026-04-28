@@ -70,8 +70,9 @@
 │  │                   src/core (Core Logic)                        │         │
 │  ├────────────────────────────────────────────────────────────────┤         │
 │  │ • SystemState ← State Management & Persistence                 │         │
-│  │ • Backup ← Backup Operations (Full/Incremental/File-Level Diff)│         │
-│  │ • Restore ← Restore Operations                                 │         │
+│  │ • Backup ← Chunk Snapshot Backup Pipeline                      │         │
+│  │ • Restore ← Manifest-Driven Restore Pipeline                   │         │
+│  │ • SnapshotIntegrityVerifier ← Manifest/Chunk Verification      │         │
 │  │ • DiffManager ← Experimental Binary Diff Prototype             │         │
 │  └────────────────────────────────────────────────────────────────┘         │
 │                                                                             │
@@ -201,9 +202,17 @@ The `WatcherService` singleton bridges the GUI and Core library:
 | `ConfigManager`               | Configuration loading, saving, validation   |
 | `ConfigInitializer`           | First-run setup and directory creation      |
 | `EncryptionService`           | AES-256-GCM encryption/decryption           |
-| `CompressionUtil`             | Zip compression with encryption integration |
+| `CompressionUtil`             | Zip compression for system backup artifacts |
 | `FileHasher`                  | SHA256 file hashing for change detection    |
 | `FileSelectionService`        | File filtering based on exclusion rules     |
 | `SystemProgramDiscovery`      | Winget and registry program detection       |
 | `WindowsSettingsManager`      | Registry settings export/import             |
 | `EnvironmentVariablesManager` | Environment variable backup/restore         |
+
+### Snapshot Components
+
+| Component                   | Responsibility                                                              |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `SnapshotManifest`          | Canonical snapshot manifest model and root-hash contract                    |
+| `ChunkingService`           | Content-defined chunking and chunk payload generation                       |
+| `SnapshotIntegrityVerifier` | End-to-end verification of manifests, chunks, and reconstructed file hashes |

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ReStore.Core.src.storage;
 
 namespace ReStore.Core.src.utils;
@@ -17,6 +18,7 @@ public interface IConfigManager
     SystemBackupConfig SystemBackup { get; }
     EncryptionConfig Encryption { get; }
     RetentionConfig Retention { get; }
+    ChunkDiffingConfig ChunkDiffing { get; }
     Task LoadAsync();
     Task SaveAsync(string configPath = "");
     Task<IStorage> CreateStorageAsync(string storageType);
@@ -28,7 +30,7 @@ public enum BackupType
 {
     Full,
     Incremental,
-    Differential
+    ChunkSnapshot
 }
 
 public class WatchDirectoryConfig
@@ -72,6 +74,17 @@ public class RetentionConfig
     public int MaxAgeDays { get; set; } = 30;
 }
 
+public class ChunkDiffingConfig
+{
+    public int ManifestVersion { get; set; } = 2;
+    public int MinChunkSizeKB { get; set; } = 32;
+    public int TargetChunkSizeKB { get; set; } = 128;
+    public int MaxChunkSizeKB { get; set; } = 512;
+    public int RollingHashWindowSize { get; set; } = 64;
+    public int MaxChunksPerFile { get; set; } = 200_000;
+    public int MaxFilesPerSnapshot { get; set; } = 200_000;
+}
+
 public class ConfigManager(ILogger logger) : IConfigManager
 {
     private static readonly string CONFIG_PATH = GetConfigPath();
@@ -100,9 +113,12 @@ public class ConfigManager(ILogger logger) : IConfigManager
     public SystemBackupConfig SystemBackup { get; private set; } = new();
     public EncryptionConfig Encryption { get; private set; } = new();
     public RetentionConfig Retention { get; private set; } = new();
+    public ChunkDiffingConfig ChunkDiffing { get; private set; } = new();
 
     private readonly StorageFactory _storageFactory = new(logger);
     private readonly SemaphoreSlim _saveLock = new(1, 1);
+
+    public ConfigMigrationResult? LastMigrationResult { get; private set; }
 
     public ConfigValidationResult ValidateConfiguration()
     {
@@ -141,7 +157,36 @@ public class ConfigManager(ILogger logger) : IConfigManager
         await EnsureConfigFileExistsAsync();
 
         var jsonString = await File.ReadAllTextAsync(CONFIG_PATH);
-        using var jsonDoc = JsonDocument.Parse(jsonString);
+        var rootNode = JsonNode.Parse(jsonString) as JsonObject
+            ?? throw new InvalidOperationException("Configuration root must be a JSON object.");
+
+        var migrationResult = ConfigSchemaManager.Migrate(rootNode);
+        if (migrationResult.MigrationApplied)
+        {
+            var backupPath = await PersistMigratedConfigurationAsync(jsonString, rootNode);
+            migrationResult.BackupPath = backupPath;
+
+            logger.Log(
+                $"Configuration migrated from schema v{migrationResult.SourceSchemaVersion} to v{migrationResult.TargetSchemaVersion}.",
+                LogLevel.Info);
+
+            foreach (var migration in migrationResult.AppliedMigrations)
+            {
+                logger.Log($"Config Migration: {migration}", LogLevel.Info);
+            }
+
+            logger.Log($"Pre-migration backup saved at: {backupPath}", LogLevel.Info);
+        }
+
+        foreach (var warning in migrationResult.Warnings)
+        {
+            logger.Log($"Config Migration Warning: {warning}", LogLevel.Warning);
+        }
+
+        LastMigrationResult = migrationResult;
+
+        var normalizedJson = rootNode.ToJsonString(_writeOptions);
+        using var jsonDoc = JsonDocument.Parse(normalizedJson);
         var root = jsonDoc.RootElement;
 
         try
@@ -154,6 +199,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
             LoadSystemBackupSettings(root);
             LoadEncryptionSettings(root);
             LoadRetentionSettings(root);
+            LoadChunkDiffingSettings(root);
 
             _isLoaded = true;
             logger.Log("Configuration loaded successfully", LogLevel.Info);
@@ -174,16 +220,14 @@ public class ConfigManager(ILogger logger) : IConfigManager
             var exampleConfigPath = Path.Combine(configDir, "config.example.json");
             var exampleExists = File.Exists(exampleConfigPath);
 
-            if (!exampleExists)
+            if (exampleExists)
             {
-                await CreateDefaultConfigAsync();
+                File.Copy(exampleConfigPath, CONFIG_PATH, overwrite: false);
+                logger.Log($"No config.json found. Created from local example at {CONFIG_PATH}", LogLevel.Info);
             }
             else
             {
-                throw new InvalidOperationException(
-                    $"Configuration file not found at: {CONFIG_PATH}\n" +
-                    $"An example configuration exists at: {exampleConfigPath}\n" +
-                    "Please rename it to 'config.json' and configure your backup settings.");
+                await CreateDefaultConfigAsync();
             }
         }
     }
@@ -271,7 +315,13 @@ public class ConfigManager(ILogger logger) : IConfigManager
     {
         if (root.TryGetProperty("backupType", out var backupTypeElement))
         {
-            BackupType = Enum.Parse<BackupType>(backupTypeElement.GetString() ?? "Incremental", true);
+            var backupTypeValue = backupTypeElement.GetString() ?? "Incremental";
+            if (backupTypeValue.Equals("Differential", StringComparison.OrdinalIgnoreCase))
+            {
+                backupTypeValue = nameof(BackupType.ChunkSnapshot);
+            }
+
+            BackupType = Enum.Parse<BackupType>(backupTypeValue, true);
         }
 
         if (root.TryGetProperty("maxFileSizeMB", out var maxFileSizeElement))
@@ -361,6 +411,37 @@ public class ConfigManager(ILogger logger) : IConfigManager
         }
     }
 
+    private void LoadChunkDiffingSettings(JsonElement root)
+    {
+        ChunkDiffing = new ChunkDiffingConfig();
+
+        if (!root.TryGetProperty("chunkDiffing", out var chunkDiffingElement))
+        {
+            return;
+        }
+
+        if (chunkDiffingElement.TryGetProperty("manifestVersion", out var manifestVersion))
+            ChunkDiffing.ManifestVersion = manifestVersion.GetInt32();
+
+        if (chunkDiffingElement.TryGetProperty("minChunkSizeKB", out var minChunkSizeKB))
+            ChunkDiffing.MinChunkSizeKB = minChunkSizeKB.GetInt32();
+
+        if (chunkDiffingElement.TryGetProperty("targetChunkSizeKB", out var targetChunkSizeKB))
+            ChunkDiffing.TargetChunkSizeKB = targetChunkSizeKB.GetInt32();
+
+        if (chunkDiffingElement.TryGetProperty("maxChunkSizeKB", out var maxChunkSizeKB))
+            ChunkDiffing.MaxChunkSizeKB = maxChunkSizeKB.GetInt32();
+
+        if (chunkDiffingElement.TryGetProperty("rollingHashWindowSize", out var rollingHashWindowSize))
+            ChunkDiffing.RollingHashWindowSize = rollingHashWindowSize.GetInt32();
+
+        if (chunkDiffingElement.TryGetProperty("maxChunksPerFile", out var maxChunksPerFile))
+            ChunkDiffing.MaxChunksPerFile = maxChunksPerFile.GetInt32();
+
+        if (chunkDiffingElement.TryGetProperty("maxFilesPerSnapshot", out var maxFilesPerSnapshot))
+            ChunkDiffing.MaxFilesPerSnapshot = maxFilesPerSnapshot.GetInt32();
+    }
+
     public async Task SaveAsync(string configPath = "")
     {
         await _saveLock.WaitAsync();
@@ -375,6 +456,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
 
             var configObject = new
             {
+                configSchemaVersion = ConfigSchemaManager.CURRENT_CONFIG_SCHEMA_VERSION,
                 watchDirectories = WatchDirectories.Select(watchDirectory => new
                 {
                     path = watchDirectory.Path,
@@ -390,6 +472,16 @@ public class ConfigManager(ILogger logger) : IConfigManager
                     enabled = Retention.Enabled,
                     keepLastPerDirectory = Retention.KeepLastPerDirectory,
                     maxAgeDays = Retention.MaxAgeDays
+                },
+                chunkDiffing = new
+                {
+                    manifestVersion = ChunkDiffing.ManifestVersion,
+                    minChunkSizeKB = ChunkDiffing.MinChunkSizeKB,
+                    targetChunkSizeKB = ChunkDiffing.TargetChunkSizeKB,
+                    maxChunkSizeKB = ChunkDiffing.MaxChunkSizeKB,
+                    rollingHashWindowSize = ChunkDiffing.RollingHashWindowSize,
+                    maxChunksPerFile = ChunkDiffing.MaxChunksPerFile,
+                    maxFilesPerSnapshot = ChunkDiffing.MaxFilesPerSnapshot
                 },
                 systemBackup = new
                 {
@@ -440,6 +532,38 @@ public class ConfigManager(ILogger logger) : IConfigManager
         {
             _saveLock.Release();
         }
+    }
+
+    private async Task<string> PersistMigratedConfigurationAsync(string originalJson, JsonObject migratedRoot)
+    {
+        await _saveLock.WaitAsync();
+        try
+        {
+            var backupPath = BuildMigrationBackupPath();
+            await File.WriteAllTextAsync(backupPath, originalJson);
+
+            var migratedJson = migratedRoot.ToJsonString(_writeOptions);
+            var tempPath = CONFIG_PATH + ".tmp";
+            await File.WriteAllTextAsync(tempPath, migratedJson);
+            File.Move(tempPath, CONFIG_PATH, overwrite: true);
+
+            return backupPath;
+        }
+        finally
+        {
+            _saveLock.Release();
+        }
+    }
+
+    private static string BuildMigrationBackupPath()
+    {
+        var configDir = Path.GetDirectoryName(CONFIG_PATH)!;
+        var backupDir = Path.Combine(configDir, "backups");
+        Directory.CreateDirectory(backupDir);
+
+        return Path.Combine(
+            backupDir,
+            $"config.pre-migration.{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.json");
     }
 
     private async Task CreateDefaultConfigAsync()

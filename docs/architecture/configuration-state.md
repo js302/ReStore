@@ -6,13 +6,16 @@ ReStore uses several JSON files for configuration and state persistence. All use
 
 ## File Locations
 
-| File                | Location                       | Purpose                          |
-| ------------------- | ------------------------------ | -------------------------------- |
-| `config.json`       | `%USERPROFILE%\ReStore\`       | Application configuration        |
-| `system_state.json` | `%USERPROFILE%\ReStore\state\` | Backup history and file metadata |
-| `appsettings.json`  | Application directory          | GUI-specific settings            |
-| `theme.json`        | Application directory          | Theme preferences                |
-| `*.enc.meta`        | Remote storage                 | Per-backup encryption metadata   |
+| File                | Location                       | Purpose                             |
+| ------------------- | ------------------------------ | ----------------------------------- |
+| `config.json`       | `%USERPROFILE%\ReStore\`       | Application configuration           |
+| `system_state.json` | `%USERPROFILE%\ReStore\state\` | Backup history and file metadata    |
+| `appsettings.json`  | Application directory          | GUI-specific settings               |
+| `theme.json`        | Application directory          | Theme preferences                   |
+| `*.manifest.json`   | Remote storage                 | User-file snapshot manifest         |
+| `HEAD`              | Remote storage                 | Pointer to latest snapshot manifest |
+| `chunks/*/*.chunk`  | Remote storage                 | Deduplicated chunk objects          |
+| `*.enc.meta`        | Remote storage                 | System archive encryption metadata  |
 
 ## config.json (Application Config)
 
@@ -30,7 +33,16 @@ Main configuration file for backup settings, storage providers, and encryption.
   "backupInterval": "01:00:00",
   "sizeThresholdMB": 500,
   "maxFileSizeMB": 100,
-  "backupType": "Incremental",
+  "backupType": "ChunkSnapshot",
+  "chunkDiffing": {
+    "manifestVersion": 2,
+    "minChunkSizeKB": 32,
+    "targetChunkSizeKB": 128,
+    "maxChunkSizeKB": 512,
+    "rollingHashWindowSize": 64,
+    "maxChunksPerFile": 200000,
+    "maxFilesPerSnapshot": 200000
+  },
   "excludedPatterns": ["*.tmp", "*.log"],
   "excludedPaths": ["C:\\Temp"],
   "encryption": {
@@ -127,17 +139,18 @@ Main configuration file for backup settings, storage providers, and encryption.
 
 ### Configuration Sections
 
-| Section            | Description                                                           |
-| ------------------ | --------------------------------------------------------------------- |
-| `watchDirectories` | Directories to monitor for file changes                               |
-| `backupInterval`   | How often automatic backups run (TimeSpan format)                     |
-| `backupType`       | `Full`, `Incremental`, or `Differential` (file-level selection today) |
-| `excludedPatterns` | Glob patterns to exclude (e.g., `*.tmp`)                              |
-| `excludedPaths`    | Absolute paths to exclude                                             |
-| `encryption`       | Encryption settings and master salt                                   |
-| `retention`        | Automatic backup pruning settings                                     |
-| `storageSources`   | Storage provider configurations                                       |
-| `systemBackup`     | System backup settings (programs, env vars, registry)                 |
+| Section            | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| `watchDirectories` | Directories to monitor for file changes                     |
+| `backupInterval`   | How often automatic backups run (TimeSpan format)           |
+| `backupType`       | `Full`, `Incremental`, or `ChunkSnapshot`                   |
+| `chunkDiffing`     | Manifest version, chunk profile, and chunking safety limits |
+| `excludedPatterns` | Glob patterns to exclude (e.g., `*.tmp`)                    |
+| `excludedPaths`    | Absolute paths to exclude                                   |
+| `encryption`       | Encryption settings and master salt                         |
+| `retention`        | Automatic backup pruning settings                           |
+| `storageSources`   | Storage provider configurations                             |
+| `systemBackup`     | System backup settings (programs, env vars, registry)       |
 
 ## system_state.json (Runtime State)
 
@@ -149,17 +162,51 @@ Tracks backup history and file metadata for change detection.
     "backupHistory": {
         "C:\\Users\\...\\Documents": [
             {
-                "path": "backups/documents_2026-01-25_103000.zip.enc",
+        "path": "snapshots/documents_abcd1234ef567890/snapshot_20260125103000_abcdef.manifest.json",
                 "timestamp": "2026-01-25T10:30:00Z",
                 "isDiff": false,
-                "type": "Full",
-                "storageType": "s3"
+        "storageType": "s3",
+        "sizeBytes": 4096,
+        "artifactType": "SnapshotManifest",
+        "snapshotId": "snapshot_20260125103000_abcdef",
+        "manifestPath": "snapshots/documents_abcd1234ef567890/snapshot_20260125103000_abcdef.manifest.json",
+        "chunkIds": ["<sha256>", "<sha256>"],
+        "rootHash": "<sha256>",
+        "encrypted": true
             }
         ],
         "system_programs": [...],
         "system_environment": [...],
         "system_settings": [...]
     },
+  "chunkReferenceCounts": {
+    "s3|<chunk-id>": 2
+  },
+  "telemetry": {
+    "backup": {
+      "snapshotCount": 12,
+      "fileCount": 482,
+      "chunkReferences": 1900,
+      "uniqueChunks": 1302,
+      "uploadedChunks": 274,
+      "uniqueReusedChunks": 1028,
+      "storageHitChunks": 950,
+      "candidateChunks": 1224
+    },
+    "restore": {
+      "attemptCount": 8,
+      "successCount": 7,
+      "validationFailureCount": 1,
+      "failureCategoryCounts": {
+        "chunk-validation-failure": 1
+      }
+    },
+    "verification": {
+      "runCount": 5,
+      "successCount": 4,
+      "validationFailureCount": 1
+    }
+  },
     "fileMetadata": {
         "C:\\Users\\...\\Documents\\file.txt": {
             "size": 1024,
@@ -172,13 +219,13 @@ Tracks backup history and file metadata for change detection.
 
 ### State Sections
 
-| Section          | Description                                        |
-| ---------------- | -------------------------------------------------- |
-| `lastBackupTime` | Timestamp of last backup operation                 |
-| `backupHistory`  | Map of directory → list of backups                 |
-| `fileMetadata`   | Map of file path → metadata (size, hash, modified) |
-
-Important note: `backupType = Differential` currently means "select whole files changed since the last full backup for that watched directory". The persisted runtime state does not currently store or apply binary file patches in the live backup path.
+| Section                | Description                                        |
+| ---------------------- | -------------------------------------------------- |
+| `lastBackupTime`       | Timestamp of last backup operation                 |
+| `backupHistory`        | Map of directory → list of backups                 |
+| `chunkReferenceCounts` | Map of storage+chunk key → reference count         |
+| `telemetry`            | Aggregated backup/restore/verify counters          |
+| `fileMetadata`         | Map of file path → metadata (size, hash, modified) |
 
 ### Backup Groups
 
@@ -211,9 +258,18 @@ User's theme preference.
 
 Valid values: `System`, `Light`, `Dark`
 
+## Snapshot Manifest Artifacts
+
+User-file backups rely on two artifact types:
+
+- Snapshot manifest files (`*.manifest.json`) containing file/chunk mapping and root hash
+- Chunk object files (`chunks/*/*.chunk`) containing deduplicated payload data
+
+The latest snapshot in a group is discovered through the group's `HEAD` pointer.
+
 ## Encryption Metadata (.enc.meta)
 
-Per-backup encryption metadata stored alongside encrypted backups.
+Per-backup encryption metadata stored alongside encrypted system archive backups.
 
 ```json
 {

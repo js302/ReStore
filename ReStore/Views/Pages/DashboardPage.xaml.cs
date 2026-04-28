@@ -16,9 +16,23 @@ namespace ReStore.Views.Pages
     {
         public string Directory { get; set; } = "";
         public string Path { get; set; } = "";
+        public string StorageType { get; set; } = "";
         public DateTime Timestamp { get; set; }
         public bool IsDiff { get; set; }
-        public string TypeLabel => IsDiff ? "Differential" : "Full";
+        public bool CanRestore => IsSnapshotArtifactPath(Path);
+        public string TypeLabel => CanRestore ? "Snapshot" : IsDiff ? "Differential" : "Full";
+
+        private static bool IsSnapshotArtifactPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            return path.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("\\HEAD", StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public partial class DashboardPage : Page, ILogger
@@ -26,7 +40,6 @@ namespace ReStore.Views.Pages
         private readonly Logger _fileLogger = new();
         private readonly ConfigManager _configManager;
         private SystemState? _state;
-        private IStorage? _storage;
         private FileWatcher? _watcher;
         private readonly StringBuilder _logBuffer = new();
         private readonly ObservableCollection<BackupHistoryItem> _backupHistory = new();
@@ -77,12 +90,6 @@ namespace ReStore.Views.Pages
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
             _statsTimer?.Stop();
-
-            if (_watcher == null && _storage != null)
-            {
-                _storage?.Dispose();
-                _storage = null;
-            }
         }
 
         private async Task InitializeAsync()
@@ -181,13 +188,31 @@ namespace ReStore.Views.Pages
                 var items = new List<BackupHistoryItem>();
                 foreach (var kvp in _state.BackupHistory)
                 {
+                    if (IsSystemBackupGroup(kvp.Key))
+                    {
+                        continue;
+                    }
+
                     var directory = kvp.Key;
                     foreach (var backup in kvp.Value.OrderByDescending(b => b.Timestamp).Take(10))
                     {
+                        if (backup.ArtifactType != BackupArtifactType.SnapshotManifest
+                            && !backup.Path.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase)
+                            && !backup.Path.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase)
+                            && !backup.Path.EndsWith("\\HEAD", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var storageType = string.IsNullOrWhiteSpace(backup.StorageType)
+                            ? _configManager.GlobalStorageType
+                            : backup.StorageType;
+
                         items.Add(new BackupHistoryItem
                         {
                             Directory = System.IO.Path.GetFileName(directory),
                             Path = backup.Path,
+                            StorageType = storageType ?? _configManager.GlobalStorageType,
                             Timestamp = backup.Timestamp,
                             IsDiff = backup.IsDiff
                         });
@@ -382,10 +407,10 @@ namespace ReStore.Views.Pages
                         return;
                     }
 
-                    var latestBackup = _backupHistory.FirstOrDefault();
+                    var latestBackup = _backupHistory.FirstOrDefault(item => item.CanRestore);
                     if (latestBackup == null)
                     {
-                        Log("No backup selected", LogLevel.Error);
+                        Log("No restorable snapshot found in history", LogLevel.Warning);
                         return;
                     }
 
@@ -405,11 +430,12 @@ namespace ReStore.Views.Pages
                             await _state.LoadStateAsync();
                         }
 
-                        using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
+                        using var storage = await CreateStorageForHistoryItemAsync(latestBackup);
                         var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
-                        var restore = new Restore(this, storage, passwordProvider);
+                        var restore = new Restore(this, storage, passwordProvider, _state);
                         await restore.RestoreFromBackupAsync(latestBackup.Path, targetPath);
+                        await _state.SaveStateAsync();
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
                         MessageBox.Show("Restore completed successfully!", "Restore", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -418,6 +444,18 @@ namespace ReStore.Views.Pages
             }
             catch (Exception ex)
             {
+                if (_state != null)
+                {
+                    try
+                    {
+                        await _state.SaveStateAsync();
+                    }
+                    catch (Exception saveEx)
+                    {
+                        Log($"Failed to persist restore telemetry: {saveEx.Message}", LogLevel.Warning);
+                    }
+                }
+
                 Log($"Restore failed: {ex.Message}", LogLevel.Error);
                 MessageBox.Show($"Restore failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
@@ -425,16 +463,22 @@ namespace ReStore.Views.Pages
 
         private void RestoreBackupBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button && button.Tag is string backupPath)
+            if (sender is Button button && button.Tag is BackupHistoryItem backup)
             {
-                _ = RestoreSpecificBackupAsync(backupPath);
+                _ = RestoreSpecificBackupAsync(backup);
             }
         }
 
-        private async Task RestoreSpecificBackupAsync(string backupPath)
+        private async Task RestoreSpecificBackupAsync(BackupHistoryItem backup)
         {
             try
             {
+                if (!backup.CanRestore)
+                {
+                    MessageBox.Show("This history item is not a snapshot artifact and cannot be restored here.", "Restore", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
                 var dialog = new OpenFileDialog
                 {
                     ValidateNames = false,
@@ -469,11 +513,12 @@ namespace ReStore.Views.Pages
                             await _state.LoadStateAsync();
                         }
 
-                        using var storage = await _configManager.CreateStorageAsync(_configManager.GlobalStorageType);
+                        using var storage = await CreateStorageForHistoryItemAsync(backup);
                         var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
-                        var restore = new Restore(this, storage, passwordProvider);
-                        await restore.RestoreFromBackupAsync(backupPath, targetPath);
+                        var restore = new Restore(this, storage, passwordProvider, _state);
+                        await restore.RestoreFromBackupAsync(backup.Path, targetPath);
+                        await _state.SaveStateAsync();
 
                         Log($"Restore completed: {targetPath}", LogLevel.Info);
                         MessageBox.Show("Restore completed successfully!", "Restore", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -482,9 +527,37 @@ namespace ReStore.Views.Pages
             }
             catch (Exception ex)
             {
+                if (_state != null)
+                {
+                    try
+                    {
+                        await _state.SaveStateAsync();
+                    }
+                    catch (Exception saveEx)
+                    {
+                        Log($"Failed to persist restore telemetry: {saveEx.Message}", LogLevel.Warning);
+                    }
+                }
+
                 Log($"Restore failed: {ex.Message}", LogLevel.Error);
                 MessageBox.Show($"Restore failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private static bool IsSystemBackupGroup(string group)
+        {
+            return group.Equals("system_programs", StringComparison.OrdinalIgnoreCase)
+                || group.Equals("system_environment", StringComparison.OrdinalIgnoreCase)
+                || group.Equals("system_settings", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task<IStorage> CreateStorageForHistoryItemAsync(BackupHistoryItem backup)
+        {
+            var storageType = string.IsNullOrWhiteSpace(backup.StorageType)
+                ? _configManager.GlobalStorageType
+                : backup.StorageType;
+
+            return await _configManager.CreateStorageAsync(storageType);
         }
 
         private async Task SystemBackupAsync()

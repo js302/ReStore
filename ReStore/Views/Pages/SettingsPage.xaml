@@ -440,7 +440,7 @@
                                 <ComboBox x:Name="BackupTypeCombo" Grid.Row="0" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left" Margin="0,0,0,12">
                                     <ComboBoxItem Content="Full" Tag="Full"/>
                                     <ComboBoxItem Content="Incremental" Tag="Incremental"/>
-                                    <ComboBoxItem Content="Differential" Tag="Differential"/>
+                                    <ComboBoxItem Content="Chunk Snapshot" Tag="ChunkSnapshot"/>
                                 </ComboBox>
 
                                 <TextBlock Grid.Row="1" Text="Backup Interval" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
@@ -497,7 +497,7 @@
                             <TextBlock Text="Backup Type:" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
                             <TextBlock Text="• Full: Backs up all files every time" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2"/>
                             <TextBlock Text="• Incremental: Backs up only files changed since last backup" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2"/>
-                            <TextBlock Text="• Differential: Backs up files changed since last full backup" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="• Chunk Snapshot: Creates point-in-time manifests with chunk-level reuse across snapshots" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
 
                             <Button x:Name="SaveBackupConfigBtn" Content="💾 Save Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
                         </StackPanel>

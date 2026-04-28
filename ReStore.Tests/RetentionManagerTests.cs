@@ -248,4 +248,75 @@ public class RetentionManagerTests
         state.BackupHistory.Should().ContainKey(group);
         state.BackupHistory[group].Select(b => b.Path).Should().BeEquivalentTo([newest.Path, old1.Path]);
     }
+
+    [Fact]
+    public async Task ApplyGroupAsync_ShouldDeleteOnlyUnreferencedChunks_ForSnapshotManifests()
+    {
+        var loggerMock = new Mock<ILogger>();
+        var logger = loggerMock.Object;
+
+        var retention = new RetentionConfig
+        {
+            Enabled = true,
+            KeepLastPerDirectory = 1,
+            MaxAgeDays = 0
+        };
+
+        var group = "C:/Test/SnapshotGroup";
+        var now = DateTime.UtcNow;
+
+        var newest = new BackupInfo
+        {
+            Path = "snapshots/group/snapshot2.manifest.json",
+            ManifestPath = "snapshots/group/snapshot2.manifest.json",
+            Timestamp = now.AddMinutes(-1),
+            StorageType = "local",
+            ArtifactType = BackupArtifactType.SnapshotManifest,
+            ChunkIds = ["chunk-a", "chunk-b"]
+        };
+
+        var old = new BackupInfo
+        {
+            Path = "snapshots/group/snapshot1.manifest.json",
+            ManifestPath = "snapshots/group/snapshot1.manifest.json",
+            Timestamp = now.AddMinutes(-2),
+            StorageType = "local",
+            ArtifactType = BackupArtifactType.SnapshotManifest,
+            ChunkIds = ["chunk-a", "chunk-c"]
+        };
+
+        var existing = new[]
+        {
+            newest.Path,
+            old.Path,
+            SnapshotStoragePaths.GetChunkPath("chunk-a"),
+            SnapshotStoragePaths.GetChunkPath("chunk-b"),
+            SnapshotStoragePaths.GetChunkPath("chunk-c")
+        };
+
+        var storage = new FakeStorage(existing);
+
+        var configMock = new Mock<IConfigManager>();
+        configMock.Setup(c => c.Retention).Returns(retention);
+        configMock.Setup(c => c.GlobalStorageType).Returns("local");
+        configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(storage);
+
+        var state = new SystemState(logger);
+        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}.json"));
+        state.BackupHistory[group] = new List<BackupInfo> { newest, old };
+        state.RegisterChunkReferences("local", newest.ChunkIds);
+        state.RegisterChunkReferences("local", old.ChunkIds);
+
+        var manager = new RetentionManager(logger, configMock.Object, state);
+
+        await manager.ApplyGroupAsync(group);
+
+        storage.DeletedPaths.Should().Contain(old.Path);
+        storage.DeletedPaths.Should().Contain(SnapshotStoragePaths.GetChunkPath("chunk-c"));
+        storage.DeletedPaths.Should().NotContain(SnapshotStoragePaths.GetChunkPath("chunk-a"));
+        storage.DeletedPaths.Should().NotContain(SnapshotStoragePaths.GetChunkPath("chunk-b"));
+
+        state.BackupHistory[group].Should().ContainSingle();
+        state.BackupHistory[group][0].Path.Should().Be(newest.Path);
+    }
 }

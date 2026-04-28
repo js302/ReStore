@@ -88,19 +88,19 @@ SizeAnalyzer checks directory size
   ↓
 FileSelectionService filters files (exclusions)
   ↓
-SystemState.GetChangedFiles() determines which whole files to backup
+SystemState.GetChangedFiles() determines changed files
   ↓
-CompressionUtil creates zip archive
+ChunkingService builds content-defined chunks for changed files
   ↓
-[If encryption enabled]
-  ├─ EncryptionService.EncryptFileAsync()
-  └─ Upload both .enc and .enc.meta files
+Backup uploads only missing chunks (ExistsAsync checks)
   ↓
-Storage.UploadAsync() uploads to provider
+Backup uploads snapshot manifest
   ↓
-RetentionManager.ApplyRetentionPolicyAsync() prunes old backups
+Backup updates HEAD pointer (commit point)
   ↓
-SystemState.AddBackup() records backup
+RetentionManager applies manifest retention and chunk GC
+  ↓
+SystemState.AddSnapshotBackup() records snapshot and chunk references
   ↓
 SystemState.SaveStateAsync() persists state
   ↓
@@ -109,9 +109,9 @@ GUI updates statistics and history
 
 Current implementation note:
 
-- Incremental and Differential modes currently work at file-selection level.
-- ReStore uploads a fresh archive containing the selected files.
-- The standalone `DiffManager` binary diff prototype is not part of this flow.
+- User-file backups are chunk snapshots.
+- Snapshot manifests, HEAD pointers, and deduplicated chunks are the canonical artifact format.
+- `DiffManager` remains an experimental prototype and is not part of production backup or restore flow.
 
 ## Restore Flow
 
@@ -122,20 +122,37 @@ BackupsPage shows folder selection dialog
   ↓
 Restore.RestoreFromBackupAsync() called
   ↓
-Storage.DownloadAsync() downloads backup
+Restore resolves HEAD to a manifest path (if needed)
   ↓
-If encrypted (.enc extension):
-  ├─ Download .enc.meta file
-  ├─ GuiPasswordProvider.GetPasswordAsync() prompts for password
-  ├─ EncryptionService.LoadMetadataAsync() loads metadata
-  ├─ EncryptionService.DecryptFileAsync() decrypts backup
-  └─ On failure: Clear cached password, allow retry
+Storage.DownloadAsync() downloads snapshot manifest
   ↓
-CompressionUtil extracts zip archive
+Manifest root hash is validated
+  ↓
+Restore downloads referenced chunks and validates chunk hashes
+  ↓
+Restore reconstructs files and validates final file hashes
   ↓
 Files restored to target directory
   ↓
 GUI shows success message
+```
+
+## Verification Flow
+
+```
+User runs "restore verify <manifest-or-head-path>"
+  ↓
+SnapshotIntegrityVerifier resolves HEAD to manifest (if needed)
+  ↓
+Manifest is downloaded and root hash validated
+  ↓
+Each unique chunk is downloaded and validated
+  ↓
+Each file hash is recomputed from verified chunks
+  ↓
+Verification telemetry is logged (reuse, missing/invalid chunks, file validation failures)
+  ↓
+CLI exits with status 0 on success, non-zero on validation failure
 ```
 
 ## File Sharing Flow
@@ -250,12 +267,12 @@ SystemState.GetBackupGroups() returns all backup groups
 For each group:
   ├─ Get backups sorted by timestamp (newest first)
   ├─ SelectBackupsToDelete() applies retention rules:
-  │   ├─ Keep newest backup (always)
-  │   ├─ Keep last N backups (KeepLastPerDirectory)
-  │   └─ Remove backups older than MaxAgeDays
-  ├─ Delete selected backups from storage
-  │   ├─ Delete .enc file
-  │   └─ Delete .enc.meta file (if encrypted)
+  │   ├─ Keep newest snapshot (always)
+  │   ├─ Keep last N snapshots (KeepLastPerDirectory)
+  │   └─ Remove snapshots older than MaxAgeDays
+  ├─ Delete selected manifests from storage
+  ├─ Unregister deleted manifests from chunk reference counts
+  └─ Delete only chunks that become unreferenced
   └─ Remove from SystemState.BackupHistory
   ↓
 SystemState.SaveStateAsync() persists updated state

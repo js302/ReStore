@@ -61,10 +61,11 @@ public class IntegrationTests : IDisposable
         configMock.Setup(c => c.BackupType).Returns(BackupType.Full);
         configMock.Setup(c => c.WatchDirectories).Returns(new List<WatchDirectoryConfig>());
         configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
+        configMock.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig());
 
         var storage = new LocalStorage(_loggerMock.Object);
         await storage.InitializeAsync(new Dictionary<string, string> { { "path", _backupDir } });
-        
+
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
             .ReturnsAsync(storage);
 
@@ -80,22 +81,22 @@ public class IntegrationTests : IDisposable
 
         await backup.BackupDirectoryAsync(_sourceDir);
 
-        var backups = Directory.GetFiles(_backupDir, "*.zip", SearchOption.AllDirectories);
-        backups.Should().HaveCount(1);
-        var backupFile = backups[0];
+        var manifests = Directory.GetFiles(_backupDir, "*.manifest.json", SearchOption.AllDirectories);
+        manifests.Should().HaveCount(1);
 
-        var relativeBackupPath = Path.GetRelativePath(_backupDir, backupFile).Replace('\\', '/');
+        var relativeBackupPath = state.GetPreviousBackupPath(_sourceDir);
+        relativeBackupPath.Should().NotBeNullOrWhiteSpace();
 
         var restore = new Restore(
             _loggerMock.Object,
             storage
         );
 
-        await restore.RestoreFromBackupAsync(relativeBackupPath, _restoreDir);
+        await restore.RestoreFromBackupAsync(relativeBackupPath!, _restoreDir);
 
         File.Exists(Path.Combine(_restoreDir, "file1.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_restoreDir, "subdir", "file2.txt")).Should().BeTrue();
-        
+
         (await File.ReadAllTextAsync(Path.Combine(_restoreDir, "file1.txt"))).Should().Be("Content 1");
         (await File.ReadAllTextAsync(Path.Combine(_restoreDir, "subdir", "file2.txt"))).Should().Be("Content 2");
     }
@@ -117,10 +118,11 @@ public class IntegrationTests : IDisposable
         configMock.Setup(c => c.BackupType).Returns(BackupType.Incremental);
         configMock.Setup(c => c.WatchDirectories).Returns(new List<WatchDirectoryConfig>());
         configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
+        configMock.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig());
 
         var storage = new LocalStorage(_loggerMock.Object);
         await storage.InitializeAsync(new Dictionary<string, string> { { "path", _backupDir } });
-        
+
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
             .ReturnsAsync(storage);
 
@@ -135,19 +137,19 @@ public class IntegrationTests : IDisposable
         );
 
         await backup.BackupDirectoryAsync(_sourceDir);
-        var initialBackups = Directory.GetFiles(_backupDir, "*.zip", SearchOption.AllDirectories);
+        var initialBackups = Directory.GetFiles(_backupDir, "*.manifest.json", SearchOption.AllDirectories);
         initialBackups.Should().HaveCount(1);
 
         await Task.Delay(1100);
         await backup.BackupDirectoryAsync(_sourceDir);
-        var secondBackups = Directory.GetFiles(_backupDir, "*.zip", SearchOption.AllDirectories);
+        var secondBackups = Directory.GetFiles(_backupDir, "*.manifest.json", SearchOption.AllDirectories);
         secondBackups.Should().HaveCount(1, "No new backup should be created if nothing changed");
 
         await Task.Delay(1100);
         await File.WriteAllTextAsync(file1, "Content 1 Modified");
         await backup.BackupDirectoryAsync(_sourceDir);
-        
-        var finalBackups = Directory.GetFiles(_backupDir, "*.zip", SearchOption.AllDirectories);
+
+        var finalBackups = Directory.GetFiles(_backupDir, "*.manifest.json", SearchOption.AllDirectories);
         finalBackups.Should().HaveCount(2, "A new backup should be created for the changed file");
     }
 
@@ -165,8 +167,8 @@ public class IntegrationTests : IDisposable
             .Returns(new RetentionConfig { Enabled = false, KeepLastPerDirectory = 10, MaxAgeDays = 30 });
         configMock.Setup(c => c.GlobalStorageType).Returns("local");
         configMock.Setup(c => c.SizeThresholdMB).Returns(100);
-        configMock.Setup(c => c.Encryption).Returns(new EncryptionConfig 
-        { 
+        configMock.Setup(c => c.Encryption).Returns(new EncryptionConfig
+        {
             Enabled = true,
             Salt = Convert.ToBase64String(salt),
             KeyDerivationIterations = 1000
@@ -176,13 +178,14 @@ public class IntegrationTests : IDisposable
         configMock.Setup(c => c.BackupType).Returns(BackupType.Full);
         configMock.Setup(c => c.WatchDirectories).Returns(new List<WatchDirectoryConfig>());
         configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
+        configMock.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig());
 
         var passwordMock = new Mock<IPasswordProvider>();
         passwordMock.Setup(p => p.GetPasswordAsync()).ReturnsAsync(password);
 
         var storage = new LocalStorage(_loggerMock.Object);
         await storage.InitializeAsync(new Dictionary<string, string> { { "path", _backupDir } });
-        
+
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
             .ReturnsAsync(storage);
 
@@ -199,12 +202,14 @@ public class IntegrationTests : IDisposable
 
         await backup.BackupDirectoryAsync(_sourceDir);
 
-        var encryptedFiles = Directory.GetFiles(_backupDir, "*.enc", SearchOption.AllDirectories);
-        encryptedFiles.Should().HaveCount(1);
-        var metaFiles = Directory.GetFiles(_backupDir, "*.meta", SearchOption.AllDirectories);
-        metaFiles.Should().HaveCount(1);
+        var manifests = Directory.GetFiles(_backupDir, "*.manifest.json", SearchOption.AllDirectories);
+        manifests.Should().HaveCount(1);
 
-        var relativeBackupPath = $"backups/{Path.GetFileName(_sourceDir)}/{Path.GetFileName(encryptedFiles[0])}";
+        var storedChunks = Directory.GetFiles(_backupDir, "*.chunk", SearchOption.AllDirectories);
+        storedChunks.Should().NotBeEmpty();
+
+        var relativeBackupPath = state.GetPreviousBackupPath(_sourceDir);
+        relativeBackupPath.Should().NotBeNullOrWhiteSpace();
 
         var restore = new Restore(
             _loggerMock.Object,
@@ -212,7 +217,7 @@ public class IntegrationTests : IDisposable
             passwordMock.Object
         );
 
-        await restore.RestoreFromBackupAsync(relativeBackupPath, _restoreDir);
+        await restore.RestoreFromBackupAsync(relativeBackupPath!, _restoreDir);
 
         var restoredFile = Path.Combine(_restoreDir, "secret.txt");
         File.Exists(restoredFile).Should().BeTrue();

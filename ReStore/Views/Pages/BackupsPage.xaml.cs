@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -17,39 +18,50 @@ namespace ReStore.Views.Pages
         private bool _isSelected;
         private static readonly Brush _recentBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
         private static readonly Brush _archivedBrush = new SolidColorBrush(Color.FromRgb(107, 114, 128));
-        private static string? _storageBasePath;
 
         public string Directory { get; set; } = "";
+        public string Group { get; set; } = "";
         public string Path { get; set; } = "";
+        public string StorageType { get; set; } = "";
+        public string? StorageBasePath { get; set; }
         public DateTime Timestamp { get; set; }
         public bool IsDiff { get; set; }
         public long SizeBytes { get; set; }
+        public BackupArtifactType ArtifactType { get; set; } = BackupArtifactType.Archive;
+        public List<string> ChunkIds { get; set; } = [];
+        public string? ChunkStorageNamespace { get; set; }
 
-        public string TypeLabel => IsDiff ? "Differential" : "Full";
+        public string TypeLabel => CanVerify ? "Snapshot" : IsDiff ? "Differential" : "Full";
         public string SizeLabel => FormatBytes(SizeBytes);
-        public string StatusText => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? "Recent" : "Archived";
-        public Brush StatusColor => DateTime.UtcNow - Timestamp < TimeSpan.FromDays(7) ? _recentBrush : _archivedBrush;
+        public string TimestampLabel => $"{Timestamp.ToUniversalTime():MMM dd, yyyy HH:mm:ss} UTC";
+        public string StatusText => DateTime.UtcNow - Timestamp.ToUniversalTime() < TimeSpan.FromDays(7) ? "Recent" : "Archived";
+        public Brush StatusColor => DateTime.UtcNow - Timestamp.ToUniversalTime() < TimeSpan.FromDays(7) ? _recentBrush : _archivedBrush;
+        public bool CanVerify => IsSnapshotArtifactPath(Path);
+        public bool CanRestore => IsSnapshotArtifactPath(Path);
+        public bool CanOpenLocation => (IsLocalStorageType(StorageType) || System.IO.Path.IsPathRooted(Path))
+            && TryResolveStoragePath(Path, StorageBasePath, out var resolvedPath)
+            && (File.Exists(resolvedPath) || System.IO.Directory.Exists(resolvedPath));
+        public Visibility OpenLocationVisibility => CanOpenLocation ? Visibility.Visible : Visibility.Collapsed;
+        public string? ResolvedStoragePath => TryResolveStoragePath(Path, StorageBasePath, out var resolvedPath)
+            ? resolvedPath
+            : null;
 
         public string DisplayPath
         {
             get
             {
-                if (string.IsNullOrEmpty(_storageBasePath) || string.IsNullOrEmpty(Path))
-                    return Path;
-
-                if (Path.StartsWith("./") || Path.StartsWith(".\\"))
+                if (!IsLocalStorageType(StorageType))
                 {
-                    var relativePath = Path.Substring(2);
-                    return System.IO.Path.Combine(_storageBasePath, relativePath);
+                    return Path;
                 }
 
-                return System.IO.Path.Combine(_storageBasePath, Path);
-            }
-        }
+                if (TryResolveStoragePath(Path, StorageBasePath, out var resolvedPath))
+                {
+                    return resolvedPath;
+                }
 
-        public static void SetStorageBasePath(string? basePath)
-        {
-            _storageBasePath = basePath;
+                return Path;
+            }
         }
 
         public bool IsSelected
@@ -80,6 +92,57 @@ namespace ReStore.Views.Pages
             }
             return $"{size:0.##} {sizes[order]}";
         }
+
+        private static bool IsSnapshotArtifactPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            return path.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("\\HEAD", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsLocalStorageType(string? storageType)
+        {
+            return string.Equals(storageType, "local", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryResolveStoragePath(string? artifactPath, string? storageBasePath, out string resolvedPath)
+        {
+            resolvedPath = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(artifactPath))
+            {
+                return false;
+            }
+
+            if (System.IO.Path.IsPathRooted(artifactPath))
+            {
+                resolvedPath = System.IO.Path.GetFullPath(Environment.ExpandEnvironmentVariables(artifactPath));
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(storageBasePath))
+            {
+                return false;
+            }
+
+            var relativePath = artifactPath;
+            if (relativePath.StartsWith("./", StringComparison.Ordinal) || relativePath.StartsWith(".\\", StringComparison.Ordinal))
+            {
+                relativePath = relativePath[2..];
+            }
+
+            var normalizedRelativePath = relativePath
+                .Replace(System.IO.Path.AltDirectorySeparatorChar, System.IO.Path.DirectorySeparatorChar)
+                .TrimStart(System.IO.Path.DirectorySeparatorChar);
+
+            resolvedPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(storageBasePath, normalizedRelativePath));
+            return true;
+        }
     }
 
     public partial class BackupsPage : Page
@@ -87,7 +150,6 @@ namespace ReStore.Views.Pages
         private readonly ConfigManager _configManager;
         private readonly Logger _logger = new();
         private SystemState? _state;
-        private IStorage? _storage;
         private readonly ObservableCollection<BackupItem> _backups = [];
         private List<BackupItem> _allBackups = [];
 
@@ -114,8 +176,6 @@ namespace ReStore.Views.Pages
 
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
-            _storage?.Dispose();
-            _storage = null;
         }
 
         private async Task InitializeAsync()
@@ -125,15 +185,6 @@ namespace ReStore.Views.Pages
                 await _configManager.LoadAsync();
                 _state = new SystemState(_logger);
                 await _state.LoadStateAsync();
-
-                var appSettings = AppSettings.Load();
-                var remote = string.IsNullOrWhiteSpace(appSettings.DefaultStorage) ? "local" : appSettings.DefaultStorage;
-                _storage = await _configManager.CreateStorageAsync(remote);
-
-                if (_configManager.StorageSources.TryGetValue(remote, out var storageConfig))
-                {
-                    BackupItem.SetStorageBasePath(storageConfig.Path);
-                }
 
                 await LoadBackupsAsync();
             }
@@ -170,16 +221,31 @@ namespace ReStore.Views.Pages
 
                 foreach (var kvp in _state.BackupHistory)
                 {
+                    if (IsSystemBackupGroup(kvp.Key))
+                    {
+                        continue;
+                    }
+
                     var directory = kvp.Key;
                     foreach (var backup in kvp.Value)
                     {
+                        var storageType = string.IsNullOrWhiteSpace(backup.StorageType)
+                            ? _configManager.GlobalStorageType
+                            : backup.StorageType;
+
                         items.Add(new BackupItem
                         {
                             Directory = Path.GetFileName(directory),
+                            Group = directory,
                             Path = backup.Path,
+                            StorageType = storageType ?? string.Empty,
+                            StorageBasePath = ResolveStorageBasePath(storageType),
                             Timestamp = backup.Timestamp,
                             IsDiff = backup.IsDiff,
                             SizeBytes = backup.SizeBytes,
+                            ArtifactType = backup.ArtifactType,
+                            ChunkIds = [.. backup.ChunkIds],
+                            ChunkStorageNamespace = backup.ChunkStorageNamespace,
                             IsSelected = false
                         });
                     }
@@ -288,10 +354,36 @@ namespace ReStore.Views.Pages
             }
         }
 
+        private void VerifyBackup_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is BackupItem backup)
+            {
+                _ = VerifySingleBackupAsync(backup);
+            }
+        }
+
+        private void OpenBackupLocation_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is BackupItem backup)
+            {
+                OpenBackupLocation(backup);
+            }
+        }
+
         private async Task RestoreSingleBackupAsync(BackupItem backup)
         {
             try
             {
+                if (!backup.CanRestore)
+                {
+                    MessageBox.Show(
+                        "Restore is only available for snapshot manifest or HEAD artifacts on this page.",
+                        "Restore Not Available",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
                 var dialog = new OpenFileDialog
                 {
                     ValidateNames = false,
@@ -307,19 +399,19 @@ namespace ReStore.Views.Pages
                     if (string.IsNullOrEmpty(targetPath)) return;
 
                     var result = MessageBox.Show(
-                        $"Restore backup:\n\n{backup.Directory}\n{backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n{backup.TypeLabel}\n\nTo: {targetPath}",
+                        $"Restore backup:\n\n{backup.Directory}\n{backup.TimestampLabel}\n{backup.TypeLabel}\n\nTo: {targetPath}",
                         "Confirm Restore",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Question);
 
                     if (result == MessageBoxResult.Yes)
                     {
-                        if (_storage == null) return;
-
+                        using var storage = await CreateStorageForBackupAsync(backup);
                         var passwordProvider = App.GlobalPasswordProvider ?? new GuiPasswordProvider();
                         passwordProvider.SetEncryptionMode(false);
-                        var restore = new Restore(_logger, _storage, passwordProvider);
+                        var restore = new Restore(_logger, storage, passwordProvider, _state);
                         await restore.RestoreFromBackupAsync(backup.Path, targetPath);
+                        await SaveStateSafelyAsync("restore telemetry");
 
                         MessageBox.Show("Restore completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
@@ -327,7 +419,73 @@ namespace ReStore.Views.Pages
             }
             catch (Exception ex)
             {
+                await SaveStateSafelyAsync("restore telemetry");
                 MessageBox.Show($"Restore failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task VerifySingleBackupAsync(BackupItem backup)
+        {
+            if (!backup.CanVerify)
+            {
+                MessageBox.Show(
+                    "Verification is only available for snapshot manifests or HEAD references.",
+                    "Verification Not Available",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var confirmation = MessageBox.Show(
+                $"Verify snapshot integrity?\n\n{backup.Directory}\n{backup.TimestampLabel}\n\nPath: {backup.Path}",
+                "Confirm Verification",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (confirmation != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                using var storage = await CreateStorageForBackupAsync(backup);
+                var passwordProvider = App.GlobalPasswordProvider ?? new GuiPasswordProvider();
+                passwordProvider.SetEncryptionMode(false);
+
+                var verifier = new SnapshotIntegrityVerifier(_logger, storage, passwordProvider, _state);
+                var verificationResult = await verifier.VerifyAsync(backup.Path);
+                await SaveStateSafelyAsync("verification telemetry");
+
+                if (verificationResult.IsValid)
+                {
+                    MessageBox.Show(
+                        $"Verification passed.\n\nSnapshot: {verificationResult.SnapshotId}\nFiles: {verificationResult.FileCount}\nUnique chunks: {verificationResult.UniqueChunks}",
+                        "Verification Passed",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                var previewErrors = string.Join(
+                    "\n",
+                    verificationResult.Errors
+                        .Take(5)
+                        .Select((error, index) => $"{index + 1}. {error}"));
+                var remainingErrors = verificationResult.Errors.Count > 5
+                    ? $"\n...and {verificationResult.Errors.Count - 5} more issue(s)."
+                    : string.Empty;
+
+                MessageBox.Show(
+                    $"Verification failed with {verificationResult.Errors.Count} issue(s).\n\n{previewErrors}{remainingErrors}",
+                    "Verification Failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                await SaveStateSafelyAsync("verification telemetry");
+                MessageBox.Show($"Verification failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -362,7 +520,7 @@ namespace ReStore.Views.Pages
         private async Task DeleteSingleBackupAsync(BackupItem backup)
         {
             var result = MessageBox.Show(
-                $"Delete this backup?\n\n{backup.Directory}\n{backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\nThis action cannot be undone.",
+                $"Delete this backup?\n\n{backup.Directory}\n{backup.TimestampLabel}\n\nThis action cannot be undone.",
                 "Confirm Delete",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
@@ -371,34 +529,8 @@ namespace ReStore.Views.Pages
             {
                 try
                 {
-                    if (_storage != null)
-                    {
-                        await _storage.DeleteAsync(backup.Path);
-
-                        // If encrypted, also delete the metadata file
-                        if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var metadataPath = backup.Path + ".meta";
-                            try
-                            {
-                                await _storage.DeleteAsync(metadataPath);
-                            }
-                            catch (Exception metaEx)
-                            {
-                                _logger.Log($"Warning: Failed to delete metadata file: {metaEx.Message}", LogLevel.Warning);
-                            }
-                        }
-                    }
-
-                    if (_state != null)
-                    {
-                        var groups = _state.GetBackupGroups();
-                        foreach (var group in groups)
-                        {
-                            _state.RemoveBackupsFromGroup(group, [backup.Path]);
-                        }
-                        await _state.SaveStateAsync();
-                    }
+                    await DeleteBackupArtifactAsync(backup);
+                    await SaveStateSafelyAsync("backup deletion");
 
                     _allBackups.Remove(backup);
                     _backups.Remove(backup);
@@ -433,33 +565,7 @@ namespace ReStore.Views.Pages
                 {
                     try
                     {
-                        if (_storage != null)
-                        {
-                            await _storage.DeleteAsync(backup.Path);
-
-                            // If encrypted, also delete the metadata file
-                            if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var metadataPath = backup.Path + ".meta";
-                                try
-                                {
-                                    await _storage.DeleteAsync(metadataPath);
-                                }
-                                catch
-                                {
-                                    // Silently ignore metadata deletion errors in batch operations
-                                }
-                            }
-                        }
-
-                        if (_state != null)
-                        {
-                            var groups = _state.GetBackupGroups();
-                            foreach (var group in groups)
-                            {
-                                _state.RemoveBackupsFromGroup(group, [backup.Path]);
-                            }
-                        }
+                        await DeleteBackupArtifactAsync(backup);
 
                         _allBackups.Remove(backup);
                         _backups.Remove(backup);
@@ -471,10 +577,7 @@ namespace ReStore.Views.Pages
                     }
                 }
 
-                if (_state != null)
-                {
-                    await _state.SaveStateAsync();
-                }
+                await SaveStateSafelyAsync("backup deletion");
 
                 UpdateStats();
 
@@ -495,7 +598,7 @@ namespace ReStore.Views.Pages
             {
                 var details = $"Directory: {backup.Directory}\n\n" +
                              $"Path: {backup.DisplayPath}\n\n" +
-                             $"Timestamp: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\n" +
+                             $"Timestamp: {backup.TimestampLabel}\n\n" +
                              $"Type: {backup.TypeLabel}\n\n" +
                              $"Size: {backup.SizeLabel}\n\n" +
                              $"Status: {backup.StatusText}";
@@ -516,6 +619,167 @@ namespace ReStore.Views.Pages
                 size /= 1024;
             }
             return $"{size:0.##} {sizes[order]}";
+        }
+
+        private async Task SaveStateSafelyAsync(string context)
+        {
+            if (_state == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await _state.SaveStateAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.Log($"Failed to persist {context}: {ex.Message}", LogLevel.Warning);
+            }
+        }
+
+        private static bool IsSystemBackupGroup(string group)
+        {
+            return group.Equals("system_programs", StringComparison.OrdinalIgnoreCase)
+                || group.Equals("system_environment", StringComparison.OrdinalIgnoreCase)
+                || group.Equals("system_settings", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task<IStorage> CreateStorageForBackupAsync(BackupItem backup)
+        {
+            var storageType = string.IsNullOrWhiteSpace(backup.StorageType)
+                ? _configManager.GlobalStorageType
+                : backup.StorageType;
+
+            return await _configManager.CreateStorageAsync(storageType);
+        }
+
+        private async Task DeleteBackupArtifactAsync(BackupItem backup)
+        {
+            using var storage = await CreateStorageForBackupAsync(backup);
+
+            if (backup.ArtifactType == BackupArtifactType.SnapshotManifest)
+            {
+                await DeleteSnapshotManifestBackupAsync(storage, backup);
+            }
+            else
+            {
+                await DeleteArchiveBackupAsync(storage, backup.Path);
+            }
+
+            _state?.RemoveBackupsFromGroup(backup.Group, [backup.Path]);
+        }
+
+        private async Task DeleteSnapshotManifestBackupAsync(IStorage storage, BackupItem backup)
+        {
+            var manifestExists = await storage.ExistsAsync(backup.Path);
+            if (manifestExists)
+            {
+                await storage.DeleteAsync(backup.Path);
+            }
+
+            if (_state == null)
+            {
+                return;
+            }
+
+            var unreferencedChunkIds = _state.UnregisterChunkReferences(
+                backup.StorageType,
+                backup.ChunkIds,
+                backup.ChunkStorageNamespace);
+
+            foreach (var chunkId in unreferencedChunkIds)
+            {
+                string chunkPath;
+                try
+                {
+                    chunkPath = SnapshotStoragePaths.GetChunkPath(chunkId, backup.ChunkStorageNamespace);
+                }
+                catch (ArgumentException ex)
+                {
+                    _logger.Log($"Invalid chunk metadata for '{chunkId}': {ex.Message}", LogLevel.Warning);
+                    continue;
+                }
+
+                try
+                {
+                    if (await storage.ExistsAsync(chunkPath))
+                    {
+                        await storage.DeleteAsync(chunkPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log($"Failed deleting chunk '{chunkPath}': {ex.Message}", LogLevel.Warning);
+                }
+            }
+        }
+
+        private static async Task DeleteArchiveBackupAsync(IStorage storage, string backupPath)
+        {
+            if (await storage.ExistsAsync(backupPath))
+            {
+                await storage.DeleteAsync(backupPath);
+            }
+
+            if (!backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var metadataPath = backupPath + ".meta";
+            if (await storage.ExistsAsync(metadataPath))
+            {
+                await storage.DeleteAsync(metadataPath);
+            }
+        }
+
+        private string? ResolveStorageBasePath(string? storageType)
+        {
+            if (string.IsNullOrWhiteSpace(storageType))
+            {
+                return null;
+            }
+
+            if (!_configManager.StorageSources.TryGetValue(storageType, out var storageConfig)
+                || string.IsNullOrWhiteSpace(storageConfig.Path))
+            {
+                return null;
+            }
+
+            return Path.GetFullPath(Environment.ExpandEnvironmentVariables(storageConfig.Path));
+        }
+
+        private static void OpenBackupLocation(BackupItem backup)
+        {
+            var resolvedPath = backup.ResolvedStoragePath;
+            if (!backup.CanOpenLocation || string.IsNullOrWhiteSpace(resolvedPath))
+            {
+                MessageBox.Show(
+                    "This action is available only for local backups with existing files.",
+                    "Open Location",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                var arguments = Directory.Exists(resolvedPath)
+                    ? $"\"{resolvedPath}\""
+                    : $"/select,\"{resolvedPath}\"";
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = arguments,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open location: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 }

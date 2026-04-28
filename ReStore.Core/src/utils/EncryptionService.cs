@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 
 namespace ReStore.Core.src.utils;
 
@@ -36,6 +37,73 @@ public class EncryptionService
             HashAlgorithmName.SHA256
         );
         return pbkdf2.GetBytes(KEY_SIZE_BYTES);
+    }
+
+    public static byte[] EncryptChunkDeterministic(byte[] plaintext, byte[] masterKey, string chunkId)
+    {
+        ArgumentNullException.ThrowIfNull(plaintext);
+
+        if (masterKey == null || masterKey.Length == 0)
+        {
+            throw new ArgumentException("Master key cannot be null or empty", nameof(masterKey));
+        }
+
+        if (string.IsNullOrWhiteSpace(chunkId))
+        {
+            throw new ArgumentException("Chunk id cannot be null or empty", nameof(chunkId));
+        }
+
+        var chunkKey = DeriveDeterministicBytes(masterKey, chunkId, "chunk-key", KEY_SIZE_BYTES);
+        var chunkIv = DeriveDeterministicBytes(masterKey, chunkId, "chunk-iv", IV_SIZE_BYTES);
+        var additionalData = Encoding.UTF8.GetBytes(chunkId);
+
+        var ciphertext = new byte[plaintext.Length];
+        var tag = new byte[TAG_SIZE_BYTES];
+
+        using var aesGcm = new AesGcm(chunkKey, TAG_SIZE_BYTES);
+        aesGcm.Encrypt(chunkIv, plaintext, ciphertext, tag, additionalData);
+
+        var encryptedPayload = new byte[TAG_SIZE_BYTES + ciphertext.Length];
+        Buffer.BlockCopy(tag, 0, encryptedPayload, 0, TAG_SIZE_BYTES);
+        Buffer.BlockCopy(ciphertext, 0, encryptedPayload, TAG_SIZE_BYTES, ciphertext.Length);
+
+        return encryptedPayload;
+    }
+
+    public static byte[] DecryptChunkDeterministic(byte[] encryptedPayload, byte[] masterKey, string chunkId)
+    {
+        ArgumentNullException.ThrowIfNull(encryptedPayload);
+
+        if (encryptedPayload.Length < TAG_SIZE_BYTES)
+        {
+            throw new InvalidOperationException("Invalid deterministic chunk payload: authentication tag is missing");
+        }
+
+        if (masterKey == null || masterKey.Length == 0)
+        {
+            throw new ArgumentException("Master key cannot be null or empty", nameof(masterKey));
+        }
+
+        if (string.IsNullOrWhiteSpace(chunkId))
+        {
+            throw new ArgumentException("Chunk id cannot be null or empty", nameof(chunkId));
+        }
+
+        var chunkKey = DeriveDeterministicBytes(masterKey, chunkId, "chunk-key", KEY_SIZE_BYTES);
+        var chunkIv = DeriveDeterministicBytes(masterKey, chunkId, "chunk-iv", IV_SIZE_BYTES);
+        var additionalData = Encoding.UTF8.GetBytes(chunkId);
+
+        var tag = new byte[TAG_SIZE_BYTES];
+        var ciphertext = new byte[encryptedPayload.Length - TAG_SIZE_BYTES];
+
+        Buffer.BlockCopy(encryptedPayload, 0, tag, 0, TAG_SIZE_BYTES);
+        Buffer.BlockCopy(encryptedPayload, TAG_SIZE_BYTES, ciphertext, 0, ciphertext.Length);
+
+        var plaintext = new byte[ciphertext.Length];
+        using var aesGcm = new AesGcm(chunkKey, TAG_SIZE_BYTES);
+        aesGcm.Decrypt(chunkIv, ciphertext, tag, plaintext, additionalData);
+
+        return plaintext;
     }
 
     public async Task<EncryptionMetadata> EncryptFileAsync(string inputPath, string outputPath, string password, byte[]? salt = null, int iterations = DEFAULT_ITERATIONS)
@@ -230,6 +298,20 @@ public class EncryptionService
         Buffer.BlockCopy(encryptedDEK, 0, result, IV_SIZE_BYTES + TAG_SIZE_BYTES, encryptedDEK.Length);
 
         return result;
+    }
+
+    private static byte[] DeriveDeterministicBytes(byte[] masterKey, string chunkId, string label, int outputLength)
+    {
+        using var hmac = new HMACSHA256(masterKey);
+        var source = Encoding.UTF8.GetBytes($"{label}:{chunkId}");
+        var digest = hmac.ComputeHash(source);
+
+        if (outputLength > digest.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(outputLength), "Output length exceeds digest size");
+        }
+
+        return digest[..outputLength];
     }
 
     private static byte[] DecryptDEK(byte[] encryptedData, byte[] kek)

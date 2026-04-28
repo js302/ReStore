@@ -50,12 +50,12 @@ public class FuzzTests : IDisposable
         {
             var fileName = _faker.System.FileName().Replace(":", "").Replace("?", "").Replace("*", "");
             var subDir = _faker.Random.Bool() ? _faker.Random.AlphaNumeric(5) : "";
-            
+
             var dirPath = Path.Combine(_sourceDir, subDir);
             Directory.CreateDirectory(dirPath);
-            
+
             var filePath = Path.Combine(dirPath, fileName);
-            
+
             var content = _faker.Random.String2(_faker.Random.Int(0, 1000));
             await File.WriteAllTextAsync(filePath, content);
             generatedFiles.Add(filePath);
@@ -72,10 +72,11 @@ public class FuzzTests : IDisposable
         configMock.Setup(c => c.BackupType).Returns(BackupType.Full);
         configMock.Setup(c => c.WatchDirectories).Returns(new List<WatchDirectoryConfig>());
         configMock.Setup(c => c.MaxFileSizeMB).Returns(100);
+        configMock.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig());
 
         var storage = new LocalStorage(_loggerMock.Object);
         await storage.InitializeAsync(new Dictionary<string, string> { { "path", _backupDir } });
-        
+
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
             .ReturnsAsync(storage);
 
@@ -92,8 +93,8 @@ public class FuzzTests : IDisposable
         var exception = await Record.ExceptionAsync(() => backup.BackupDirectoryAsync(_sourceDir));
 
         exception.Should().BeNull();
-        
-        var backups = Directory.GetFiles(_backupDir, "*.zip", SearchOption.AllDirectories);
-        backups.Should().NotBeEmpty();
+
+        var manifests = Directory.GetFiles(_backupDir, "*.manifest.json", SearchOption.AllDirectories);
+        manifests.Should().NotBeEmpty();
     }
 }

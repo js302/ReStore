@@ -238,7 +238,7 @@ public class SystemStateTests : IDisposable
     }
 
     [Fact]
-    public async Task GetChangedFiles_ShouldUseLastFullBackupFromRequestedGroup_ForDifferentialBackups()
+    public async Task GetChangedFiles_ShouldUseChunkSnapshotChangeDetection()
     {
         var state = new SystemState(_loggerMock.Object);
         var fileA = Path.Combine(_testDir, "group-a.txt");
@@ -247,48 +247,137 @@ public class SystemStateTests : IDisposable
         await File.WriteAllTextAsync(fileA, "A");
         await File.WriteAllTextAsync(fileB, "B");
 
-        var now = DateTime.UtcNow;
-        state.BackupHistory["group-a"] =
-        [
-            new BackupInfo
-            {
-                Path = "backups/group-a-full.zip",
-                Timestamp = now.AddHours(-1),
-                IsDiff = false
-            }
-        ];
-        state.BackupHistory["group-b"] =
-        [
-            new BackupInfo
-            {
-                Path = "backups/group-b-full.zip",
-                Timestamp = now.AddDays(-3),
-                IsDiff = false
-            }
-        ];
+        var fileAInfo = new FileInfo(fileA);
+        var fileBInfo = new FileInfo(fileB);
 
-        File.SetLastWriteTimeUtc(fileA, now.AddHours(-2));
-        File.SetLastWriteTimeUtc(fileB, now.AddHours(-2));
         state.FileMetadata[fileA] = new FileMetadata
         {
             FilePath = fileA,
-            Size = new FileInfo(fileA).Length,
-            LastModified = File.GetLastWriteTimeUtc(fileA),
-            Hash = "hash-a"
+            Size = fileAInfo.Length,
+            LastModified = fileAInfo.LastWriteTimeUtc,
+            Hash = await FileHasher.ComputeHashAsync(fileA)
         };
         state.FileMetadata[fileB] = new FileMetadata
         {
             FilePath = fileB,
-            Size = new FileInfo(fileB).Length,
-            LastModified = File.GetLastWriteTimeUtc(fileB),
-            Hash = "hash-b"
+            Size = fileBInfo.Length,
+            LastModified = fileBInfo.LastWriteTimeUtc.AddMinutes(-5),
+            Hash = "outdated-hash"
         };
 
-        var changedFilesForGroupA = state.GetChangedFiles([fileA], BackupType.Differential, "group-a");
-        var changedFilesForGroupB = state.GetChangedFiles([fileB], BackupType.Differential, "group-b");
+        var changedFilesForGroupA = state.GetChangedFiles([fileA], BackupType.ChunkSnapshot, "group-a");
+        var changedFilesForGroupB = state.GetChangedFiles([fileB], BackupType.ChunkSnapshot, "group-b");
 
         changedFilesForGroupA.Should().BeEmpty();
         changedFilesForGroupB.Should().Contain(fileB);
+    }
+
+    [Fact]
+    public void AddSnapshotBackup_AndUnregisterChunkReferences_ShouldTrackReferenceCounts()
+    {
+        var state = new SystemState(_loggerMock.Object);
+
+        state.AddSnapshotBackup("group", "snapshot-1", "snapshots/group/s1.manifest.json", "local", ["chunk-a", "chunk-b"]);
+        state.AddSnapshotBackup("group", "snapshot-2", "snapshots/group/s2.manifest.json", "local", ["chunk-a"]);
+
+        var firstUnregister = state.UnregisterChunkReferences("local", ["chunk-a"]);
+        firstUnregister.Should().BeEmpty("chunk-a is still referenced by snapshot-1");
+
+        var secondUnregister = state.UnregisterChunkReferences("local", ["chunk-a"]);
+        secondUnregister.Should().ContainSingle().Which.Should().Be("chunk-a");
+
+        var thirdUnregister = state.UnregisterChunkReferences("local", ["chunk-b"]);
+        thirdUnregister.Should().ContainSingle().Which.Should().Be("chunk-b");
+    }
+
+    [Fact]
+    public void RecordRestoreTelemetry_ShouldAggregateFailureCategoriesCaseInsensitively()
+    {
+        var state = new SystemState(_loggerMock.Object);
+
+        state.RecordRestoreTelemetry(
+            success: false,
+            filesExpected: 2,
+            filesRestored: 1,
+            chunkReferencesExpected: 5,
+            chunkReferencesProcessed: 3,
+            chunkDownloads: 2,
+            chunkCacheHits: 1,
+            failureCategory: "unexpected-error",
+            validationFailures: 1);
+
+        state.RecordRestoreTelemetry(
+            success: false,
+            filesExpected: 1,
+            filesRestored: 0,
+            chunkReferencesExpected: 2,
+            chunkReferencesProcessed: 0,
+            chunkDownloads: 0,
+            chunkCacheHits: 0,
+            failureCategory: "Unexpected-Error",
+            validationFailures: 1);
+
+        state.Telemetry.Restore.AttemptCount.Should().Be(2);
+        state.Telemetry.Restore.ValidationFailureCount.Should().Be(2);
+        state.Telemetry.Restore.FailureCategoryCounts.TryGetValue("unexpected-error", out var count).Should().BeTrue();
+        count.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task SaveAndLoadState_ShouldPersistSnapshotTelemetryAggregates()
+    {
+        var state = new SystemState(_loggerMock.Object);
+        state.SetStateFilePath(_stateFile);
+
+        state.RecordSnapshotBackupTelemetry(
+            fileCount: 3,
+            chunkReferences: 9,
+            uniqueChunks: 7,
+            uploadedChunks: 4,
+            uniqueReusedChunks: 3,
+            storageHitChunks: 2,
+            candidateChunks: 6);
+
+        state.RecordRestoreTelemetry(
+            success: true,
+            filesExpected: 3,
+            filesRestored: 3,
+            chunkReferencesExpected: 9,
+            chunkReferencesProcessed: 9,
+            chunkDownloads: 4,
+            chunkCacheHits: 5,
+            failureCategory: null,
+            validationFailures: 0);
+
+        state.RecordVerificationTelemetry(
+            success: false,
+            fileCount: 3,
+            chunkReferences: 9,
+            uniqueChunks: 7,
+            downloadedChunks: 7,
+            missingChunks: 1,
+            invalidChunks: 0,
+            invalidFiles: 1,
+            validationFailures: 2);
+
+        await state.SaveStateAsync();
+
+        var reloadedState = new SystemState(_loggerMock.Object);
+        reloadedState.SetStateFilePath(_stateFile);
+        await reloadedState.LoadStateAsync();
+
+        reloadedState.Telemetry.Backup.SnapshotCount.Should().Be(1);
+        reloadedState.Telemetry.Backup.FileCount.Should().Be(3);
+        reloadedState.Telemetry.Backup.UniqueChunks.Should().Be(7);
+
+        reloadedState.Telemetry.Restore.AttemptCount.Should().Be(1);
+        reloadedState.Telemetry.Restore.SuccessCount.Should().Be(1);
+        reloadedState.Telemetry.Restore.ChunkCacheHits.Should().Be(5);
+
+        reloadedState.Telemetry.Verification.RunCount.Should().Be(1);
+        reloadedState.Telemetry.Verification.SuccessCount.Should().Be(0);
+        reloadedState.Telemetry.Verification.ValidationFailureCount.Should().Be(2);
+        reloadedState.Telemetry.Verification.InvalidFiles.Should().Be(1);
     }
 
     [Fact]
