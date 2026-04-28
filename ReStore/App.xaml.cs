@@ -22,7 +22,7 @@ namespace ReStore
 
         public static GuiPasswordProvider? GlobalPasswordProvider { get; private set; }
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             _instanceMutex = new Mutex(true, MUTEX_NAME, out bool createdNew);
             _ownsMutex = createdNew;
@@ -50,7 +50,7 @@ namespace ReStore
             try
             {
                 var startupConfigManager = new ConfigManager(startupLogger);
-                startupConfigManager.LoadAsync().GetAwaiter().GetResult();
+                await startupConfigManager.LoadAsync();
                 configMigrationResult = startupConfigManager.LastMigrationResult;
             }
             catch (Exception ex)
