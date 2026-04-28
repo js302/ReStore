@@ -63,6 +63,6 @@ The repository currently contains two different concepts that are easy to confus
 
 - `ChunkSnapshot` in the live backup flow creates point-in-time manifests and reuses previously uploaded content-addressed chunks.
 - `verify` is a first-class CLI command for validating a manifest, its chunks, and the reconstructed file hashes without restoring content.
-- `DiffManager` is an experimental binary diff prototype that can create and apply patch blobs in isolation, but it is not used by `Backup`, `Restore`, `FileWatcher`, or any storage provider in production.
+- `DiffManager` is a standalone binary diff prototype that can create and apply patch blobs in isolation, but it is not used by `Backup`, `Restore`, `FileWatcher`, or any storage provider in production.
 
-If you work on diffing features, be explicit about whether you mean production chunk-manifest snapshots or experimental binary patch-chain research.
+If you work on diffing features, be explicit about whether you mean production chunk-manifest snapshots or standalone binary patch-chain research.

@@ -68,9 +68,9 @@ FileWatcher buffers changes (10-second delay)
   ↓
 FileWatcher triggers Backup.BackupFilesAsync()
   ↓
-Backup compresses and uploads via Storage provider
+Backup uploads missing chunks and snapshot manifest via Storage provider
   ↓
-SystemState updated with new backup info
+SystemState updated with snapshot metadata
   ↓
 GUI refreshes backup history display
 ```
@@ -111,7 +111,7 @@ Current implementation note:
 
 - User-file backups are chunk snapshots.
 - Snapshot manifests, HEAD pointers, and deduplicated chunks are the canonical artifact format.
-- `DiffManager` remains an experimental prototype and is not part of production backup or restore flow.
+- `DiffManager` is a standalone binary diff prototype and is not part of the production backup or restore flow.
 
 ## Restore Flow
 

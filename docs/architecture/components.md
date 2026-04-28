@@ -73,7 +73,7 @@
 │  │ • Backup ← Chunk Snapshot Backup Pipeline                      │         │
 │  │ • Restore ← Manifest-Driven Restore Pipeline                   │         │
 │  │ • SnapshotIntegrityVerifier ← Manifest/Chunk Verification      │         │
-│  │ • DiffManager ← Experimental Binary Diff Prototype             │         │
+│  │ • DiffManager ← Standalone Binary Diff Prototype               │         │
 │  └────────────────────────────────────────────────────────────────┘         │
 │                                                                             │
 │  ┌────────────────────────────────────────────────────────────────┐         │

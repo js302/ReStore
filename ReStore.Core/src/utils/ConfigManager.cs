@@ -108,7 +108,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     public Dictionary<string, StorageConfig> StorageSources { get; private set; } = [];
     public List<string> ExcludedPatterns { get; private set; } = [];
     public List<string> ExcludedPaths { get; private set; } = [];
-    public BackupType BackupType { get; private set; } = BackupType.Incremental;
+    public BackupType BackupType { get; private set; } = BackupType.ChunkSnapshot;
     public int MaxFileSizeMB { get; private set; } = 100;
     public SystemBackupConfig SystemBackup { get; private set; } = new();
     public EncryptionConfig Encryption { get; private set; } = new();
@@ -315,7 +315,7 @@ public class ConfigManager(ILogger logger) : IConfigManager
     {
         if (root.TryGetProperty("backupType", out var backupTypeElement))
         {
-            var backupTypeValue = backupTypeElement.GetString() ?? "Incremental";
+            var backupTypeValue = backupTypeElement.GetString() ?? nameof(BackupType.ChunkSnapshot);
             if (backupTypeValue.Equals("Differential", StringComparison.OrdinalIgnoreCase))
             {
                 backupTypeValue = nameof(BackupType.ChunkSnapshot);

@@ -94,7 +94,9 @@ Behavior note:
 `Incremental`: backs up files that changed since the last recorded version of those files.
 `ChunkSnapshot`: records a new manifest snapshot and reuses already-uploaded content-addressed chunks.
 
-The repository still contains an experimental `DiffManager` prototype for binary diff generation, but it is not wired into the production backup or restore flow.
+New configs default to `ChunkSnapshot` for user-file backups.
+
+The repository still contains a standalone `DiffManager` prototype for binary diff generation, but it is not wired into the production backup or restore flow.
 
 - **Encryption**: Enable/disable AES-256-GCM encryption with password protection for all backups
 - **System Backup**: Enable/disable system state backups with separate storage selection for programs, environment variables, and settings
