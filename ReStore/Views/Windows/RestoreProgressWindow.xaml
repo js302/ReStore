@@ -18,7 +18,7 @@
             <!-- Title Bar -->
             <Grid Grid.Row="0" Background="{DynamicResource ApplicationBackgroundBrush}" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                 <TextBlock Text="System Restore Progress" VerticalAlignment="Center" Margin="16,0" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                <Button x:Name="CloseBtn" Content="✕" HorizontalAlignment="Right" Width="46" Height="32" Click="CloseBtn_Click" Background="Transparent" BorderThickness="0"/>
+                <Button AutomationProperties.Name="Close" x:Name="CloseBtn" Content="✕" HorizontalAlignment="Right" Width="46" Height="32" Click="CloseBtn_Click" Background="Transparent" BorderThickness="0"/>
             </Grid>
 
             <!-- Content -->
@@ -49,14 +49,14 @@
                     <Border Grid.Column="0" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Margin="0,0,8,0">
                         <StackPanel>
                             <TextBlock Text="Successful" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBlock x:Name="SuccessCountText" Text="0" FontSize="24" FontWeight="Bold" Foreground="#10B981"/>
+                            <TextBlock x:Name="SuccessCountText" Text="0" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource SystemFillColorSuccessBrush}"/>
                         </StackPanel>
                     </Border>
 
                     <Border Grid.Column="1" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6" Margin="4,0">
                         <StackPanel>
                             <TextBlock Text="Failed" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBlock x:Name="FailedCountText" Text="0" FontSize="24" FontWeight="Bold" Foreground="#EF4444"/>
+                            <TextBlock x:Name="FailedCountText" Text="0" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource SystemFillColorCriticalBrush}"/>
                         </StackPanel>
                     </Border>
 
@@ -79,7 +79,7 @@
                         <TextBlock Grid.Row="0" Text="Activity Log" FontWeight="SemiBold" Margin="0,0,0,12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                            <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <TextBox AutomationProperties.Name="Restore log" x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                         </ScrollViewer>
                     </Grid>
                 </Border>

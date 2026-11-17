@@ -89,6 +89,39 @@ public class ConfigValidatorTests : IDisposable
     }
 
     [Fact]
+    public void ValidateConfiguration_ShouldFail_WhenRetentionTiersNegativeOrModeUnknown()
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.Retention).Returns(new RetentionConfig { Enabled = true, KeepDaily = -1, Mode = "sometimes" });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Errors.Should().Contain(e => e.Contains("keepDaily"));
+        result.Errors.Should().Contain(e => e.Contains("mode 'sometimes'"));
+    }
+
+    [Fact]
+    public void ValidateConfiguration_ShouldWarn_WhenAllModeHasNothingBeyondKeepLast()
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.Retention).Returns(new RetentionConfig { Enabled = true, KeepLastPerDirectory = 5, MaxAgeDays = 0, Mode = "all" });
+
+        _validator.ValidateConfiguration(config.Object).Warnings.Should().Contain(w => w.Contains("mode 'all'"));
+    }
+
+    [Fact]
+    public void ValidateConfiguration_ShouldAccept_GfsTiersInBothModes()
+    {
+        foreach (var mode in new[] { "any", "all" })
+        {
+            var config = CreateBaseConfig();
+            config.SetupGet(c => c.Retention).Returns(new RetentionConfig { Enabled = true, KeepDaily = 7, KeepWeekly = 4, KeepMonthly = 12, KeepYearly = 3, Mode = mode });
+
+            _validator.ValidateConfiguration(config.Object).Errors.Should().NotContain(e => e.Contains("etention"));
+        }
+    }
+
+    [Fact]
     public void ValidateConfiguration_ShouldFail_WhenStorageSourcesMissing()
     {
         var config = CreateBaseConfig();
@@ -118,6 +151,7 @@ public class ConfigValidatorTests : IDisposable
         };
 
         config.SetupGet(c => c.StorageSources).Returns(sources);
+        UseStorage(config, "s3");
 
         var result = _validator.ValidateConfiguration(config.Object);
 
@@ -143,6 +177,7 @@ public class ConfigValidatorTests : IDisposable
         };
 
         config.SetupGet(c => c.StorageSources).Returns(sources);
+        UseStorage(config, "dropbox");
 
         var result = _validator.ValidateConfiguration(config.Object);
 
@@ -189,6 +224,7 @@ public class ConfigValidatorTests : IDisposable
         };
 
         config.SetupGet(c => c.StorageSources).Returns(sources);
+        UseStorage(config, "sftp");
 
         var result = _validator.ValidateConfiguration(config.Object);
 
@@ -212,6 +248,7 @@ public class ConfigValidatorTests : IDisposable
         };
 
         config.SetupGet(c => c.StorageSources).Returns(sources);
+        UseStorage(config, "gcp");
 
         var result = _validator.ValidateConfiguration(config.Object);
 
@@ -233,6 +270,7 @@ public class ConfigValidatorTests : IDisposable
         };
 
         config.SetupGet(c => c.StorageSources).Returns(sources);
+        UseStorage(config, "mystorage");
 
         var result = _validator.ValidateConfiguration(config.Object);
 
@@ -274,6 +312,36 @@ public class ConfigValidatorTests : IDisposable
         result.Errors.Should().Contain(e => e.Contains("salt must be a valid Base64", StringComparison.OrdinalIgnoreCase));
         result.Errors.Should().Contain(e => e.Contains("verification token must be a valid Base64", StringComparison.OrdinalIgnoreCase));
         result.Errors.Should().Contain(e => e.Contains("iterations must be greater than zero", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    [InlineData(4, false)]
+    public void ValidateConfiguration_AcceptsManifestVersion2And3Only(int version, bool valid)
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig { ManifestVersion = version });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Errors.Any(e => e.Contains("manifestVersion", StringComparison.OrdinalIgnoreCase)).Should().Be(!valid);
+    }
+
+    [Theory]
+    [InlineData("auto", true)]
+    [InlineData("OFF", true)]
+    [InlineData("zstd", false)]
+    [InlineData("", false)]
+    public void ValidateConfiguration_AcceptsCompressionAutoOrOffOnly(string value, bool valid)
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.ChunkDiffing).Returns(new ChunkDiffingConfig { Compression = value });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Errors.Any(e => e.Contains("compression", StringComparison.OrdinalIgnoreCase)).Should().Be(!valid);
     }
 
     [Fact]
@@ -325,6 +393,111 @@ public class ConfigValidatorTests : IDisposable
 
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/abs", false)]
+    [InlineData("a/../b", false)]
+    [InlineData("..", false)]
+    [InlineData("team/laptop", true)]
+    [InlineData("team/laptop/", true)]
+    [InlineData("", true)]
+    public void ValidateConfiguration_ChecksStoragePrefixOption(string prefix, bool valid)
+    {
+        var config = CreateBaseConfig();
+        var sources = CreateLocalStorageSource();
+        sources["local"].Options["prefix"] = prefix;
+        config.SetupGet(c => c.StorageSources).Returns(sources);
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Errors.Any(e => e.Contains("'prefix'")).Should().Be(!valid);
+    }
+
+    [Fact]
+    public void ValidateConfiguration_RemoteSourceWithEmptyOptionalOptions_IsStillConfigured()
+    {
+        var config = CreateBaseConfig();
+        var sources = CreateLocalStorageSource();
+        sources["s3"] = new StorageConfig
+        {
+            Path = "backups",
+            Options = new Dictionary<string, string>
+            {
+                ["accessKeyId"] = "AKIA123", ["secretAccessKey"] = "secret", ["region"] = "us-east-1",
+                ["bucketName"] = "bucket", ["prefix"] = ""
+            }
+        };
+        config.SetupGet(c => c.StorageSources).Returns(sources);
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Errors.Should().BeEmpty();
+        result.Info.Should().NotContain(i => i.Contains("'s3'") && i.Contains("not configured"));
+    }
+
+    [Theory]
+    [InlineData("Debug")]
+    [InlineData("info")]
+    [InlineData("WARNING")]
+    [InlineData("Error")]
+    public void ValidateConfiguration_ShouldAcceptKnownLoggingLevels(string level)
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.Logging).Returns(new LoggingConfig { Level = level });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Errors.Should().NotContain(e => e.Contains("logging.level"));
+    }
+
+    [Theory]
+    [InlineData("Verbose")]
+    [InlineData("")]
+    [InlineData("3")]
+    public void ValidateConfiguration_ShouldRejectUnknownLoggingLevel(string level)
+    {
+        var config = CreateBaseConfig();
+        config.SetupGet(c => c.Logging).Returns(new LoggingConfig { Level = level });
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("logging.level"));
+    }
+
+    /// <summary>Only storages something writes to are validated; make <paramref name="storageType"/> the storage of the watched folder.</summary>
+    private void UseStorage(Mock<IConfigManager> config, string storageType) =>
+        config.SetupGet(c => c.WatchDirectories).Returns([new WatchDirectoryConfig { Path = _watchDir, StorageType = storageType }]);
+
+    [Fact]
+    public void ValidateConfiguration_DoesNotWarnAboutPlaceholderStoragesNothingUses()
+    {
+        var config = CreateBaseConfig();
+        var sources = CreateLocalStorageSource();
+        sources["gcp"] = new StorageConfig { Path = "x", Options = new Dictionary<string, string> { ["bucketName"] = "my-bucket", ["credentialPath"] = @"C:\path\to\key.json" } };
+        sources["sftp"] = new StorageConfig { Path = "x", Options = new Dictionary<string, string> { ["host"] = "example.org", ["username"] = "u" } };
+        sources["s3"] = new StorageConfig { Path = "x", Options = new Dictionary<string, string> { ["bucketName"] = "Bad_Bucket!", ["accessKeyId"] = "a", ["secretAccessKey"] = "b" } };
+        config.SetupGet(c => c.StorageSources).Returns(sources);
+
+        var result = _validator.ValidateConfiguration(config.Object);
+
+        result.Warnings.Should().NotContain(w => w.Contains("GCP", StringComparison.OrdinalIgnoreCase) || w.Contains("sftp", StringComparison.OrdinalIgnoreCase));
+        result.Errors.Should().BeEmpty();
+        result.Info.Should().Contain(i => i.Contains("'gcp'") && i.Contains("not used"));
+        result.Info.Should().Contain(i => i.Contains("'s3'") && i.Contains("not used"));
+    }
+
+    [Fact]
+    public void ValidateConfiguration_StillValidatesAStorageUsedBySystemBackup()
+    {
+        var config = CreateBaseConfig();
+        var sources = CreateLocalStorageSource();
+        sources["gcp"] = new StorageConfig { Path = "x", Options = new Dictionary<string, string> { ["bucketName"] = "my-bucket", ["credentialPath"] = Path.Combine(_testRoot, "missing.json") } };
+        config.SetupGet(c => c.StorageSources).Returns(sources);
+        config.SetupGet(c => c.SystemBackup).Returns(new SystemBackupConfig { Enabled = true, ProgramsStorageType = "gcp" });
+
+        _validator.ValidateConfiguration(config.Object).Warnings.Should().Contain(w => w.Contains("GCP credential file not found", StringComparison.OrdinalIgnoreCase));
     }
 
     private Mock<IConfigManager> CreateBaseConfig()

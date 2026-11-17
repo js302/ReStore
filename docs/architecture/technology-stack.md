@@ -21,7 +21,6 @@
 | ---------------------------- | ----------------------------------------- |
 | System.IO.Compression        | System backup archive creation/extraction |
 | System.Text.Json             | JSON serialization                        |
-| System.Management            | Windows WMI queries                       |
 | System.Security.Cryptography | AES-256-GCM, PBKDF2-SHA256, chunk hashing |
 
 ## Storage Provider SDKs
@@ -31,6 +30,7 @@
 | AWSSDK.S3               | Amazon S3, Backblaze B2 |
 | Azure.Storage.Blobs     | Azure Blob Storage      |
 | Google.Apis.Drive.v3    | Google Drive            |
+| Google.Apis.Auth         | Google OAuth (Drive)    |
 | Google.Cloud.Storage.V1 | Google Cloud Storage    |
 | Dropbox.Api             | Dropbox                 |
 | SSH.NET                 | SFTP                    |

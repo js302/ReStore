@@ -1,0 +1,10 @@
+<Project>
+    <!-- Single source of truth for version and identity. The build script should read Version from here
+         (dotnet msbuild ReStore/ReStore.csproj -getProperty:Version) and stamp "<Version>.0" into the manifest. -->
+    <PropertyGroup>
+        <Version>1.8.0</Version>
+        <Authors>Jaskaran Singh</Authors>
+        <Company>Jaskaran Singh</Company>
+        <Copyright>Copyright © 2026 Jaskaran Singh</Copyright>
+    </PropertyGroup>
+</Project>

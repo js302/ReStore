@@ -35,7 +35,8 @@ Main configuration file for backup settings, storage providers, and encryption.
   "maxFileSizeMB": 100,
   "backupType": "ChunkSnapshot",
   "chunkDiffing": {
-    "manifestVersion": 2,
+    "manifestVersion": 3,
+    "compression": "auto",
     "minChunkSizeKB": 32,
     "targetChunkSizeKB": 128,
     "maxChunkSizeKB": 512,
@@ -62,7 +63,6 @@ Main configuration file for backup settings, storage providers, and encryption.
       "options": {}
     },
     "s3": {
-      "path": "./backups",
       "options": {
         "accessKeyId": "...",
         "secretAccessKey": "...",
@@ -71,21 +71,18 @@ Main configuration file for backup settings, storage providers, and encryption.
       }
     },
     "azure": {
-      "path": "backups",
       "options": {
         "connectionString": "...",
         "containerName": "..."
       }
     },
     "gcp": {
-      "path": "backups",
       "options": {
         "bucketName": "...",
         "credentialPath": "..."
       }
     },
     "gdrive": {
-      "path": "backups",
       "options": {
         "client_id": "...",
         "client_secret": "...",
@@ -94,21 +91,19 @@ Main configuration file for backup settings, storage providers, and encryption.
       }
     },
     "dropbox": {
-      "path": "backups",
       "options": {
         "accessToken": "..."
       }
     },
     "b2": {
-      "path": "backups",
       "options": {
         "keyId": "...",
         "applicationKey": "...",
+        "serviceUrl": "https://s3.<region>.backblazeb2.com",
         "bucketName": "..."
       }
     },
     "sftp": {
-      "path": "/backups",
       "options": {
         "host": "...",
         "port": "22",
@@ -117,7 +112,6 @@ Main configuration file for backup settings, storage providers, and encryption.
       }
     },
     "github": {
-      "path": "backups",
       "options": {
         "token": "...",
         "owner": "...",
@@ -154,6 +148,11 @@ Main configuration file for backup settings, storage providers, and encryption.
 | `retention`        | Automatic backup pruning settings                           |
 | `storageSources`   | Storage provider configurations                             |
 | `systemBackup`     | System backup settings (programs, env vars, registry)       |
+| `protection`       | `autoStart` (default `true`): start the file watcher and scheduler at launch when at least one watch directory exists |
+| `logging`          | `level` (`Debug`/`Info`/`Warning`/`Error`, default `Info`): minimum log level (see [Configuration](../configuration.md#logging)) |
+| `verification`     | Scheduled integrity checks (see [Configuration](../configuration.md#scheduled-verification)) |
+| `notifications`    | Tray notification toggles (see [Configuration](../configuration.md#notifications)) |
+| `watcher`          | `minSnapshotInterval` (`d.hh:mm:ss`, default 15 min): minimum time between watcher snapshots of a folder; changes inside it are kept and flushed later. Zero disables the minimum. `maxDebounceWait` (default 5 min): the 10 s change debounce restarts on every event, so this caps how long continuous changes can postpone a backup. Zero disables the cap |
 
 ### Scheduling
 
@@ -164,15 +163,24 @@ runs whenever the file watcher is running (the GUI's **Start Watcher**, or
 The scheduler complements the watcher rather than duplicating it:
 
 - The **watcher** is event-driven and reacts to changes as they happen, debounced by a
-  fixed 10-second buffer.
+  10-second buffer (capped by `watcher.maxDebounceWait`). Failed or busy batches are re-queued
+  with a backoff, and a watcher buffer overflow/error triggers a full backup of that folder.
 - The **scheduler** sweeps each watched directory on its interval, so changes made while
   the machine was asleep or the app was closed are still captured.
 
-Due times are computed from the **last recorded backup timestamp**, not from when the
+Due times are computed from the **later of the last recorded backup and the last attempted sweep** of that group (so a failing group does not re-run every tick), not from when the
 scheduler started. Restarting does not reset the clock, and a machine that was off past
 its due time backs up shortly after the next launch rather than waiting another full
 interval. The scheduler re-evaluates once a minute, and intervals below one minute are
-clamped to one minute; an interval of zero or less disables scheduling.
+clamped to one minute; a `backupInterval` of zero or less disables only the interval *file*
+backups. System backup and verification have their own settings and keep running; the
+scheduler only stays stopped when all three are disabled.
+
+After a failed scheduled backup (user files or system) the retry comes after an exponential
+backoff (5 min, 10 min, 20 min, ... never beyond the interval) rather than a full interval.
+Scheduled verification records its last attempt per group in `system_state.json`
+(`SnapshotVerificationTimes`), so restarting the app does not trigger a verify; a verification
+that errors (e.g. unreachable provider) is retried after one hour instead of a full verify interval.
 
 Sweeps never overlap — if a backup is still running when the next tick fires, that tick is
 skipped. A failure on one directory is logged and does not stop the others.
@@ -182,6 +190,19 @@ variables, Windows settings) on Windows only, and only when `systemBackup.enable
 and at least one component is included.
 
 ## system_state.json (Runtime State)
+
+Snapshot chunk-id lists are not stored in `system_state.json`. Each snapshot's list lives in a binary sidecar `state\snapshots\<snapshotId>.chunks` (concatenated 32-byte SHA-256 ids; non-SHA-256 ids use `<snapshotId>.chunklist`, length-prefixed), written once when the snapshot is first saved and deleted after the save that removes the snapshot. If a sidecar is missing, retention and delete re-read the manifest from storage. The state file is compact (not indented); older files with inline `ChunkIds` are migrated on load.
+
+File metadata for change detection is stored per destination, in `FileMetadataByGroup`: group directory, then storage type, then path relative to the group (forward slashes) to `{Size, LastModified, Hash}`. The values are the size, modification time and SHA-256 of the bytes the snapshot actually holds (taken from the manifest entries, never re-read afterwards), so a file that changed while it was being backed up is picked up on the next run. Metadata is only changed after the snapshot commits. Before diffing, a backup treats every file as changed when the destination has no snapshot of the group, the last snapshot was made with a different encryption setting or key, or its manifest is missing from the destination.
+
+- **Migration:** state files from v1.6/v1.7 keep one flat `FileMetadata` dictionary keyed by absolute path. On load those entries are moved into `FileMetadataByGroup` under the group that contains them and the storage type of that group's newest snapshot (the destination the old record described). Entries under a folder with no snapshot are dropped (its first backup is a full pass anyway). The flat `FileMetadata` property is never written again.
+- **Downgrading to v1.7:** v1.7 ignores `FileMetadataByGroup` and loads no file metadata, so its next run backs up every file once. Nothing fails and nothing is lost.
+
+Notes:
+
+- **Downgrading to v1.7** after this change is safe but wasteful: the old version ignores the sidecars and sees snapshots with no chunk list, so retention there will not delete those snapshots' chunks (they leak); nothing is lost.
+- **Restoring an older `.bak` state** may reference snapshots whose sidecars were already deleted. They are read from the manifest instead (retention does this automatically).
+- If the reference counts have to be rebuilt and a sidecar is missing, the counts are flagged incomplete (persisted as `ChunkReferenceCountsIncomplete`, logged as an error). While flagged, retention deletes only manifests and history, never chunks; the next retention pass repairs the counts from the manifests when storage is reachable. Sidecars with no matching history entry (and older than an hour) are removed during a rebuild.
 
 Tracks backup history and file metadata for change detection.
 
@@ -209,7 +230,7 @@ Tracks backup history and file metadata for change detection.
         "system_settings": [...]
     },
   "chunkReferenceCounts": {
-    "s3|<chunk-id>": 2
+    "s3|legacy|<chunk-id>": 2
   },
   "telemetry": {
     "backup": {
@@ -252,7 +273,7 @@ Tracks backup history and file metadata for change detection.
 | ---------------------- | -------------------------------------------------- |
 | `lastBackupTime`       | Timestamp of last backup operation                 |
 | `backupHistory`        | Map of directory → list of backups                 |
-| `chunkReferenceCounts` | Map of storage+chunk key → reference count         |
+| `chunkReferenceCounts` | Map of `storage\|namespace\|chunk-id` → reference count (missing namespace is stored as `legacy`, missing storage type as `default`) |
 | `telemetry`            | Aggregated backup/restore/verify counters          |
 | `fileMetadata`         | Map of file path → metadata (size, hash, modified) |
 
@@ -318,7 +339,8 @@ On first launch, `ConfigInitializer.EnsureConfigurationSetup()` performs:
 
 1. Creates `%USERPROFILE%\ReStore` directory
 2. Copies `config\config.example.json` to `%USERPROFILE%\ReStore\config.json`
-3. Creates `state\` subdirectory for `system_state.json`
+3. Copies the template to `%USERPROFILE%\ReStore\config.example.json` as a reference copy
+4. Creates `state\` subdirectory for `system_state.json` (and `backups\` when a migration needs to save a pre-migration copy)
 
 ## Best Practices
 

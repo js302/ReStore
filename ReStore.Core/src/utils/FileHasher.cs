@@ -9,7 +9,7 @@ public class FileHasher
     public static string ComputeHash(string filePath)
     {
         using var sha256 = SHA256.Create();
-        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var hash = sha256.ComputeHash(stream);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
@@ -17,8 +17,8 @@ public class FileHasher
     public static async Task<string> ComputeHashAsync(string filePath)
     {
         using var sha256 = SHA256.Create();
-        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
-        var hash = await sha256.ComputeHashAsync(stream);
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+        var hash = await sha256.ComputeHashAsync(stream).ConfigureAwait(false);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
@@ -30,10 +30,10 @@ public class FileHasher
 
         var tasks = files.Select(async file =>
         {
-            await semaphore.WaitAsync();
+            await semaphore.WaitAsync().ConfigureAwait(false);
             try
             {
-                var hash = await ComputeHashAsync(file);
+                var hash = await ComputeHashAsync(file).ConfigureAwait(false);
                 results[file] = hash;
             }
             finally
@@ -42,7 +42,7 @@ public class FileHasher
             }
         });
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).ConfigureAwait(false);
         return new Dictionary<string, string>(results);
     }
 
@@ -61,8 +61,8 @@ public class FileHasher
 
         while (true)
         {
-            var readA = await streamA.ReadAsync(bufferA);
-            var readB = await streamB.ReadAsync(bufferB);
+            var readA = await streamA.ReadAsync(bufferA).ConfigureAwait(false);
+            var readB = await streamB.ReadAsync(bufferB).ConfigureAwait(false);
 
             if (readA != readB) return true;
             if (readA == 0) return false;

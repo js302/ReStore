@@ -120,6 +120,8 @@ ipch/
 
 # Visual Studio Trace Files
 *.e2e
+# ...but not the end-to-end test project (git matches case-insensitively on Windows, so "*.e2e" also hits "ReStore.E2E")
+!/ReStore.E2E/
 
 # TFS 2012 Local Workspace
 $tf/
@@ -237,6 +239,8 @@ ClientBin/
 *.dbproj.schemaview
 *.jfm
 *.pfx
+*.pfx.password
+*.pfx.new
 *.publishsettings
 orleans.codegen.cs
 
@@ -402,3 +406,7 @@ ReStore.Core/config/config.json
 Restore/state
 Restore.Core/state
 
+
+# Test results and coverage output (generate-test-coverage.ps1, CI)
+TestResults/
+coverage-report/

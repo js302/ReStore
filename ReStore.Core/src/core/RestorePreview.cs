@@ -75,6 +75,9 @@ public sealed class RestoreOutcome
     public int FilesSkipped { get; set; }
     public int FilesKeptBoth { get; set; }
     public int FilesOverwritten { get; set; }
+
+    /// <summary>Empty directories recreated from a v3 manifest.</summary>
+    public int DirectoriesRestored { get; set; }
     public long BytesRestored { get; set; }
 
     public List<string> SkippedRelativePaths { get; } = [];

@@ -13,6 +13,5 @@ public sealed class TestLogger : ILogger
     {
         var line = $"[{DateTime.UtcNow:O}] [{level}] {message}";
         _messages.Enqueue(line);
-        Console.WriteLine(line);
     }
 }

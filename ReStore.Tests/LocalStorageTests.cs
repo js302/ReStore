@@ -32,6 +32,28 @@ public class LocalStorageTests : IDisposable
     }
 
     [Fact]
+    public async Task Uninitialized_RefusesEveryPath_InsteadOfUsingTheWorkingDirectory()
+    {
+        var storage = new LocalStorage(_logger);
+        var source = Path.Combine(Path.GetTempPath(), "ReStoreUninit_" + Guid.NewGuid().ToString("N") + ".txt");
+        await File.WriteAllTextAsync(source, "x");
+        var stray = Path.Combine(Directory.GetCurrentDirectory(), "uninit-probe", "x.txt");
+
+        try
+        {
+            await FluentActions.Awaiting(() => storage.ExistsAsync("uninit-probe/x.txt")).Should()
+                .ThrowAsync<InvalidOperationException>().WithMessage("*not initialized*");
+            await FluentActions.Awaiting(() => storage.UploadAsync(source, "uninit-probe/x.txt")).Should()
+                .ThrowAsync<InvalidOperationException>().WithMessage("*not initialized*");
+            File.Exists(stray).Should().BeFalse("nothing may be written relative to the working directory");
+        }
+        finally
+        {
+            File.Delete(source);
+        }
+    }
+
+    [Fact]
     public async Task UploadAsync_ShouldThrow_WhenRemotePathEscapesStorageRoot()
     {
         var storage = new LocalStorage(_logger);

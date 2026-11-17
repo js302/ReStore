@@ -23,11 +23,14 @@ namespace ReStore.Views.Pages
         public DateTime Timestamp { get; set; }
         public string StorageType { get; set; } = "";
         public string? StorageBasePath { get; set; }
+        public string TimestampLabel => DisplayTime.Format(Timestamp);
+        public string TimestampTooltip => DisplayTime.Tooltip(Timestamp) + " (UTC)";
         public string TypeLabel => Type switch
         {
             "system_programs" => "Installed Programs",
             "system_environment" => "Environment Variables",
             "system_settings" => "Windows Settings",
+            "system_devtools" => "Developer Tools",
             _ => "Unknown"
         };
         public string Icon => Type switch
@@ -35,6 +38,7 @@ namespace ReStore.Views.Pages
             "system_programs" => "💻",
             "system_environment" => "⚙️",
             "system_settings" => "🎨",
+            "system_devtools" => "🛠️",
             _ => "📦"
         };
         public Brush IconColor => Type switch
@@ -42,6 +46,7 @@ namespace ReStore.Views.Pages
             "system_programs" => new SolidColorBrush(Color.FromRgb(16, 185, 129)),
             "system_environment" => new SolidColorBrush(Color.FromRgb(139, 92, 246)),
             "system_settings" => new SolidColorBrush(Color.FromRgb(245, 158, 11)),
+            "system_devtools" => new SolidColorBrush(Color.FromRgb(59, 130, 246)),
             _ => new SolidColorBrush(Color.FromRgb(100, 100, 100))
         };
         
@@ -49,15 +54,17 @@ namespace ReStore.Views.Pages
         {
             get
             {
-                if (string.IsNullOrEmpty(StorageBasePath) || string.IsNullOrEmpty(Path))
+                // Only local storage has a folder path worth joining; "bucket\\system_backups/..." is meaningless.
+                if (!string.Equals(StorageType, "local", StringComparison.OrdinalIgnoreCase)
+                    || string.IsNullOrEmpty(StorageBasePath) || string.IsNullOrEmpty(Path))
                     return Path;
-                
+
                 if (Path.StartsWith("./") || Path.StartsWith(".\\"))
                 {
                     var relativePath = Path.Substring(2);
                     return System.IO.Path.Combine(StorageBasePath, relativePath);
                 }
-                
+
                 return System.IO.Path.Combine(StorageBasePath, Path);
             }
         }
@@ -71,19 +78,28 @@ namespace ReStore.Views.Pages
         private readonly ObservableCollection<SystemBackupItem> _systemBackups = new();
         private List<SystemBackupItem> _allBackups = new();
         private bool _initialized;
+        private RepositoryBusyBinding? _busyBinding;
+        private bool _repositoryBusy;
 
         public SystemRestorePage()
         {
             InitializeComponent();
 
+            Unloaded += (_, __) =>
+            {
+                _busyBinding?.Dispose();
+                _busyBinding = null;
+            };
+
             SystemBackupsList.ItemsSource = _systemBackups;
 
-            RefreshBtn.Click += async (_, __) => await LoadSystemBackupsAsync();
-            BackupProgramsBtn.Click += async (_, __) => await BackupProgramsAsync();
-            BackupEnvBtn.Click += async (_, __) => await BackupEnvironmentAsync();
-            BackupSettingsBtn.Click += async (_, __) => await BackupWindowsSettingsAsync();
-            BackupFullSystemBtn.Click += async (_, __) => await BackupFullSystemAsync();
+            RefreshBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Load system backups", () => LoadSystemBackupsAsync());
+            BackupProgramsBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Backup programs", () => BackupProgramsAsync());
+            BackupEnvBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Backup environment", () => BackupEnvironmentAsync());
+            BackupSettingsBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Backup windows settings", () => BackupWindowsSettingsAsync());
+            BackupFullSystemBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Backup full system", () => BackupFullSystemAsync());
             OpenBackupFolderBtn.Click += (_, __) => OpenBackupFolder();
+            UndoPointsBtn.Click += (_, __) => new Windows.UndoPointsWindow { Owner = Window.GetWindow(this) }.ShowDialog();
             FilterTypeCombo.SelectionChanged += (_, __) => ApplyFilters();
         }
 
@@ -104,6 +120,11 @@ namespace ReStore.Views.Pages
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
         {
+            await ErrorReporter.GuardAsync("Loading the page", () => Page_LoadedCoreAsync(sender, e));
+        }
+
+        private async Task Page_LoadedCoreAsync(object sender, RoutedEventArgs e)
+        {
             var storyboard = new System.Windows.Media.Animation.Storyboard();
             
             var fadeIn = new System.Windows.Media.Animation.DoubleAnimation
@@ -123,6 +144,25 @@ namespace ReStore.Views.Pages
                 _initialized = true;
                 await InitializeAsync();
             }
+            else
+            {
+                // The page is cached across navigation, so show what changed while it was away.
+                await LoadSystemBackupsAsync();
+            }
+
+            _busyBinding ??= new RepositoryBusyBinding(Dispatcher, ApplyBusyState);
+        }
+
+        /// <summary>The four backup buttons are unavailable while any operation (including their own) holds the repository.</summary>
+        private void ApplyBusyState(bool busy, string? reason)
+        {
+            _repositoryBusy = busy;
+            var tip = busy ? $"{RepositoryBusyBinding.BusyMessage} {reason}".Trim() : null;
+            foreach (var button in new[] { BackupProgramsBtn, BackupEnvBtn, BackupSettingsBtn, BackupFullSystemBtn })
+            {
+                button.IsEnabled = !busy;
+                button.ToolTip = tip;
+            }
         }
 
         private async Task LoadSystemBackupsAsync()
@@ -135,7 +175,7 @@ namespace ReStore.Views.Pages
 
                 // Snapshot once under the state lock; the scheduler can append system backups
                 // on its own thread while this page enumerates.
-                foreach (var group in new[] { "system_programs", "system_environment", "system_settings" })
+                foreach (var group in new[] { "system_programs", "system_environment", "system_settings", "system_devtools" })
                 {
                     foreach (var backup in _state.GetBackupsForGroup(group))
                     {
@@ -189,6 +229,9 @@ namespace ReStore.Views.Pages
                 "system_settings" => _configManager.SystemBackup.SettingsStorageType
                     ?? _configManager.SystemBackup.StorageType
                     ?? _configManager.GlobalStorageType,
+                "system_devtools" => _configManager.SystemBackup.DevToolsStorageType
+                    ?? _configManager.SystemBackup.StorageType
+                    ?? _configManager.GlobalStorageType,
                 _ => _configManager.GlobalStorageType
             };
         }
@@ -196,7 +239,7 @@ namespace ReStore.Views.Pages
         private string? GetStorageBasePath(string storageType)
         {
             return _configManager.StorageSources.TryGetValue(storageType, out var storageConfig)
-                ? storageConfig.Path
+                ? ReStore.Core.src.utils.ConfigManager.ExpandConfiguredPath(storageConfig.Path)
                 : null;
         }
 
@@ -218,6 +261,7 @@ namespace ReStore.Views.Pages
                     "programs" => filtered.Where(b => b.Type == "system_programs"),
                     "environment" => filtered.Where(b => b.Type == "system_environment"),
                     "settings" => filtered.Where(b => b.Type == "system_settings"),
+                    "devtools" => filtered.Where(b => b.Type == "system_devtools"),
                     _ => filtered
                 };
             }
@@ -249,74 +293,71 @@ namespace ReStore.Views.Pages
         {
             TotalBackupsText.Text = _allBackups.Count.ToString();
 
-            var lastProgramBackup = _allBackups
-                .Where(b => b.Type == "system_programs")
+            LastProgramBackupText.Text = FormatLastBackup("system_programs");
+            LastEnvBackupText.Text = FormatLastBackup("system_environment");
+            LastSettingsBackupText.Text = FormatLastBackup("system_settings");
+        }
+
+        private string FormatLastBackup(string type)
+        {
+            var last = _allBackups
+                .Where(b => b.Type == type)
                 .OrderByDescending(b => b.Timestamp)
                 .FirstOrDefault();
 
-            if (lastProgramBackup != null)
+            if (last == null)
             {
-                var timeSince = DateTime.UtcNow - lastProgramBackup.Timestamp;
-                if (timeSince.TotalMinutes < 1)
-                    LastProgramBackupText.Text = "Just now";
-                else if (timeSince.TotalHours < 1)
-                    LastProgramBackupText.Text = $"{(int)timeSince.TotalMinutes}m ago";
-                else if (timeSince.TotalDays < 1)
-                    LastProgramBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
-                else
-                    LastProgramBackupText.Text = lastProgramBackup.Timestamp.ToLocalTime().ToString("MMM dd");
-            }
-            else
-            {
-                LastProgramBackupText.Text = "Never";
+                return "Never";
             }
 
-            var lastEnvBackup = _allBackups
-                .Where(b => b.Type == "system_environment")
-                .OrderByDescending(b => b.Timestamp)
-                .FirstOrDefault();
-
-            if (lastEnvBackup != null)
-            {
-                var timeSince = DateTime.UtcNow - lastEnvBackup.Timestamp;
-                if (timeSince.TotalMinutes < 1)
-                    LastEnvBackupText.Text = "Just now";
-                else if (timeSince.TotalHours < 1)
-                    LastEnvBackupText.Text = $"{(int)timeSince.TotalMinutes}m ago";
-                else if (timeSince.TotalDays < 1)
-                    LastEnvBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
-                else
-                    LastEnvBackupText.Text = lastEnvBackup.Timestamp.ToLocalTime().ToString("MMM dd");
-            }
-            else
-            {
-                LastEnvBackupText.Text = "Never";
-            }
-
-            var lastSettingsBackup = _allBackups
-                .Where(b => b.Type == "system_settings")
-                .OrderByDescending(b => b.Timestamp)
-                .FirstOrDefault();
-
-            if (lastSettingsBackup != null)
-            {
-                var timeSince = DateTime.UtcNow - lastSettingsBackup.Timestamp;
-                if (timeSince.TotalMinutes < 1)
-                    LastSettingsBackupText.Text = "Just now";
-                else if (timeSince.TotalHours < 1)
-                    LastSettingsBackupText.Text = $"{(int)timeSince.TotalMinutes}m ago";
-                else if (timeSince.TotalDays < 1)
-                    LastSettingsBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
-                else
-                    LastSettingsBackupText.Text = lastSettingsBackup.Timestamp.ToLocalTime().ToString("MMM dd");
-            }
-            else
-            {
-                LastSettingsBackupText.Text = "Never";
-            }
+            var timeSince = DateTime.UtcNow - last.Timestamp.ToUniversalTime();
+            if (timeSince.TotalMinutes < 1)
+                return "Just now";
+            if (timeSince.TotalHours < 1)
+                return $"{(int)timeSince.TotalMinutes}m ago";
+            if (timeSince.TotalDays < 1)
+                return $"{(int)timeSince.TotalHours}h ago";
+            return DisplayTime.Format(last.Timestamp);
         }
 
-        private async Task BackupProgramsAsync()
+        private Task BackupProgramsAsync() => RunSystemBackupAsync(
+            "Backup Programs",
+            "This will backup your list of installed programs.\n\nContinue?",
+            "Backing up installed programs",
+            "Programs backup completed successfully!",
+            (manager, token) => manager.BackupInstalledProgramsAsync(token));
+
+        private Task BackupEnvironmentAsync() => RunSystemBackupAsync(
+            "Backup Environment",
+            "This will backup your environment variables.\n\nContinue?",
+            "Backing up environment variables",
+            "Environment variables backup completed successfully!",
+            (manager, token) => manager.BackupEnvironmentVariablesAsync(token));
+
+        private Task BackupWindowsSettingsAsync() => RunSystemBackupAsync(
+            "Backup Windows Settings",
+            "This will backup your Windows settings including:\n• Personalization (themes, colors)\n• File Explorer preferences\n• Taskbar settings\n• Regional settings\n• Mouse and keyboard preferences\n• Accessibility options\n\nContinue?",
+            "Backing up Windows settings",
+            "Windows settings backup completed successfully!",
+            (manager, token) => manager.BackupWindowsSettingsAsync(token));
+
+        private Task BackupFullSystemAsync() => RunSystemBackupAsync(
+            "Full System Backup",
+            "This will backup:\n• Installed programs list\n• Environment variables\n• Windows settings\n\nContinue?",
+            "Backing up the full system",
+            "Full system backup completed successfully!",
+            (manager, token) => manager.BackupSystemAsync(token));
+
+        /// <summary>
+        /// Confirms, then runs a system backup in the shared progress window (log, progress, Cancel) instead of
+        /// leaving the page showing only "Backing up...". Cancelling stops at the next safe point.
+        /// </summary>
+        private async Task RunSystemBackupAsync(
+            string title,
+            string confirmText,
+            string statusText,
+            string successText,
+            Func<SystemBackupManager, CancellationToken, Task> backup)
         {
             if (!OperatingSystem.IsWindows())
             {
@@ -324,195 +365,46 @@ namespace ReStore.Views.Pages
                 return;
             }
 
-            try
+            var confirmation = MessageBox.Show(confirmText, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirmation != MessageBoxResult.Yes)
             {
-                var result = MessageBox.Show(
-                    "This will backup your list of installed programs.\n\nContinue?",
-                    "Backup Programs",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    BackupProgramsBtn.IsEnabled = false;
-                    BackupProgramsBtn.Content = "Backing up...";
-
-                    if (_state == null)
-                    {
-                        MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-
-                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(true);
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
-                    await systemBackup.BackupInstalledProgramsAsync();
-
-                    await _state.SaveStateAsync();
-                    await LoadSystemBackupsAsync();
-
-                    MessageBox.Show("Programs backup completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Programs backup failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                BackupProgramsBtn.IsEnabled = true;
-                BackupProgramsBtn.Content = "💾 Backup";
-            }
-        }
-
-        private async Task BackupEnvironmentAsync()
-        {
-            if (!OperatingSystem.IsWindows())
-            {
-                MessageBox.Show("System backup is only available on Windows.", "System Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            try
+            if (_state == null)
             {
-                var result = MessageBox.Show(
-                    "This will backup your environment variables.\n\nContinue?",
-                    "Backup Environment",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    BackupEnvBtn.IsEnabled = false;
-                    BackupEnvBtn.Content = "Backing up...";
-
-                    if (_state == null)
-                    {
-                        MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-
-                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(true);
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
-                    await systemBackup.BackupEnvironmentVariablesAsync();
-
-                    await _state.SaveStateAsync();
-                    await LoadSystemBackupsAsync();
-
-                    MessageBox.Show("Environment variables backup completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Environment backup failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                BackupEnvBtn.IsEnabled = true;
-                BackupEnvBtn.Content = "💾 Backup";
-            }
-        }
-
-        private async Task BackupWindowsSettingsAsync()
-        {
-            if (!OperatingSystem.IsWindows())
-            {
-                MessageBox.Show("System backup is only available on Windows.", "System Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            try
+            var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
+            var progressWindow = new Windows.OperationProgressWindow(title, _logger);
+
+            progressWindow.RunModal(Window.GetWindow(this), async token =>
             {
-                var result = MessageBox.Show(
-                    "This will backup your Windows settings including:\n• Personalization (themes, colors)\n• File Explorer preferences\n• Taskbar settings\n• Regional settings\n• Mouse and keyboard preferences\n• Accessibility options\n\nContinue?",
-                    "Backup Windows Settings",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                progressWindow.StatusProgress.Report(statusText + "...");
+                var systemBackup = new SystemBackupManager(progressWindow, _configManager, _state, passwordProvider);
+                await backup(systemBackup, token);
+            });
 
-                if (result == MessageBoxResult.Yes)
-                {
-                    BackupSettingsBtn.IsEnabled = false;
-                    BackupSettingsBtn.Content = "Backing up...";
+            await LoadSystemBackupsAsync();
 
-                    if (_state == null)
-                    {
-                        MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-
-                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(true);
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
-                    await systemBackup.BackupWindowsSettingsAsync();
-
-                    await _state.SaveStateAsync();
-                    await LoadSystemBackupsAsync();
-
-                    MessageBox.Show("Windows settings backup completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
+            if (progressWindow.Succeeded)
+            {
+                MessageBox.Show(successText, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-            catch (Exception ex)
+            else if (progressWindow.Failure != null)
             {
-                MessageBox.Show($"Windows settings backup failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                BackupSettingsBtn.IsEnabled = true;
-                BackupSettingsBtn.Content = "💾 Backup";
-            }
-        }
-
-        private async Task BackupFullSystemAsync()
-        {
-            if (!OperatingSystem.IsWindows())
-            {
-                MessageBox.Show("System backup is only available on Windows.", "System Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                var result = MessageBox.Show(
-                    "This will backup:\n• Installed programs list\n• Environment variables\n• Windows settings\n\nContinue?",
-                    "Full System Backup",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    BackupFullSystemBtn.IsEnabled = false;
-                    BackupFullSystemBtn.Content = "Backing up...";
-
-                    if (_state == null)
-                    {
-                        MessageBox.Show("System not initialized properly.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-
-                    var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(true);
-                    var systemBackup = new SystemBackupManager(_logger, _configManager, _state, passwordProvider);
-                    await systemBackup.BackupSystemAsync();
-
-                    await _state.SaveStateAsync();
-                    await LoadSystemBackupsAsync();
-
-                    MessageBox.Show("Full system backup completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"System backup failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                BackupFullSystemBtn.IsEnabled = true;
-                BackupFullSystemBtn.Content = "Backup Full System";
+                MessageBox.Show($"{title} failed: {progressWindow.Failure.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private async void RestoreBackup_Click(object sender, RoutedEventArgs e)
+        {
+            await ErrorReporter.GuardAsync("Restore backup", () => RestoreBackup_ClickCoreAsync(sender, e));
+        }
+
+        private async Task RestoreBackup_ClickCoreAsync(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.Tag is SystemBackupItem backup)
             {
@@ -535,11 +427,12 @@ namespace ReStore.Views.Pages
                     "system_programs" => "programs",
                     "system_environment" => "environment variables",
                     "system_settings" => "Windows settings",
+                    "system_devtools" => "developer tools settings",
                     _ => "system data"
                 };
                 
                 var result = MessageBox.Show(
-                    $"Restore {typeLabel} from backup?\n\nCreated: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\nNote: This will download the backup and provide options for restoration.",
+                    $"Restore {typeLabel} from backup?\n\nCreated: {backup.TimestampLabel}\n\nNote: This will download the backup and provide options for restoration.",
                     "Confirm Restore",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
@@ -553,9 +446,8 @@ namespace ReStore.Views.Pages
                     }
 
                     var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(false);
                     using var storage = await CreateStorageForBackupAsync(backup);
-                    var progressWindow = new Windows.RestoreProgressWindow(storage, _state, backup.Type, backup.Path, passwordProvider);
+                    var progressWindow = new Windows.RestoreProgressWindow(storage, _configManager, _state, backup.Type, backup.Path, passwordProvider);
                     progressWindow.Owner = Window.GetWindow(this);
                     progressWindow.ShowDialog();
                 }
@@ -567,6 +459,11 @@ namespace ReStore.Views.Pages
         }
 
         private async void DeleteBackup_Click(object sender, RoutedEventArgs e)
+        {
+            await ErrorReporter.GuardAsync("Delete backup", () => DeleteBackup_ClickCoreAsync(sender, e));
+        }
+
+        private async Task DeleteBackup_ClickCoreAsync(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.Tag is SystemBackupItem backup)
             {
@@ -581,11 +478,12 @@ namespace ReStore.Views.Pages
                 "system_programs" => "programs",
                 "system_environment" => "environment variables",
                 "system_settings" => "Windows settings",
+                "system_devtools" => "developer tools settings",
                 _ => "system"
             };
             
             var result = MessageBox.Show(
-                $"Delete this {typeLabel} backup?\n\nCreated: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\nThis action cannot be undone.",
+                $"Delete this {typeLabel} backup?\n\nCreated: {backup.TimestampLabel}\n\nThis action cannot be undone.",
                 "Confirm Delete",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
@@ -594,29 +492,51 @@ namespace ReStore.Views.Pages
             {
                 try
                 {
-                    using var storage = await CreateStorageForBackupAsync(backup);
-                    await storage.DeleteAsync(backup.Path);
-
-                    // If encrypted, also delete the metadata file
-                    if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
                     {
-                        var metadataPath = backup.Path + ".meta";
-                        try
-                        {
-                            await storage.DeleteAsync(metadataPath);
-                        }
-                        catch (Exception metaEx)
-                        {
-                            _logger.Log($"Warning: Failed to delete metadata file: {metaEx.Message}", LogLevel.Warning);
-                        }
-                    }
+                        // Mutation + delete leases: serialises with backups, and waits for a restore that may be
+                        // reading this archive. The state is reloaded first if the CLI changed it.
+                        await using var mutation = await RepositoryCoordinator.Instance.AcquireMutationAsync(
+                            "Deleting a system backup", default, _state);
+                        await using var deleteLease = await RepositoryCoordinator.Instance.AcquireDeleteAsync(
+                            "Deleting a system backup");
 
-                    if (_state != null)
-                    {
-                        // Locked API rather than mutating BackupHistory directly: this also
-                        // prunes the verification-rotation bookkeeping.
-                        _state.RemoveBackupsFromGroup(backup.Type, [backup.Path]);
-                        await _state.SaveStateAsync();
+                        using var storage = await CreateStorageForBackupAsync(backup);
+
+                        // Already gone (manual cleanup, retention)? Then there is nothing to delete, and the stale
+                        // history entry below must still be removed or it could never be cleared from the UI.
+                        if (await storage.ExistsAsync(backup.Path))
+                        {
+                            await storage.DeleteAsync(backup.Path);
+                        }
+                        else
+                        {
+                            _logger.Log($"System backup '{backup.Path}' was already missing from storage; removing it from the history.", LogLevel.Warning);
+                        }
+
+                        // If encrypted, also delete the metadata file
+                        if (backup.Path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var metadataPath = backup.Path + ".meta";
+                            try
+                            {
+                                if (await storage.ExistsAsync(metadataPath))
+                                {
+                                    await storage.DeleteAsync(metadataPath);
+                                }
+                            }
+                            catch (Exception metaEx)
+                            {
+                                _logger.Log($"Warning: Failed to delete metadata file: {metaEx.Message}", LogLevel.Warning);
+                            }
+                        }
+
+                        if (_state != null)
+                        {
+                            // Locked API rather than mutating BackupHistory directly: this also
+                            // prunes the verification-rotation bookkeeping.
+                            _state.RemoveBackupsFromGroup(backup.Type, [backup.Path]);
+                            await _state.SaveStateAsync();
+                        }
                     }
 
                     _allBackups.Remove(backup);
@@ -644,11 +564,12 @@ namespace ReStore.Views.Pages
                     "system_programs" => "a list of installed programs with Winget IDs and restore scripts.",
                     "system_environment" => "environment variables that can be restored to your system.",
                     "system_settings" => "Windows registry settings including personalization, File Explorer, taskbar, regional settings, and more.",
+                    "system_devtools" => "Windows Terminal, PowerShell profile, VS Code, git (and optionally SSH config, never keys) settings plus the VS Code extension list.",
                     _ => "system backup data."
                 };
 
                 var details = $"Type: {typeLabel}\n\n" +
-                             $"Created: {backup.Timestamp:MMM dd, yyyy HH:mm:ss}\n\n" +
+                             $"Created: {backup.TimestampLabel}\n\n" +
                              $"Storage: {backup.StorageType}\n\n" +
                              $"Path: {backup.DisplayPath}\n\n" +
                              $"Description: This backup contains {description}";
@@ -662,26 +583,29 @@ namespace ReStore.Views.Pages
             try
             {
                 var localConfig = _configManager.StorageSources.FirstOrDefault(s => s.Key == "local").Value;
-                if (localConfig != null && !string.IsNullOrEmpty(localConfig.Path))
-                {
-                    var systemBackupPath = Path.Combine(localConfig.Path, "backups", "system_backups");
-                    
-                    if (!Directory.Exists(systemBackupPath))
-                    {
-                        Directory.CreateDirectory(systemBackupPath);
-                    }
-
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = "explorer.exe",
-                        Arguments = systemBackupPath,
-                        UseShellExecute = true
-                    });
-                }
-                else
+                if (localConfig == null || string.IsNullOrEmpty(localConfig.Path))
                 {
                     MessageBox.Show("Local storage not configured.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
                 }
+
+                // System backups are written under <local storage>\system_backups\{programs,environment,settings}.
+                var systemBackupPath = Path.Combine(ReStore.Core.src.utils.ConfigManager.ExpandConfiguredPath(localConfig.Path), "system_backups");
+
+                if (!Directory.Exists(systemBackupPath))
+                {
+                    MessageBox.Show(
+                        $"There are no system backups in local storage yet.\n\n{systemBackupPath}",
+                        "Information",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                // ArgumentList quotes the path itself, so folders containing spaces open correctly.
+                var startInfo = new ProcessStartInfo { FileName = "explorer.exe", UseShellExecute = false };
+                startInfo.ArgumentList.Add(systemBackupPath);
+                Process.Start(startInfo);
             }
             catch (Exception ex)
             {

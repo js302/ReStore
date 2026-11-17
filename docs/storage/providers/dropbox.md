@@ -22,7 +22,6 @@ Open `%USERPROFILE%\ReStore\config.json`:
 {
   "storageSources": {
     "dropbox": {
-      "path": "/backups",
       "options": {
         "appKey": "your_app_key",
         "appSecret": "your_app_secret",
@@ -33,7 +32,20 @@ Open `%USERPROFILE%\ReStore\config.json`:
 }
 ```
 
-**To get a Refresh Token:**
+**To get a Refresh Token from the command line (recommended for scripts and AI agents):**
+
+```bash
+echo %APP_SECRET% | restore config set-storage dropbox --option appKey=YOUR_APP_KEY --option-stdin appSecret --protect --default
+restore auth dropbox                  # step 1: prints an authorize URL (PKCE, offline access)
+# a person opens the URL, clicks Continue and Allow, and gives the code Dropbox shows to the agent
+restore auth dropbox --code THE_CODE  # step 2: exchanges the code for a refresh token and stores it as refreshToken
+restore probe --storage dropbox
+```
+
+The refresh token is written as a `dpapi:` value on Windows (plain text elsewhere, with a warning). The code is single-use and expires
+quickly; if step 2 fails, run step 1 again for a fresh URL. `restore auth status` shows whether a token is present.
+
+**To get a Refresh Token by hand:**
 
 1. Go to this URL in your browser (replace `APP_KEY` with your App Key):
    `https://www.dropbox.com/oauth2/authorize?client_id=APP_KEY&response_type=code&token_access_type=offline`
@@ -51,7 +63,12 @@ Open `%USERPROFILE%\ReStore\config.json`:
 
 **Configuration Parameters:**
 
-- **path**: Path within Dropbox (default: `"/backups"`)
 - **appKey**: Your Dropbox App Key
 - **appSecret**: Your Dropbox App Secret
 - **refreshToken**: The long-lived refresh token
+
+## Optional: `prefix` option
+
+Add `"prefix": "my-laptop"` to this source's `options` to keep the repository under a sub-folder of the app folder. It is applied to every path (uploads, downloads, listing, sharing) and is empty by default, so existing repositories are unaffected. It must not start with `/` or contain `..`. Changing it later points ReStore at a different (empty) repository; it does not move existing data.
+
+Remote sources do not need a top-level `"path"`. If one is present it is ignored (ReStore logs a warning); use `prefix` instead.

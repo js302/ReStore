@@ -13,7 +13,7 @@ public class CompressionUtil
                 File.Delete(outputZipFile);
             }
             ZipFile.CreateFromDirectory(sourceDirectory, outputZipFile, CompressionLevel.Optimal, false);
-        });
+        }).ConfigureAwait(false);
     }
 
     public static async Task DecompressAsync(string zipFile, string outputDirectory)
@@ -31,7 +31,7 @@ public class CompressionUtil
             {
                 throw new FileNotFoundException($"Zip file not found: {zipFile}");
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     public static async Task CompressFilesAsync(IEnumerable<string> filesToInclude, string baseDirectory, string destinationArchivePath)
@@ -57,7 +57,7 @@ public class CompressionUtil
 
                 archive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     public static async Task<string> CompressAndEncryptAsync(string sourceZip, string password, string salt, ILogger logger, int keyDerivationIterations = 1_000_000)
@@ -67,8 +67,8 @@ public class CompressionUtil
 
         var saltBytes = Convert.FromBase64String(salt);
         var encryptionService = new EncryptionService(logger);
-        var metadata = await encryptionService.EncryptFileAsync(sourceZip, encryptedPath, password, saltBytes, keyDerivationIterations);
-        await EncryptionService.SaveMetadataAsync(metadata, metadataPath);
+        var metadata = await encryptionService.EncryptFileAsync(sourceZip, encryptedPath, password, saltBytes, keyDerivationIterations).ConfigureAwait(false);
+        await EncryptionService.SaveMetadataAsync(metadata, metadataPath).ConfigureAwait(false);
 
         File.Delete(sourceZip);
 
@@ -83,12 +83,12 @@ public class CompressionUtil
         var metadataPath = encryptedZip + ".meta";
 
         var encryptionService = new EncryptionService(logger);
-        var metadata = await EncryptionService.LoadMetadataAsync(metadataPath);
-        await encryptionService.DecryptFileAsync(encryptedZip, decryptedZip, password, metadata);
+        var metadata = await EncryptionService.LoadMetadataAsync(metadataPath).ConfigureAwait(false);
+        await encryptionService.DecryptFileAsync(encryptedZip, decryptedZip, password, metadata).ConfigureAwait(false);
 
         try
         {
-            await DecompressAsync(decryptedZip, outputDirectory);
+            await DecompressAsync(decryptedZip, outputDirectory).ConfigureAwait(false);
         }
         finally
         {

@@ -53,7 +53,6 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 {
   "storageSources": {
     "github": {
-      "path": "./backups",
       "options": {
         "token": "your_token",
         "repo": "your_repo",
@@ -66,7 +65,6 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 
 **Configuration Parameters:**
 
-- **path**: Relative path for organizing backups in the repository (default: `"./backups"`)
 - **token**: The personal access token you generated in Step 3
 - **repo**: The name of your backup repository
 - **owner**: Your GitHub username
@@ -75,6 +73,9 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 
 - Uploads are base64 encoded in memory before being sent, so a file near the size limit needs
   roughly 2.3× its on-disk size in RAM
+- Re-uploading an existing file updates it in place (the existing blob sha is looked up first)
+- Existence checks use a cached repository tree rather than downloading file contents
+- When GitHub rate-limits requests (primary or secondary), ReStore waits for the advertised retry time (up to 5 minutes) and retries up to 3 times
 - For large file backups, consider using Git LFS or another storage provider
 - Keep your token secure - it provides write access to your repository
 - You can revoke tokens at any time from GitHub Settings > Developer settings
@@ -86,3 +87,9 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the GitHub section:
 - **File size**: 100 MB maximum per file (warning at 50 MB)
 - **Free tier**: 10 GB of Git LFS storage and bandwidth per month
 - **Best practice**: Use GitHub for configuration backups and smaller files; use Google Drive or S3 for large file backups
+
+## Optional: `prefix` option
+
+Add `"prefix": "my-laptop"` to this source's `options` to keep the repository under a sub-folder of the repository. It is applied to every path (uploads, downloads, listing, sharing) and is empty by default, so existing repositories are unaffected. It must not start with `/` or contain `..`. Changing it later points ReStore at a different (empty) repository; it does not move existing data.
+
+Remote sources do not need a top-level `"path"`. If one is present it is ignored (ReStore logs a warning); use `prefix` instead.

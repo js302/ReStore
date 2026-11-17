@@ -1,0 +1,110 @@
+<Window x:Class="ReStore.Views.Windows.SnapshotBrowserWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="Browse Snapshot" Height="680" Width="900" MinHeight="420" MinWidth="680" WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="CanResize" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" Background="{DynamicResource ApplicationBackgroundBrush}" UseLayoutRounding="True">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="32" CornerRadius="8" GlassFrameThickness="0" ResizeBorderThickness="6"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Border BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="32"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Background="{DynamicResource ApplicationBackgroundBrush}" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <TextBlock x:Name="TitleText" Text="Browse Snapshot" VerticalAlignment="Center" Margin="16,0" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </Grid>
+
+            <Border Grid.Row="1" Margin="24,16,24,0" Padding="16" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8">
+                <StackPanel>
+                    <TextBlock x:Name="SummaryText" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="GroupText" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="2" Margin="24,12,24,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="260"/>
+                </Grid.ColumnDefinitions>
+                <Button AutomationProperties.Name="Go up one folder" x:Name="UpBtn" Grid.Column="0" Content="&#x2191; Up" Padding="12,6" Margin="0,0,12,0" IsEnabled="False" Click="UpBtn_Click"/>
+                <TextBlock x:Name="BreadcrumbText" Grid.Column="1" VerticalAlignment="Center" FontFamily="Consolas" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <TextBox AutomationProperties.Name="Search files in this snapshot" x:Name="SearchBox" Grid.Column="2" Padding="8" VerticalContentAlignment="Center" ToolTip="Search file and folder names in this snapshot (use / to match a path)" IsEnabled="False"/>
+            </Grid>
+
+            <Border Grid.Row="3" Margin="24,12,24,0" Padding="12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="8,0,8,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="140"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Name" FontSize="11" FontWeight="SemiBold" Margin="30,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Size" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="2" Text="Modified" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </Grid>
+
+                    <!-- Virtualised: only the rows in view are realised (a snapshot folder can hold hundreds of thousands
+                         of entries). Do not wrap in another ScrollViewer or set CanContentScroll=False. -->
+                    <ListView AutomationProperties.Name="Snapshot contents" x:Name="EntryList" Style="{x:Null}" Background="Transparent" BorderThickness="0"
+                              SelectionMode="Extended" ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
+                              SelectionChanged="EntryList_SelectionChanged" MouseDoubleClick="EntryList_MouseDoubleClick" KeyDown="EntryList_KeyDown">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel IsVirtualizing="True" VirtualizationMode="Recycling"/>
+                            </ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Padding" Value="8,5"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="140"/>
+                                        <ColumnDefinition Width="140"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" FontFamily="{StaticResource IconFont}" Text="{Binding Glyph}" FontSize="14" Width="22" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorPrimaryBrush}" ToolTip="{Binding RelativePath}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SizeLabel}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding ModifiedLabel}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="4" Margin="0,16,0,0" Padding="24,12" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="StatusText" Grid.Row="0" Margin="0,0,0,10" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Loading snapshot..."/>
+                    <WrapPanel Grid.Row="1">
+                        <Button AutomationProperties.Name="Restore the selection to a folder" x:Name="RestoreToBtn" Content="Restore to..." Padding="14,6" Margin="0,0,8,6" IsEnabled="False" Click="RestoreToBtn_Click"/>
+                        <Button AutomationProperties.Name="Restore the selection to its original location" x:Name="RestoreOriginalBtn" Content="Restore to original location" Padding="14,6" Margin="0,0,8,6" IsEnabled="False" Click="RestoreOriginalBtn_Click"/>
+                        <Button AutomationProperties.Name="Show the versions of the selected file" x:Name="VersionsBtn" Content="Show versions" Padding="14,6" Margin="0,0,8,6" IsEnabled="False" Click="VersionsBtn_Click"/>
+                        <Button AutomationProperties.Name="Compare with another snapshot" x:Name="CompareBtn" Content="Compare with..." Padding="14,6" Margin="0,0,8,6" IsEnabled="False" Click="CompareBtn_Click"/>
+                        <Button AutomationProperties.Name="Close" x:Name="CloseBtn" Content="Close" Padding="14,6" Margin="0,0,0,6" Click="CloseBtn_Click"/>
+                    </WrapPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

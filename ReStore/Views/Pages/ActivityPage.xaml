@@ -1,0 +1,89 @@
+<Page x:Class="ReStore.Views.Pages.ActivityPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" Loaded="Page_Loaded" Unloaded="Page_Unloaded">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Activity" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <TextBlock Text="Recent backups, restores, verifications, system backups and repairs" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <ComboBox AutomationProperties.Name="Filter by operation type" x:Name="TypeFilter" MinWidth="170" VerticalContentAlignment="Center">
+                <ComboBoxItem Content="All operations" IsSelected="True"/>
+                <ComboBoxItem Content="Backups" Tag="Backup"/>
+                <ComboBoxItem Content="Restores" Tag="Restore"/>
+                <ComboBoxItem Content="Verifications" Tag="Verify"/>
+                <ComboBoxItem Content="System backups" Tag="SystemBackup"/>
+                <ComboBoxItem Content="System restores" Tag="SystemRestore"/>
+                <ComboBoxItem Content="Repairs" Tag="Repair"/>
+            </ComboBox>
+            <ComboBox AutomationProperties.Name="Filter by result" x:Name="ResultFilter" MinWidth="150" Margin="12,0,0,0" VerticalContentAlignment="Center">
+                <ComboBoxItem Content="Any result" IsSelected="True"/>
+                <ComboBoxItem Content="Succeeded" Tag="Succeeded"/>
+                <ComboBoxItem Content="Warnings" Tag="Warning"/>
+                <ComboBoxItem Content="Failed" Tag="Failed"/>
+                <ComboBoxItem Content="Cancelled" Tag="Cancelled"/>
+            </ComboBox>
+            <Button AutomationProperties.Name="Refresh activity" x:Name="RefreshBtn" Content="Refresh" Padding="12,6" Margin="12,0,0,0" Cursor="Hand"/>
+        </StackPanel>
+
+        <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="8" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <ListBox AutomationProperties.Name="Recent operations" x:Name="ActivityList" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="4,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="90"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding TimeLabel}" ToolTip="{Binding TimeTooltip}" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding TypeLabel}" FontSize="12" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding ResultLabel}" FontSize="12" FontWeight="SemiBold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ResultLabel}" Value="Warning">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding ResultLabel}" Value="Failed">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding ResultLabel}" Value="Cancelled">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <StackPanel Grid.Column="3">
+                                    <TextBlock Text="{Binding Target}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Target}" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding Message}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock x:Name="EmptyText" Text="Nothing here yet. Operations show up as they finish." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
+            <Button AutomationProperties.Name="Copy details of the selected operation" x:Name="CopyBtn" Content="Copy details" Padding="12,6" Cursor="Hand" IsEnabled="False"/>
+            <Button AutomationProperties.Name="Open the log file" x:Name="OpenLogBtn" Content="Open log" Padding="12,6" Margin="12,0,0,0" Cursor="Hand"/>
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+        </StackPanel>
+    </Grid>
+</Page>

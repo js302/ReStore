@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using ReStore.Core.src.utils;
 using System.Runtime.Versioning;
@@ -10,7 +9,15 @@ public class ProgramRestoreManager(ILogger logger)
 {
     private readonly ILogger _logger = logger;
 
-    public async Task<ProgramRestoreResult> RestoreProgramsFromJsonAsync(string jsonPath, bool wingetOnly = false, bool dryRun = false)
+    /// <summary>Upper bound for a single <c>winget install</c>.</summary>
+    public TimeSpan InstallTimeout { get; set; } = TimeSpan.FromMinutes(30);
+
+    private sealed class InstalledProgramsExportFile
+    {
+        public List<InstalledProgram>? Programs { get; set; }
+    }
+
+    public async Task<ProgramRestoreResult> RestoreProgramsFromJsonAsync(string jsonPath, bool wingetOnly = false, bool dryRun = false, CancellationToken cancellationToken = default)
     {
         _logger.Log($"Starting program restore from {jsonPath} (WingetOnly: {wingetOnly}, DryRun: {dryRun})", LogLevel.Info);
         
@@ -18,20 +25,25 @@ public class ProgramRestoreManager(ILogger logger)
         
         try
         {
-            var json = await File.ReadAllTextAsync(jsonPath);
-            var data = JsonSerializer.Deserialize<JsonElement>(json);
-            
-            if (data.TryGetProperty("programs", out var programsElement))
+            var json = await File.ReadAllTextAsync(jsonPath).ConfigureAwait(false);
+            var data = JsonSerializer.Deserialize<InstalledProgramsExportFile>(json, JsonDefaults.SystemBackup);
+
+            var programs = data?.Programs;
+            if (programs == null)
             {
-                var programs = JsonSerializer.Deserialize<List<InstalledProgram>>(programsElement.GetRawText());
-                
-                if (programs != null)
-                {
-                    result = await RestoreProgramsAsync(programs, wingetOnly, dryRun);
-                }
+                return result;
             }
+
+            if (programs.Count > 0 &&
+                programs.All(p => string.IsNullOrWhiteSpace(p.Name) && string.IsNullOrWhiteSpace(p.WingetId)))
+            {
+                throw new InvalidDataException(
+                    $"'{jsonPath}' contains {programs.Count} program entries but none has a name or winget id; the file is malformed.");
+            }
+
+            result = await RestoreProgramsAsync(programs, wingetOnly, dryRun, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.Log($"Error restoring programs: {ex.Message}", LogLevel.Error);
             result.Success = false;
@@ -41,11 +53,11 @@ public class ProgramRestoreManager(ILogger logger)
         return result;
     }
 
-    public async Task<ProgramRestoreResult> RestoreProgramsAsync(List<InstalledProgram> programs, bool wingetOnly = false, bool dryRun = false)
+    public async Task<ProgramRestoreResult> RestoreProgramsAsync(List<InstalledProgram> programs, bool wingetOnly = false, bool dryRun = false, CancellationToken cancellationToken = default)
     {
         var result = new ProgramRestoreResult();
         
-        var wingetAvailable = await IsWingetAvailableAsync();
+        var wingetAvailable = await IsWingetAvailableAsync(cancellationToken).ConfigureAwait(false);
         if (!wingetAvailable)
         {
             _logger.Log("Winget is not available on this system", LogLevel.Warning);
@@ -57,8 +69,14 @@ public class ProgramRestoreManager(ILogger logger)
             }
         }
 
-        var wingetPrograms = programs.Where(p => p.IsWingetAvailable && !string.IsNullOrEmpty(p.WingetId)).ToList();
-        var manualPrograms = programs.Where(p => !p.IsWingetAvailable || string.IsNullOrEmpty(p.WingetId)).ToList();
+        // Ids come from an archive that may not be trustworthy: anything that is not a plain winget id is never passed to winget.
+        foreach (var program in programs.Where(p => p.IsWingetAvailable && !string.IsNullOrEmpty(p.WingetId) && !WingetHelper.IsValidId(p.WingetId)))
+        {
+            _logger.Log($"Ignoring invalid winget id for '{program.Name}'; it will need manual installation", LogLevel.Warning);
+        }
+
+        var wingetPrograms = programs.Where(p => p.IsWingetAvailable && WingetHelper.IsValidId(p.WingetId)).ToList();
+        var manualPrograms = programs.Where(p => !(p.IsWingetAvailable && WingetHelper.IsValidId(p.WingetId))).ToList();
 
         _logger.Log($"Programs to process: {wingetPrograms.Count} via winget, {manualPrograms.Count} manual", LogLevel.Info);
 
@@ -75,9 +93,10 @@ public class ProgramRestoreManager(ILogger logger)
         {
             foreach (var program in wingetPrograms)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var installResult = await InstallProgramViaWingetAsync(program);
+                    var installResult = await InstallProgramViaWingetAsync(program, cancellationToken).ConfigureAwait(false);
                     if (installResult)
                     {
                         result.InstalledPrograms.Add(program);
@@ -89,7 +108,7 @@ public class ProgramRestoreManager(ILogger logger)
                         result.FailedInstalls++;
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.Log($"Error installing {program.Name}: {ex.Message}", LogLevel.Error);
                     result.FailedPrograms.Add(program);
@@ -111,79 +130,57 @@ public class ProgramRestoreManager(ILogger logger)
         return result;
     }
 
-    private async Task<bool> IsWingetAvailableAsync()
+    private async Task<bool> IsWingetAvailableAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = "winget",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(processStartInfo);
-            if (process != null)
-            {
-                await process.WaitForExitAsync();
-                return process.ExitCode == 0;
-            }
+            var result = await ProcessRunner.RunAsync("winget", ["--version"], TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+            return !result.TimedOut && result.ExitCode == 0;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.Log($"Error checking winget availability: {ex.Message}", LogLevel.Debug);
         }
-        
+
         return false;
     }
 
-    private async Task<bool> InstallProgramViaWingetAsync(InstalledProgram program)
+    private async Task<bool> InstallProgramViaWingetAsync(InstalledProgram program, CancellationToken cancellationToken)
     {
         _logger.Log($"Installing {program.Name} via winget (ID: {program.WingetId})", LogLevel.Info);
-        
+
         try
         {
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = "winget",
-                Arguments = $"install --id {program.WingetId} --silent --accept-source-agreements --accept-package-agreements",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var result = await ProcessRunner.RunAsync(
+                "winget",
+                WingetHelper.BuildInstallArguments(program.WingetId),
+                InstallTimeout,
+                cancellationToken).ConfigureAwait(false);
 
-            using var process = Process.Start(processStartInfo);
-            if (process != null)
+            if (result.TimedOut)
             {
-                var output = await process.StandardOutput.ReadToEndAsync();
-                var error = await process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
+                _logger.Log($"Installing {program.Name} timed out after {InstallTimeout.TotalMinutes:0} minutes", LogLevel.Warning);
+                return false;
+            }
 
-                if (process.ExitCode == 0)
-                {
-                    _logger.Log($"Successfully installed {program.Name}", LogLevel.Info);
-                    return true;
-                }
-                else
-                {
-                    _logger.Log($"Failed to install {program.Name}: Exit code {process.ExitCode}", LogLevel.Warning);
-                    if (!string.IsNullOrEmpty(error))
-                    {
-                        _logger.Log($"Error details: {error}", LogLevel.Debug);
-                    }
-                    return false;
-                }
+            var status = WingetHelper.DescribeInstallExitCode(result.ExitCode);
+            if (status.IsSuccess)
+            {
+                _logger.Log($"{program.Name}: {status.Description}", LogLevel.Info);
+                return true;
+            }
+
+            _logger.Log($"Failed to install {program.Name}: {status.Description}", LogLevel.Warning);
+            if (!string.IsNullOrEmpty(result.StandardError))
+            {
+                _logger.Log($"Error details: {result.StandardError}", LogLevel.Debug);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.Log($"Exception installing {program.Name}: {ex.Message}", LogLevel.Error);
         }
-        
+
         return false;
     }
 
@@ -193,7 +190,7 @@ public class ProgramRestoreManager(ILogger logger)
         
         var currentlyInstalled = new List<InstalledProgram>();
         var discovery = new SystemProgramDiscovery(_logger);
-        var currentPrograms = await discovery.GetAllInstalledProgramsAsync();
+        var currentPrograms = await discovery.GetAllInstalledProgramsAsync().ConfigureAwait(false);
         
         foreach (var program in programs)
         {
@@ -231,14 +228,8 @@ public class ProgramRestoreManager(ILogger logger)
             ErrorMessage = result.ErrorMessage
         };
 
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        };
-
-        var json = JsonSerializer.Serialize(report, options);
-        await File.WriteAllTextAsync(outputPath, json);
+        var json = JsonSerializer.Serialize(report, JsonDefaults.SystemBackup);
+        await File.WriteAllTextAsync(outputPath, json).ConfigureAwait(false);
 
         _logger.Log($"Installation report saved to {outputPath}", LogLevel.Info);
     }

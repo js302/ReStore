@@ -20,7 +20,7 @@
         <TextBlock x:Name="FilePathText" Grid.Row="2" Text="C:\Path\To\File.txt" TextTrimming="CharacterEllipsis" FontWeight="Medium" Margin="0,0,0,15"/>
 
         <TextBlock Grid.Row="3" Text="Select Storage Provider:" Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,5"/>
-        <ComboBox x:Name="StorageProviderCombo" Grid.Row="4" Margin="0,0,0,15" VerticalAlignment="Top" DisplayMemberPath="Key" SelectedValuePath="Key"/>
+        <ComboBox AutomationProperties.Name="Storage provider" x:Name="StorageProviderCombo" Grid.Row="4" Margin="0,0,0,15" VerticalAlignment="Top" DisplayMemberPath="Key" SelectedValuePath="Key"/>
         <TextBlock Grid.Row="4" Text="Shared files are uploaded as-is, without ReStore backup encryption." FontSize="11" Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}" Margin="0,34,0,0" TextWrapping="Wrap"/>
 
         <StackPanel x:Name="ResultPanel" Grid.Row="5" Visibility="Collapsed" VerticalAlignment="Top" Margin="0,0,0,15">
@@ -30,7 +30,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="LinkBox" IsReadOnly="True" Margin="0,0,10,0"/>
+                <TextBox AutomationProperties.Name="Share link" x:Name="LinkBox" IsReadOnly="True" Margin="0,0,10,0"/>
                 <ui:Button Grid.Column="1" Content="Copy" Click="CopyLink_Click"/>
             </Grid>
             <TextBlock x:Name="ExpiryText" FontSize="11" Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}" Margin="0,5,0,0"/>

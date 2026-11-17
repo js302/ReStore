@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Diagnostics;
 
 namespace ReStore.Core.src.utils;
 
@@ -9,6 +8,22 @@ public class EnvironmentVariableEntry
     public string Value { get; set; } = "";
     public EnvironmentVariableTarget Target { get; set; }
     public string TargetName => Target.ToString();
+
+    /// <summary>
+    /// Registry value kind ("String" or "ExpandString") recorded at backup time. Null in files written by
+    /// older versions, which restore as plain strings (the previous behaviour).
+    /// </summary>
+    public string? Kind { get; set; }
+}
+
+public sealed class EnvironmentRestoreResult
+{
+    public int Total { get; set; }
+    public int Restored { get; set; }
+    public int Merged { get; set; }
+    public int Skipped { get; set; }
+    public List<string> Failures { get; } = [];
+    public int Failed => Failures.Count;
 }
 
 public class EnvironmentVariablesManager(ILogger logger)
@@ -51,7 +66,8 @@ public class EnvironmentVariablesManager(ILogger logger)
                 {
                     Name = key,
                     Value = value,
-                    Target = target
+                    Target = target,
+                    Kind = DefaultEnvironmentVariableStore.TryGetKind(key, target)
                 });
             }
 
@@ -65,7 +81,7 @@ public class EnvironmentVariablesManager(ILogger logger)
         return variables;
     }
 
-    private static bool ShouldSkipVariable(string name, EnvironmentVariableTarget target)
+    internal static bool ShouldSkipVariable(string name, EnvironmentVariableTarget target)
     {
         // Skip system-managed variables that shouldn't be restored
         var systemManagedVars = new[]
@@ -97,14 +113,8 @@ public class EnvironmentVariablesManager(ILogger logger)
                 Variables = variables
             };
 
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
-
-            var json = JsonSerializer.Serialize(exportData, options);
-            await File.WriteAllTextAsync(outputPath, json);
+            var json = JsonSerializer.Serialize(exportData, JsonDefaults.SystemBackup);
+            await File.WriteAllTextAsync(outputPath, json).ConfigureAwait(false);
 
             _logger.Log($"Exported {variables.Count} environment variables to {outputPath}", LogLevel.Info);
             return outputPath;
@@ -123,7 +133,7 @@ public class EnvironmentVariablesManager(ILogger logger)
             var scriptContent = new List<string>
             {
                 "# ReStore Environment Variables Restore Script",
-                "# Generated on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                "# Generated on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
                 "",
                 "Write-Host 'Starting environment variables restore...'",
                 "",
@@ -154,9 +164,10 @@ public class EnvironmentVariablesManager(ILogger logger)
             foreach (var variable in variables.OrderBy(v => v.Target).ThenBy(v => v.Name))
             {
                 var target = variable.Target == EnvironmentVariableTarget.Machine ? "Machine" : "User";
-                var escapedValue = variable.Value.Replace("'", "''").Replace("`", "``");
+                var escapedValue = ScriptFile.EscapeSingleQuoted(variable.Value).Replace("`", "``");
+                var escapedName = ScriptFile.EscapeSingleQuotedLabel(variable.Name);
 
-                scriptContent.Add($"Set-EnvironmentVariableSafely -Name '{variable.Name}' -Value '{escapedValue}' -Target {target}");
+                scriptContent.Add($"Set-EnvironmentVariableSafely -Name '{escapedName}' -Value '{escapedValue}' -Target {target}");
             }
 
             scriptContent.AddRange(new[]
@@ -166,7 +177,7 @@ public class EnvironmentVariablesManager(ILogger logger)
                 "Write-Host 'Note: You may need to restart applications or log off/on for changes to take effect.' -ForegroundColor Yellow"
             });
 
-            await File.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent));
+            await ScriptFile.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent)).ConfigureAwait(false);
 
             _logger.Log($"Created restore script at {outputPath}", LogLevel.Info);
             return outputPath;
@@ -178,95 +189,133 @@ public class EnvironmentVariablesManager(ILogger logger)
         }
     }
 
-    public async Task RestoreEnvironmentVariablesAsync(string jsonPath)
+    private sealed class EnvironmentVariablesExportFile
+    {
+        public List<EnvironmentVariableEntry>? Variables { get; set; }
+    }
+
+    /// <summary>
+    /// Reads the variables from an exported environment_variables.json. A missing list yields no variables. Throws if the file has entries but none has a name (a sign of a mis-read file).
+    /// </summary>
+    public static async Task<List<EnvironmentVariableEntry>> LoadVariablesFromJsonAsync(string jsonPath)
+    {
+        var json = await File.ReadAllTextAsync(jsonPath).ConfigureAwait(false);
+        var data = JsonSerializer.Deserialize<EnvironmentVariablesExportFile>(json, JsonDefaults.SystemBackup);
+
+        var variables = data?.Variables ?? [];
+        if (variables.Count > 0 && variables.All(v => string.IsNullOrWhiteSpace(v.Name)))
+        {
+            throw new InvalidDataException(
+                $"'{jsonPath}' contains {variables.Count} environment variable entries but none has a name; the file is malformed.");
+        }
+
+        return variables;
+    }
+
+    /// <summary>
+    /// Restores variables from environment_variables.json. List variables (PATH, PATHEXT, PSModulePath, any
+    /// <c>;</c>-list) are merged with the current value instead of replaced, and expand-type values keep
+    /// <c>REG_EXPAND_SZ</c>. Per-variable failures (for example Machine scope without elevation) are collected
+    /// in the result rather than thrown, so one failure does not stop the rest.
+    /// </summary>
+    public async Task<EnvironmentRestoreResult> RestoreEnvironmentVariablesAsync(
+        string jsonPath,
+        IEnvironmentVariableStore? store = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.Log($"Restoring environment variables from {jsonPath}...", LogLevel.Info);
 
-            var json = await File.ReadAllTextAsync(jsonPath);
-            var data = JsonSerializer.Deserialize<JsonElement>(json);
+            var variables = await LoadVariablesFromJsonAsync(jsonPath).ConfigureAwait(false);
+            var result = ApplyVariables(variables, store ?? new DefaultEnvironmentVariableStore(), cancellationToken);
 
-            if (data.TryGetProperty("variables", out var variablesElement))
-            {
-                var variables = JsonSerializer.Deserialize<List<EnvironmentVariableEntry>>(variablesElement.GetRawText());
-
-                if (variables != null)
-                {
-                    foreach (var variable in variables)
-                    {
-                        try
-                        {
-                            Environment.SetEnvironmentVariable(variable.Name, variable.Value, variable.Target);
-                            _logger.Log($"Restored {variable.TargetName} variable: {variable.Name}", LogLevel.Debug);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Log($"Failed to restore variable {variable.Name}: {ex.Message}", LogLevel.Warning);
-                        }
-                    }
-
-                    _logger.Log($"Successfully restored {variables.Count} environment variables", LogLevel.Info);
-                }
-            }
+            _logger.Log(
+                $"Environment variables restored: {result.Restored} written ({result.Merged} merged), {result.Skipped} skipped, {result.Failed} failed",
+                result.Failed > 0 ? LogLevel.Warning : LogLevel.Info);
+            return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.Log($"Error restoring environment variables: {ex.Message}", LogLevel.Error);
             throw;
         }
     }
 
-    public async Task<bool> RestoreEnvironmentVariablesWithPowerShellAsync(string scriptPath)
+    public EnvironmentRestoreResult ApplyVariables(
+        IReadOnlyList<EnvironmentVariableEntry> variables,
+        IEnvironmentVariableStore store,
+        CancellationToken cancellationToken = default)
     {
-        try
+        var result = new EnvironmentRestoreResult { Total = variables.Count };
+
+        foreach (var variable in variables)
         {
-            _logger.Log($"Executing PowerShell restore script: {scriptPath}", LogLevel.Info);
-            if (!File.Exists(scriptPath))
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!IsRestorableName(variable.Name))
             {
-                _logger.Log($"PowerShell restore script not found: {scriptPath}", LogLevel.Warning);
-                return false;
+                result.Skipped++;
+                _logger.Log($"Skipped environment variable with unusable name '{variable.Name}'", LogLevel.Warning);
+                continue;
             }
 
-            var processStartInfo = new ProcessStartInfo
+            // PATHEXT is merged below, so it is exempt from the system-managed skip list on restore.
+            if (!variable.Name.Equals("PATHEXT", StringComparison.OrdinalIgnoreCase)
+                && ShouldSkipVariable(variable.Name, variable.Target))
             {
-                FileName = "powershell.exe",
-                Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                result.Skipped++;
+                _logger.Log($"Skipped system-managed environment variable {variable.Name}", LogLevel.Warning);
+                continue;
+            }
 
-            using var process = Process.Start(processStartInfo);
-            if (process != null)
+            try
             {
-                var output = await process.StandardOutput.ReadToEndAsync();
-                var error = await process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
+                var kind = EnvironmentVariableKinds.Normalize(variable.Kind);
+                var value = variable.Value;
 
-                if (!string.IsNullOrEmpty(output))
+                if (EnvironmentVariableMerger.IsListVariable(variable.Name, variable.Value))
                 {
-                    _logger.Log($"PowerShell output: {output}", LogLevel.Debug);
+                    var existing = store.Get(variable.Name, variable.Target);
+                    if (existing != null)
+                    {
+                        value = EnvironmentVariableMerger.Merge(existing.Value, variable.Value);
+                        // Keep expand-type if either side was; dropping it would break %VAR% entries.
+                        if (existing.Kind == EnvironmentVariableKinds.ExpandString)
+                        {
+                            kind = EnvironmentVariableKinds.ExpandString;
+                        }
+
+                        result.Merged++;
+                    }
+                    else
+                    {
+                        value = EnvironmentVariableMerger.Merge(null, variable.Value);
+                    }
                 }
 
-                if (process.ExitCode == 0)
-                {
-                    _logger.Log("Environment variables restored successfully via PowerShell", LogLevel.Info);
-                    return true;
-                }
-                else
-                {
-                    _logger.Log($"PowerShell script failed with exit code {process.ExitCode}: {error}", LogLevel.Error);
-                    return false;
-                }
+                store.Set(variable.Name, value, variable.Target, kind);
+                result.Restored++;
+                _logger.Log($"Restored {variable.TargetName} variable: {variable.Name}", LogLevel.Debug);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var reason = ex is UnauthorizedAccessException or System.Security.SecurityException
+                    ? $"{ex.Message} (administrator rights are required for {variable.TargetName} variables)"
+                    : ex.Message;
+                result.Failures.Add($"{variable.TargetName}:{variable.Name}: {reason}");
+                _logger.Log($"Failed to restore {variable.TargetName} variable {variable.Name}: {reason}", LogLevel.Warning);
             }
         }
-        catch (Exception ex)
+
+        if (result.Restored > 0)
         {
-            _logger.Log($"Error executing PowerShell restore script: {ex.Message}", LogLevel.Error);
+            store.NotifyChanged();
         }
 
-        return false;
+        return result;
     }
+
+    internal static bool IsRestorableName(string name)
+        => !string.IsNullOrWhiteSpace(name) && !name.Contains('=') && !name.Contains('\0');
 }

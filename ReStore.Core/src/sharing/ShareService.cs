@@ -17,7 +17,7 @@ public class ShareService(IConfigManager configManager, ILogger logger)
             throw new FileNotFoundException($"File not found: {localFilePath}");
         }
 
-        using var storage = await _configManager.CreateStorageAsync(storageType);
+        using var storage = await _configManager.CreateStorageAsync(storageType).ConfigureAwait(false);
 
         if (!storage.SupportsSharing)
         {
@@ -29,12 +29,12 @@ public class ShareService(IConfigManager configManager, ILogger logger)
 
         _logger.Log($"Uploading {fileName} to {storageType} for sharing...");
 
-        await storage.UploadAsync(localFilePath, remotePath);
+        await storage.UploadAsync(localFilePath, remotePath).ConfigureAwait(false);
 
         try
         {
             _logger.Log($"Generating share link for {fileName}...");
-            string link = await storage.GenerateShareLinkAsync(remotePath, expiration);
+            string link = await storage.GenerateShareLinkAsync(remotePath, expiration).ConfigureAwait(false);
             return link;
         }
         catch (Exception ex)
@@ -43,7 +43,7 @@ public class ShareService(IConfigManager configManager, ILogger logger)
             _logger.Log($"Share link generation failed, cleaning up uploaded file: {ex.Message}", LogLevel.Warning);
             try
             {
-                await storage.DeleteAsync(remotePath);
+                await storage.DeleteAsync(remotePath).ConfigureAwait(false);
             }
             catch (Exception cleanupEx)
             {

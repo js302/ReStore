@@ -9,27 +9,32 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <AssemblyName>ReStore.Core</AssemblyName>
     <PackageId>ReStore.Core</PackageId>
-    <Product>ReStore Core</Product>
+    <Product>ReStore</Product>
     <Description>Command-line interface for ReStore backup and restore solution</Description>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="4.0.13.1" />
-    <PackageReference Include="Google.Api.Gax.Grpc" Version="4.12.1" />
-    <PackageReference Include="Octokit" Version="9.0.*" />
-    <PackageReference Include="Google.Apis.Drive.v3" Version="1.72.0.3970" />
-    <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <PackageReference Include="AWSSDK.S3" Version="4.1.0" />
+    <PackageReference Include="Google.Api.Gax.Grpc" Version="4.16.0" />
+    <PackageReference Include="Octokit" Version="9.0.0" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.78.0.4327" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.78.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.30.1" />
     <PackageReference Include="Google.Cloud.Storage.V1" Version="4.13.0" />
-    <PackageReference Include="Dropbox.Api" Version="7.0.0" />
-    <PackageReference Include="SSH.NET" Version="2026.0.0" />
+    <PackageReference Include="Dropbox.Api" Version="7.4.1" />
+    <PackageReference Include="SSH.NET" Version="2026.0.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="config\config.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The JSON Schema of config.json ('config schema') and the default config, for the single-file CLI too. -->
+    <EmbeddedResource Include="config\config.schema.json" LogicalName="config.schema.json" />
+    <EmbeddedResource Include="config\config.example.json" LogicalName="config.example.json" />
+    <!-- The guide for AI agents ('agent-guide'), version-matched to the binary. -->
+    <EmbeddedResource Include="..\docs\agents.md" LogicalName="agents.md" />
   </ItemGroup>
 
   <ItemGroup>

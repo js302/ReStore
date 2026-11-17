@@ -27,7 +27,6 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
   },
   "storageSources": {
     "gdrive": {
-      "path": "./backups",
       "options": {
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
@@ -36,21 +35,18 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
       }
     },
     "gcp": {
-      "path": "backups",
       "options": {
         "bucketName": "your-bucket-name",
         "credentialPath": "C:\\Users\\YourName\\ReStore\\gcp-key.json"
       }
     },
     "azure": {
-      "path": "backups",
       "options": {
         "connectionString": "...",
         "containerName": "restore-backups"
       }
     },
     "sftp": {
-      "path": "/home/user/backups",
       "options": {
         "host": "sftp.example.com",
         "username": "user",
@@ -64,6 +60,8 @@ You can configure multiple storage sources in the same `config.json` file. ReSto
   }
 }
 ```
+
+Remote sources take only their provider `options` (plus an optional `prefix`, see [Storage Providers](../README.md#the-prefix-option)); a top-level `"path"` is used by Local storage only. Several sources can share one bucket or account by giving each a different `prefix`.
 
 ## Storage Selection Logic
 
@@ -91,7 +89,7 @@ restore backup "C:\Users\YourName\Documents"
 # Override storage type for this backup
 restore backup "C:\Users\YourName\Documents" --storage gdrive
 
-# System backup with storage override
+# System backup with storage override (applies to every component of this run)
 restore system-backup all --storage s3
 restore system-backup programs --storage github
 ```

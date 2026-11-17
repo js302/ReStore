@@ -10,9 +10,15 @@ namespace ReStore.Services
         private const string COMMAND_SUBKEY = "command";
         private const string MENU_ITEM_TEXT = "Share with ReStore";
 
+        /// <summary>
+        /// False when running with MSIX package identity: a per-user <c>HKCU\Software\Classes</c> verb pointing at a
+        /// packaged executable cannot work, so the option is not offered there (H19).
+        /// </summary>
+        public static bool IsSupported => !ReStore.Interop.PackageInfo.IsPackaged;
+
         public static bool IsContextMenuEnabled()
         {
-            if (!OperatingSystem.IsWindows()) return false;
+            if (!OperatingSystem.IsWindows() || !IsSupported) return false;
 
             try
             {
@@ -30,6 +36,11 @@ namespace ReStore.Services
             if (!OperatingSystem.IsWindows())
             {
                 return (false, "Context menu registration is only supported on Windows.");
+            }
+
+            if (!IsSupported)
+            {
+                return (false, "The Explorer context menu is not available in the packaged (Microsoft Store / MSIX) version of ReStore.");
             }
 
             try
@@ -101,15 +112,9 @@ namespace ReStore.Services
 
         private static string? GetExecutablePath()
         {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var installedPath = System.IO.Path.Combine(localAppData, "Microsoft", "WindowsApps", "ReStore.exe");
-
-            if (System.IO.File.Exists(installedPath))
-            {
-                return installedPath;
-            }
-
-            return Process.GetCurrentProcess().MainModule?.FileName;
+            // Only reached unpackaged, where the running executable is the one to register. The packaged
+            // execution alias (WindowsApps\ReStore.exe) is deliberately never probed.
+            return Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
         }
     }
 }

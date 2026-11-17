@@ -176,6 +176,7 @@ public class ConfigSchemaManagerTests
           "globalStorageType": "local",
           "chunkDiffing": {
             "manifestVersion": 2,
+            "compression": "auto",
             "minChunkSizeKB": 32,
             "targetChunkSizeKB": 128,
             "maxChunkSizeKB": 512,
@@ -186,7 +187,13 @@ public class ConfigSchemaManagerTests
           "retention": {
             "enabled": false,
             "keepLastPerDirectory": 10,
-            "maxAgeDays": 30
+            "maxAgeDays": 30,
+            "keepHourly": 0,
+            "keepDaily": 0,
+            "keepWeekly": 0,
+            "keepMonthly": 0,
+            "keepYearly": 0,
+            "mode": "any"
           },
           "verification": {
             "enabled": false,
@@ -200,6 +207,28 @@ public class ConfigSchemaManagerTests
             "notifyOnVerificationFailure": true,
             "notifyOnRecovery": true,
             "notifyOnEveryBackupSuccess": false
+          },
+          "logging": {
+            "level": "Info"
+          },
+          "protection": {
+            "autoStart": true
+          },
+          "telemetry": {
+            "enabled": true,
+            "crashReports": "ask"
+          },
+          "updates": {
+            "checkAutomatically": true,
+            "includePrereleases": false
+          },
+          "watcher": {
+            "minSnapshotInterval": "00:15:00",
+            "maxDebounceWait": "00:05:00"
+          },
+          "backup": {
+            "deepScanIntervalDays": 7,
+            "hydrateCloudFiles": false
           },
           "systemBackup": {
             "includeWindowsSettings": true
@@ -219,5 +248,77 @@ public class ConfigSchemaManagerTests
         result.SourceSchemaVersion.Should().Be(ConfigSchemaManager.CURRENT_CONFIG_SCHEMA_VERSION);
         result.TargetSchemaVersion.Should().Be(ConfigSchemaManager.CURRENT_CONFIG_SCHEMA_VERSION);
         root.ToJsonString().Should().Be(beforeJson);
+    }
+
+    [Fact]
+    public void Migrate_AddsProtectionAutoStartDefault_ToOldConfig()
+    {
+        var root = JsonNode.Parse("{ \"configSchemaVersion\": 4 }") as JsonObject;
+
+        var result = ConfigSchemaManager.Migrate(root!);
+
+        result.MigrationApplied.Should().BeTrue();
+        root!["protection"]!["autoStart"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public void Migrate_AddsLoggingLevelDefault_AndKeepsAnExplicitLevel()
+    {
+        var added = JsonNode.Parse("{ \"configSchemaVersion\": 4 }") as JsonObject;
+        ConfigSchemaManager.Migrate(added!);
+        added!["logging"]!["level"]!.GetValue<string>().Should().Be("Info");
+
+        var explicitLevel = JsonNode.Parse("{ \"configSchemaVersion\": 4, \"logging\": { \"level\": \"Debug\" } }") as JsonObject;
+        ConfigSchemaManager.Migrate(explicitLevel!);
+        explicitLevel!["logging"]!["level"]!.GetValue<string>().Should().Be("Debug");
+    }
+
+    [Fact]
+    public void Migrate_AddsTelemetryAndUpdatesDefaults_ToOldConfig()
+    {
+        var root = JsonNode.Parse("{ \"configSchemaVersion\": 4 }") as JsonObject;
+
+        var result = ConfigSchemaManager.Migrate(root!);
+
+        result.MigrationApplied.Should().BeTrue();
+        root!["telemetry"]!["enabled"]!.GetValue<bool>().Should().BeTrue();
+        root["updates"]!["checkAutomatically"]!.GetValue<bool>().Should().BeTrue();
+        root["updates"]!["includePrereleases"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Migrate_KeepsExplicitTelemetryAndUpdateChoices()
+    {
+        var root = JsonNode.Parse("{ \"configSchemaVersion\": 4, \"telemetry\": { \"enabled\": false }, \"updates\": { \"checkAutomatically\": false, \"includePrereleases\": true } }") as JsonObject;
+
+        ConfigSchemaManager.Migrate(root!);
+
+        root!["telemetry"]!["enabled"]!.GetValue<bool>().Should().BeFalse();
+        root["updates"]!["checkAutomatically"]!.GetValue<bool>().Should().BeFalse();
+        root["updates"]!["includePrereleases"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public void Migrate_KeepsAnExplicitAutoStartFalse()
+    {
+        var root = JsonNode.Parse("{ \"configSchemaVersion\": 4, \"protection\": { \"autoStart\": false } }") as JsonObject;
+
+        ConfigSchemaManager.Migrate(root!);
+
+        root!["protection"]!["autoStart"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Migrate_ShouldAddRetentionV2Defaults_WithoutChangingExistingRetentionValues()
+    {
+        var root = JsonNode.Parse("""{ "configSchemaVersion": 4, "retention": { "enabled": true, "keepLastPerDirectory": 3, "maxAgeDays": 5 } }""") as JsonObject;
+
+        ConfigSchemaManager.Migrate(root!);
+
+        var retention = (JsonObject)root!["retention"]!;
+        retention["keepLastPerDirectory"]!.GetValue<int>().Should().Be(3);
+        retention["maxAgeDays"]!.GetValue<int>().Should().Be(5);
+        retention["keepDaily"]!.GetValue<int>().Should().Be(0);
+        retention["mode"]!.GetValue<string>().Should().Be("any");
     }
 }

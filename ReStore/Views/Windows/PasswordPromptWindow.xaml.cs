@@ -8,11 +8,16 @@ public partial class PasswordPromptWindow : FluentWindow
 {
     public string? Password { get; private set; }
 
-    public PasswordPromptWindow(bool isForEncryption = false)
+    public PasswordPromptWindow(bool isForEncryption = false, bool isConfirmation = false)
     {
         InitializeComponent();
         
-        if (isForEncryption)
+        if (isConfirmation)
+        {
+            TitleText.Text = "Confirm Encryption Password";
+            MessageText.Text = "Please re-enter your encryption password to confirm it. This one-time check protects your backups from a mistyped password.";
+        }
+        else if (isForEncryption)
         {
             TitleText.Text = "Encryption Password Required";
             MessageText.Text = "Encryption is enabled. Please enter your encryption password to create encrypted backups.\n\nThis password will be cached for this session only.";

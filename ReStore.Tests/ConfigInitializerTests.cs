@@ -4,6 +4,7 @@ using System.Reflection;
 
 namespace ReStore.Tests;
 
+[Collection("GlobalState")]
 public class ConfigInitializerTests
 {
     [Fact]
@@ -86,6 +87,19 @@ public class ConfigInitializerTests
                 Directory.Delete(testRoot, true);
             }
         }
+    }
+
+    [Fact]
+    public void ResolveApplicationExampleConfigPath_SingleFilePublish_UsesBaseDirectory()
+    {
+        // Single-file apps report an empty Assembly.Location; the example must still be found next to the executable.
+        var expected = Path.Combine(AppContext.BaseDirectory, "config", "config.example.json");
+        File.Exists(expected).Should().BeTrue("the Core example config is copied to the test output");
+
+        var method = typeof(ConfigInitializer).GetMethod("ResolveApplicationExampleConfigPath", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(string)], null);
+        var result = (string?)method!.Invoke(null, [string.Empty]);
+
+        result.Should().Be(expected);
     }
 
     [Fact]

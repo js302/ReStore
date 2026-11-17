@@ -1,3 +1,4 @@
+using ReStore.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -34,8 +35,15 @@ namespace ReStore.Views.Windows
 
             SeedDefaultFolders();
             SeedProviders();
+            foreach (var box in PresetBoxes)
+            {
+                box.IsChecked = _configManager.ExcludePresets.Contains((string)box.Tag, StringComparer.OrdinalIgnoreCase);
+            }
+
             UpdateStepChrome();
         }
+
+        private IEnumerable<System.Windows.Controls.CheckBox> PresetBoxes => [PresetOfficeTempCheck, PresetSystemCheck, PresetCachesCheck, PresetDevCheck];
 
         /// <summary>True when the user completed the wizard and config was saved.</summary>
         public bool SetupCompleted { get; private set; }
@@ -202,6 +210,11 @@ namespace ReStore.Views.Windows
 
         private async void TestConnectionBtn_Click(object sender, RoutedEventArgs e)
         {
+            await ErrorReporter.GuardAsync("Testing the connection", () => TestConnectionBtn_ClickCoreAsync(sender, e));
+        }
+
+        private async Task TestConnectionBtn_ClickCoreAsync(object sender, RoutedEventArgs e)
+        {
             TestConnectionBtn.IsEnabled = false;
             TestResultText.Text = "Testing...";
 
@@ -267,6 +280,11 @@ namespace ReStore.Views.Windows
         }
 
         private async void NextBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await ErrorReporter.GuardAsync("Moving to the next step", () => NextBtn_ClickCoreAsync(sender, e));
+        }
+
+        private async Task NextBtn_ClickCoreAsync(object sender, RoutedEventArgs e)
         {
             if (!ValidateCurrentStep())
             {
@@ -396,6 +414,12 @@ namespace ReStore.Views.Windows
                 {
                     storageConfig.Options[field.Key] = field.Value ?? string.Empty;
                 }
+
+                // Same default as Settings: literal secrets are saved as dpapi: values on Windows.
+                if (ReStore.Core.src.utils.DpapiSecretProtector.Instance.IsAvailable)
+                {
+                    ReStore.Core.src.utils.SecretReferences.ProtectSecretOptions(storageConfig.Options);
+                }
             }
 
             _configManager.SetGlobalStorageType(provider);
@@ -421,10 +445,9 @@ namespace ReStore.Views.Windows
                     });
                 }
 
-                if (EnableEncryptionCheck.IsChecked == true && _encryptionSalt != null)
+                if (EnableEncryptionCheck.IsChecked == true && _encryptionSalt != null && !string.IsNullOrEmpty(_encryptionPassword))
                 {
-                    _configManager.Encryption.Enabled = true;
-                    _configManager.Encryption.Salt = Convert.ToBase64String(_encryptionSalt);
+                    EncryptionConfigurator.Enable(_configManager, ReStore.Services.AppServices.Logger, _encryptionPassword, _encryptionSalt);
                 }
                 else
                 {
@@ -432,8 +455,21 @@ namespace ReStore.Views.Windows
                 }
 
                 _configManager.Retention.Enabled = EnableRetentionCheck.IsChecked == true;
+                _configManager.Telemetry.Enabled = TelemetryCheck.IsChecked == true;
+
+                // Presets this version does not offer a checkbox for stay as they are.
+                _configManager.ExcludePresets.RemoveAll(name => PresetBoxes.Any(box => string.Equals((string)box.Tag, name, StringComparison.OrdinalIgnoreCase)));
+                _configManager.ExcludePresets.AddRange(PresetBoxes.Where(box => box.IsChecked == true).Select(box => (string)box.Tag));
 
                 await _configManager.SaveAsync();
+
+                // The wizard is the first-run notice: collection (if kept on) starts with the next launch.
+                var telemetry = ReStore.Core.src.telemetry.Telemetry.Client;
+                telemetry.InvalidateConfig();
+                if (telemetry.StateStore.Load().NoticeShownUtc == null)
+                {
+                    telemetry.MarkNoticeShown("gui-wizard");
+                }
 
                 if (RunFirstBackupCheck.IsChecked == true)
                 {
@@ -459,6 +495,33 @@ namespace ReStore.Views.Windows
                     MessageBoxImage.Error);
 
                 NextBtn.IsEnabled = true;
+            }
+        }
+
+        private void TelemetryLearnMoreLink_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ReStore.Core.src.telemetry.TelemetryClient.DocsUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                // No browser registered; the address is also in the docs.
+            }
+        }
+
+        private void ConnectExistingBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var window = new ConnectExistingBackupsWindow { Owner = this };
+            window.ShowDialog();
+
+            if (window.AdoptedAny)
+            {
+                MessageBox.Show(
+                    "Your existing backups were added to this PC's history. You can finish setup now to start backing up again, or skip it and set up folders later in Settings.",
+                    "Backups connected",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
             }
         }
 

@@ -1,4 +1,4 @@
-namespace ReStore.Core.src.utils;
+﻿namespace ReStore.Core.src.utils;
 
 public class ConfigValidationResult
 {
@@ -30,29 +30,64 @@ public class ConfigValidator(ILogger logger)
 {
     private readonly ILogger _logger = logger;
 
-    public ConfigValidationResult ValidateConfiguration(IConfigManager config)
+    /// <param name="validateWatchDirectories">False for commands that get their folder on the command line (<c>backup &lt;path&gt;</c>):
+    /// the configured watch directories (possibly none) are then irrelevant and are not checked.</param>
+    public ConfigValidationResult ValidateConfiguration(IConfigManager config, bool validateWatchDirectories = true)
     {
         var result = new ConfigValidationResult();
 
-        _logger.Log("Starting configuration validation...", LogLevel.Info);
+        _logger.Log("Starting configuration validation...", LogLevel.Debug);
 
-        ValidateWatchDirectories(config.WatchDirectories, result);
+        if (validateWatchDirectories)
+        {
+            ValidateWatchDirectories(config.WatchDirectories, result);
+        }
+
         ValidateBackupSettings(config, result);
-        ValidateStorageSources(config.StorageSources, result);
+        ValidateSchedules(config, result);
+        ValidateStorageSources(config.StorageSources, UsedStorageTypes(config), result);
         ValidateEncryptionSettings(config.Encryption, result);
         ValidateChunkDiffingSettings(config.ChunkDiffing ?? new ChunkDiffingConfig(), result);
         ValidateVerificationSettings(config.Verification ?? new VerificationConfig(), result);
+        ValidateLoggingSettings(config.Logging ?? new LoggingConfig(), result);
+        ValidateTelemetrySettings(config.Telemetry ?? new TelemetryConfig(), result);
+        ValidateWatcherSettings(config.Watcher ?? new WatcherConfig(), result);
+        ValidateBackupSettingsSection(config.BackupSettings ?? new BackupSettingsConfig(), result);
         ValidateExclusionSettings(config, result);
 
         if (result.IsValid)
         {
-            _logger.Log("Configuration validation passed", LogLevel.Info);
+            _logger.Log("Configuration validation passed", LogLevel.Debug);
         }
         else
         {
             _logger.Log($"Configuration validation failed with {result.Errors.Count} errors", LogLevel.Error);
         }
 
+        return result;
+    }
+
+    /// <summary>
+    /// Validates only the named storage source. Read-only commands (restore, verify, system-restore) need a
+    /// usable storage, not a fully valid config: a missing watch directory must not block a restore.
+    /// </summary>
+    public ConfigValidationResult ValidateStorageOnly(IConfigManager config, string storageType)
+    {
+        var result = new ConfigValidationResult();
+
+        if (config.StorageSources == null || !config.StorageSources.TryGetValue(storageType, out var source) || source == null)
+        {
+            result.AddError($"Storage type '{storageType}' is not configured in config.json.");
+            return result;
+        }
+
+        if (IsStorageSourceUnconfigured(storageType, source))
+        {
+            result.AddError($"Storage source '{storageType}' still has empty or placeholder option values.");
+            return result;
+        }
+
+        ValidateStorageSource(storageType, source, result);
         return result;
     }
 
@@ -73,9 +108,15 @@ public class ConfigValidator(ILogger logger)
                 continue;
             }
 
+            if (!string.IsNullOrWhiteSpace(watchConfig.Schedule)
+                && !ReStore.Core.src.monitoring.BackupSchedule.TryParse(watchConfig.Schedule, out _, out var scheduleError))
+            {
+                result.AddError($"Watch directory '{watchConfig.Path}': invalid schedule '{watchConfig.Schedule}': {scheduleError}");
+            }
+
             try
             {
-                var expandedPath = Environment.ExpandEnvironmentVariables(watchConfig.Path);
+                var expandedPath = ConfigManager.ExpandConfiguredPath(watchConfig.Path);
                 if (Directory.Exists(expandedPath))
                 {
                     validDirectories++;
@@ -96,6 +137,23 @@ public class ConfigValidator(ILogger logger)
         if (validDirectories == 0)
         {
             result.AddError("No valid watch directories found. At least one existing directory is required.");
+        }
+    }
+
+    /// <summary>The system backup schedule and the backup window (the per-folder schedules are checked with the watch directories).</summary>
+    private static void ValidateSchedules(IConfigManager config, ConfigValidationResult result)
+    {
+        var systemSchedule = config.SystemBackup?.Schedule;
+        if (!string.IsNullOrWhiteSpace(systemSchedule)
+            && !ReStore.Core.src.monitoring.BackupSchedule.TryParse(systemSchedule, out _, out var scheduleError))
+        {
+            result.AddError($"systemBackup.schedule: invalid schedule '{systemSchedule}': {scheduleError}");
+        }
+
+        if (config.BackupWindow is { } window
+            && !ReStore.Core.src.monitoring.BackupWindow.TryCreate(window.Start, window.End, window.Days, out _, out var windowError))
+        {
+            result.AddError($"backupWindow is invalid: {windowError}");
         }
     }
 
@@ -158,6 +216,35 @@ public class ConfigValidator(ILogger logger)
             {
                 result.AddInfo("Retention is enabled with maxAgeDays=0 (age-based deletion disabled). Only keepLastPerDirectory will apply.");
             }
+
+            var retention = config.Retention;
+            foreach (var (name, value) in new[]
+            {
+                ("keepHourly", retention.KeepHourly), ("keepDaily", retention.KeepDaily), ("keepWeekly", retention.KeepWeekly),
+                ("keepMonthly", retention.KeepMonthly), ("keepYearly", retention.KeepYearly)
+            })
+            {
+                if (value < 0)
+                {
+                    result.AddError($"Retention {name} cannot be negative (use 0 to turn the tier off).");
+                }
+            }
+
+            if (!RetentionModes.IsValid(retention.Mode))
+            {
+                result.AddError($"Retention mode '{retention.Mode}' is invalid. Use 'any' or 'all'.");
+            }
+            else if (string.Equals(retention.Mode, RetentionModes.All, StringComparison.OrdinalIgnoreCase)
+                && retention.MaxAgeDays == 0 && retention.KeepHourly <= 0 && retention.KeepDaily <= 0
+                && retention.KeepWeekly <= 0 && retention.KeepMonthly <= 0 && retention.KeepYearly <= 0)
+            {
+                result.AddWarning("Retention mode 'all' with maxAgeDays=0 and no GFS tiers has only keepLastPerDirectory to apply, so it behaves the same as 'any'.");
+            }
+            else if (string.Equals(retention.Mode, RetentionModes.All, StringComparison.OrdinalIgnoreCase)
+                && (retention.KeepHourly > 0 || retention.KeepDaily > 0 || retention.KeepWeekly > 0 || retention.KeepMonthly > 0 || retention.KeepYearly > 0))
+            {
+                result.AddInfo("Retention mode 'all' keeps a snapshot only if every enabled rule (keep last, max age and each GFS tier) keeps it; this is much stricter than the default 'any'. Preview it with 'restore retention --dry-run'.");
+            }
         }
         else
         {
@@ -167,7 +254,40 @@ public class ConfigValidator(ILogger logger)
         }
     }
 
-    private void ValidateStorageSources(Dictionary<string, StorageConfig> storageSources, ConfigValidationResult result)
+    /// <summary>
+    /// The storage types something actually writes to: the default storage, the storage of each watched folder and, when system backup is
+    /// on, its storages. The shipped example lists placeholder sources for every provider; those must not warn on every command.
+    /// </summary>
+    public static HashSet<string> UsedStorageTypes(IConfigManager config)
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Add(string? type)
+        {
+            if (!string.IsNullOrWhiteSpace(type))
+            {
+                used.Add(type);
+            }
+        }
+
+        Add(config.GlobalStorageType);
+        foreach (var watch in config.WatchDirectories ?? [])
+        {
+            Add(watch?.StorageType);
+        }
+
+        if (config.SystemBackup is { Enabled: true } system)
+        {
+            Add(system.StorageType);
+            Add(system.ProgramsStorageType);
+            Add(system.EnvironmentStorageType);
+            Add(system.SettingsStorageType);
+            Add(system.DevToolsStorageType);
+        }
+
+        return used;
+    }
+
+    private void ValidateStorageSources(Dictionary<string, StorageConfig> storageSources, HashSet<string> usedStorageTypes, ConfigValidationResult result)
     {
         if (storageSources == null || storageSources.Count == 0)
         {
@@ -185,6 +305,13 @@ public class ConfigValidator(ILogger logger)
             if (string.IsNullOrWhiteSpace(sourceName))
             {
                 result.AddError("Storage source name cannot be empty.");
+                continue;
+            }
+
+            // With nothing known to be in use every source is checked, as before.
+            if (usedStorageTypes.Count > 0 && !usedStorageTypes.Contains(sourceName))
+            {
+                result.AddInfo($"Storage source '{sourceName}' is not used by the default storage, a watched folder or system backup; it is not validated.");
                 continue;
             }
 
@@ -211,7 +338,8 @@ public class ConfigValidator(ILogger logger)
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(config.Path))
+        // Only Local storage uses the top-level path (as its root); remote providers ignore it (see StorageBase).
+        if (string.IsNullOrWhiteSpace(config.Path) && string.Equals(sourceName, "local", StringComparison.OrdinalIgnoreCase))
         {
             result.AddError($"Storage source '{sourceName}' must have a path specified.");
             return;
@@ -222,6 +350,8 @@ public class ConfigValidator(ILogger logger)
             result.AddInfo($"Storage source '{sourceName}' is not configured (skipped validation).");
             return;
         }
+
+        ValidatePrefixOption(sourceName, config, result);
 
         switch (sourceName.ToLowerInvariant())
         {
@@ -258,6 +388,29 @@ public class ConfigValidator(ILogger logger)
         }
     }
 
+    private static void ValidatePrefixOption(string sourceName, StorageConfig config, ConfigValidationResult result)
+    {
+        if (config.Options == null || !config.Options.TryGetValue("prefix", out var prefix) || string.IsNullOrWhiteSpace(prefix))
+        {
+            return;
+        }
+
+        try
+        {
+            ReStore.Core.src.storage.StorageBase.NormalizePrefix(prefix);
+        }
+        catch (ArgumentException ex)
+        {
+            result.AddError($"Storage source '{sourceName}' has an invalid 'prefix' option: {ex.Message}");
+        }
+    }
+
+    /// <summary>Options that may legitimately be empty, so an empty value does not mean "not configured".</summary>
+    private static readonly HashSet<string> OptionalOptionKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "prefix", "path", "hostKeyFingerprint", "passphrase", "credentialPath", "token_folder", "backup_folder_name"
+    };
+
     private static bool IsStorageSourceUnconfigured(string sourceName, StorageConfig config)
     {
         if (sourceName.ToLowerInvariant() == "local")
@@ -265,7 +418,7 @@ public class ConfigValidator(ILogger logger)
             return false;
         }
 
-        return config.Options.Any(opt =>
+        return config.Options.Where(opt => !OptionalOptionKeys.Contains(opt.Key)).Any(opt =>
             string.IsNullOrWhiteSpace(opt.Value) ||
             opt.Value.StartsWith("your_", StringComparison.OrdinalIgnoreCase) ||
             opt.Value.Contains("your_", StringComparison.OrdinalIgnoreCase));
@@ -278,7 +431,7 @@ public class ConfigValidator(ILogger logger)
             // The configured path is the storage root itself, which LocalStorage creates on
             // initialize. Checking its parent instead passed roots that could not be created
             // and rejected drive roots, whose parent is null.
-            var expandedPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.Path));
+            var expandedPath = Path.GetFullPath(ConfigManager.ExpandConfiguredPath(config.Path));
 
             if (Directory.Exists(expandedPath))
             {
@@ -320,7 +473,7 @@ public class ConfigValidator(ILogger logger)
         {
             try
             {
-                var tokenFolder = Environment.ExpandEnvironmentVariables(value);
+                var tokenFolder = ConfigManager.ExpandConfiguredPath(value);
                 var tokenDir = Path.GetDirectoryName(tokenFolder);
                 if (!string.IsNullOrEmpty(tokenDir) && !Directory.Exists(tokenDir))
                 {
@@ -349,7 +502,15 @@ public class ConfigValidator(ILogger logger)
             return;
         }
 
-        if (config.Options.TryGetValue("region", out string? region) && !region.Contains("your_"))
+        // serviceUrl points the S3 provider at an S3-compatible service (MinIO, Wasabi, R2, ...): its regions are not AWS regions.
+        var hasServiceUrl = config.Options.TryGetValue("serviceUrl", out var serviceUrl) && !string.IsNullOrWhiteSpace(serviceUrl);
+        if (hasServiceUrl
+            && !(Uri.TryCreate(serviceUrl, UriKind.Absolute, out var endpoint) && endpoint.Scheme is "http" or "https"))
+        {
+            result.AddError($"S3 storage '{sourceName}' has an invalid serviceUrl: '{serviceUrl}' (expected an http:// or https:// URL)");
+        }
+
+        if (!hasServiceUrl && config.Options.TryGetValue("region", out string? region) && !region.Contains("your_"))
         {
             if (!IsValidAwsRegion(region))
             {
@@ -412,7 +573,7 @@ public class ConfigValidator(ILogger logger)
 
         if (config.Options.TryGetValue("credentialPath", out string? path))
         {
-            if (!string.IsNullOrWhiteSpace(path) && !File.Exists(path))
+            if (!string.IsNullOrWhiteSpace(path) && !File.Exists(ConfigManager.ExpandConfiguredPath(path)))
             {
                 result.AddWarning($"GCP credential file not found: {path}");
             }
@@ -456,9 +617,16 @@ public class ConfigValidator(ILogger logger)
             result.AddWarning($"SFTP storage '{sourceName}' requires either 'password' or 'privateKeyPath'.");
         }
 
-        if (hasKey && !File.Exists(config.Options["privateKeyPath"]))
+        if (hasKey && !File.Exists(ConfigManager.ExpandConfiguredPath(config.Options["privateKeyPath"])))
         {
             result.AddWarning($"SFTP private key file not found: {config.Options["privateKeyPath"]}");
+        }
+
+        if (config.Options.TryGetValue("hostKeyFingerprint", out var hostKeyFingerprint) &&
+            !string.IsNullOrWhiteSpace(hostKeyFingerprint) &&
+            !ReStore.Core.src.storage.sftp.SftpHostKey.IsValid(hostKeyFingerprint))
+        {
+            result.AddWarning($"SFTP storage '{sourceName}' has an invalid 'hostKeyFingerprint'; expected a SHA256 fingerprint such as 'SHA256:AbC...' (as printed by ssh-keygen -lf).");
         }
     }
 
@@ -491,10 +659,7 @@ public class ConfigValidator(ILogger logger)
 
                 try
                 {
-                    string regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
-                        .Replace("\\*", ".*")
-                        .Replace("\\?", ".") + "$";
-                    _ = new System.Text.RegularExpressions.Regex(regexPattern);
+                    _ = ExcludePattern.ParseLegacy(pattern);
                 }
                 catch (Exception)
                 {
@@ -502,6 +667,24 @@ public class ConfigValidator(ILogger logger)
                 }
             }
         }
+
+        foreach (var glob in config.ExcludeGlobs ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(glob) || ExcludePattern.Parse(glob) == null)
+            {
+                result.AddWarning("Empty exclusion glob found and will be ignored.");
+            }
+        }
+
+        foreach (var preset in config.ExcludePresets ?? [])
+        {
+            if (!ExcludePresetCatalog.IsKnown(preset))
+            {
+                result.AddWarning($"Unknown exclude preset '{preset}' will be ignored (known: {string.Join(", ", ExcludePresetCatalog.Names)}).");
+            }
+        }
+
+        ValidateDestinationOverlap(config, result);
 
         if (config.ExcludedPaths != null)
         {
@@ -515,7 +698,7 @@ public class ConfigValidator(ILogger logger)
 
                 try
                 {
-                    var expandedPath = Environment.ExpandEnvironmentVariables(path);
+                    var expandedPath = ConfigManager.ExpandConfiguredPath(path);
                     if (Directory.Exists(expandedPath))
                     {
                         result.AddInfo($"Exclusion path validated: {expandedPath}");
@@ -532,6 +715,52 @@ public class ConfigValidator(ILogger logger)
             }
         }
     }
+
+    /// <summary>A destination (or ReStore's data directory) inside a watched folder is excluded automatically; one that contains a watched folder cannot be.</summary>
+    private static void ValidateDestinationOverlap(IConfigManager config, ConfigValidationResult result)
+    {
+        if (config.WatchDirectories == null || config.StorageSources == null)
+        {
+            return;
+        }
+
+        var watched = new List<string>();
+        foreach (var watch in config.WatchDirectories)
+        {
+            if (string.IsNullOrWhiteSpace(watch.Path))
+            {
+                continue;
+            }
+
+            try
+            {
+                watched.Add(Path.GetFullPath(watch.ExpandedPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            }
+            catch (Exception)
+            {
+                // Reported by the watch directory checks.
+            }
+        }
+
+        foreach (var destination in FileSelectionService.GetDestinationRoots(config))
+        {
+            foreach (var watch in watched)
+            {
+                if (IsSameOrInside(watch, destination))
+                {
+                    result.AddWarning($"Watched folder '{watch}' is inside the backup destination '{destination}'; this would back up the backup, so the destination is not excluded automatically. Move one of them.");
+                }
+                else if (IsSameOrInside(destination, watch))
+                {
+                    result.AddWarning($"The backup destination '{destination}' is inside the watched folder '{watch}'; it is excluded from backups automatically.");
+                }
+            }
+        }
+    }
+
+    private static bool IsSameOrInside(string path, string root)
+        => path.Equals(root, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     private static void ValidateEncryptionSettings(EncryptionConfig encryption, ConfigValidationResult result)
     {
@@ -578,6 +807,55 @@ public class ConfigValidator(ILogger logger)
         }
     }
 
+    private static void ValidateWatcherSettings(WatcherConfig watcher, ConfigValidationResult result)
+    {
+        if (watcher.MinSnapshotInterval < TimeSpan.Zero)
+        {
+            result.AddError("watcher.minSnapshotInterval must not be negative (use 00:00:00 to disable the minimum).");
+        }
+        else if (watcher.MinSnapshotInterval > TimeSpan.FromDays(1))
+        {
+            result.AddWarning("watcher.minSnapshotInterval is longer than 1 day; watched changes will be backed up very late.");
+        }
+
+        if (watcher.MaxDebounceWait < TimeSpan.Zero)
+        {
+            result.AddError("watcher.maxDebounceWait must not be negative (use 00:00:00 to disable the cap).");
+        }
+        else if (watcher.MaxDebounceWait > TimeSpan.FromHours(1))
+        {
+            result.AddWarning("watcher.maxDebounceWait is longer than 1 hour; a continuously changing folder will be backed up very late.");
+        }
+    }
+
+    private static void ValidateBackupSettingsSection(BackupSettingsConfig backup, ConfigValidationResult result)
+    {
+        if (backup.DeepScanIntervalDays < 0)
+        {
+            result.AddError("backup.deepScanIntervalDays must not be negative (use 0 to deep-scan on every run).");
+        }
+        else if (backup.DeepScanIntervalDays > 90)
+        {
+            result.AddWarning("backup.deepScanIntervalDays is longer than 90 days; a change that preserved a file's size and timestamps could go unnoticed for that long.");
+        }
+    }
+
+    private static void ValidateLoggingSettings(LoggingConfig logging, ConfigValidationResult result)
+    {
+        if (!LoggingConfig.TryParseLevel(logging.Level, out _))
+        {
+            result.AddError($"logging.level '{logging.Level}' is not valid. Use Debug, Info, Warning or Error.");
+        }
+    }
+
+    private static void ValidateTelemetrySettings(TelemetryConfig telemetry, ConfigValidationResult result)
+    {
+        if (ReStore.Core.src.telemetry.CrashReportMode.Normalize(telemetry.CrashReports) == null)
+        {
+            result.AddError($"telemetry.crashReports '{telemetry.CrashReports}' is not valid. Use ask, always or never.");
+        }
+    }
+
     private static void ValidateVerificationSettings(VerificationConfig verification, ConfigValidationResult result)
     {
         if (!verification.Enabled)
@@ -612,13 +890,29 @@ public class ConfigValidator(ILogger logger)
             result.AddWarning(
                 $"verification.snapshotsPerRun is {verification.SnapshotsPerRun}. Each snapshot re-downloads every unique chunk it references, so a high value multiplies the transfer cost of one cycle.");
         }
+
+        if (!ReStore.Core.src.core.VerificationModes.TryParse(verification.Mode, out _))
+        {
+            result.AddError($"verification.mode '{verification.Mode}' is not valid. Use full, sample or quick.");
+        }
+
+        if (verification.SamplePercent is < 1 or > 100)
+        {
+            result.AddError("verification.samplePercent must be between 1 and 100.");
+        }
     }
 
     private static void ValidateChunkDiffingSettings(ChunkDiffingConfig chunkDiffing, ConfigValidationResult result)
     {
-        if (chunkDiffing.ManifestVersion < 2)
+        if (chunkDiffing.ManifestVersion is not (0 or 2 or 3))
         {
-            result.AddError("chunkDiffing.manifestVersion must be 2 or greater for chunk snapshot manifests.");
+            result.AddError("chunkDiffing.manifestVersion must be 2 or 3 for chunk snapshot manifests.");
+        }
+
+        if (!string.Equals(chunkDiffing.Compression, "auto", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(chunkDiffing.Compression, "off", StringComparison.OrdinalIgnoreCase))
+        {
+            result.AddError("chunkDiffing.compression must be \"auto\" or \"off\".");
         }
 
         if (chunkDiffing.MinChunkSizeKB < 1)

@@ -3,127 +3,150 @@ using System.Windows;
 
 namespace ReStore.Services;
 
-public class GuiPasswordProvider(bool promptUser = true) : IPasswordProvider, ILogger
+/// <summary>
+/// Thin WPF adapter over <see cref="VerifiedPasswordProvider"/>: all verification, caching and migration
+/// decisions live in Core; this class only shows the dialogs on the UI thread.
+/// </summary>
+public class GuiPasswordProvider(bool promptUser = true) : IPurposePasswordProvider, ILogger
 {
-    private string? _password;
+    private static readonly TimeSpan TrayNoticeInterval = TimeSpan.FromMinutes(10);
+
     private readonly bool _promptUser = promptUser;
-    private bool _isForEncryption = false;
+    private readonly SemaphoreSlim _initGate = new(1, 1);
+    private VerifiedPasswordProvider? _inner;
+    private string? _pendingSeed;
+    private DateTime _lastTrayNoticeUtc = DateTime.MinValue;
 
-    public void SetPassword(string? password)
-    {
-        _password = password;
-    }
+    /// <summary>Raised when a background run needed the encryption password and could not ask for it.</summary>
+    public event Action? BackgroundUnlockNeeded;
 
-    public void SetEncryptionMode(bool isForEncryption)
-    {
-        _isForEncryption = isForEncryption;
-    }
+    /// <summary>Raised whenever an encryption password was successfully obtained.</summary>
+    public event Action? Unlocked;
 
     public void Log(string message, LogLevel level = LogLevel.Info)
     {
         System.Diagnostics.Trace.WriteLine($"[{level}] {message}");
     }
 
-    public async Task<string?> GetPasswordAsync()
+    /// <summary>Seeds the encryption-mode cache with a password that was just set up (wizard/Settings).</summary>
+    public void SetPassword(string? password)
     {
-        if (!string.IsNullOrEmpty(_password))
+        if (_inner != null)
         {
-            return _password;
-        }
-
-        if (_promptUser)
-        {
-            string? password = null;
-            var maxAttempts = 3;
-            var attempts = 0;
-
-            while (attempts < maxAttempts)
+            _inner.SetPassword(password);
+            if (!string.IsNullOrEmpty(password))
             {
-                password = await Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    var dialog = new Views.Windows.PasswordPromptWindow(_isForEncryption);
-                    if (dialog.ShowDialog() == true)
-                    {
-                        return dialog.Password;
-                    }
-                    return null;
-                });
-
-                if (string.IsNullOrEmpty(password))
-                {
-                    return null;
-                }
-
-                if (_isForEncryption)
-                {
-                    // Shared instance: this runs inside the password retry loop, so a fresh
-                    // load here would re-read config.json on every attempt and would discard
-                    // unsaved edits made on the Settings page.
-                    var configManager = await AppServices.GetConfigManagerAsync();
-
-                    if (!string.IsNullOrEmpty(configManager.Encryption.Salt) &&
-                        !string.IsNullOrEmpty(configManager.Encryption.VerificationToken))
-                    {
-                        var encryptionService = new EncryptionService(this);
-                        var salt = Convert.FromBase64String(configManager.Encryption.Salt);
-                        
-                        if (encryptionService.VerifyPassword(
-                            password, 
-                            salt, 
-                            configManager.Encryption.VerificationToken,
-                            configManager.Encryption.KeyDerivationIterations))
-                        {
-                            _password = password;
-                            return password;
-                        }
-                        else
-                        {
-                            attempts++;
-                            if (attempts < maxAttempts)
-                            {
-                                MessageBox.Show(
-                                    $"Incorrect password. Please try again.\n\nAttempts remaining: {maxAttempts - attempts}",
-                                    "Incorrect Password",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Warning);
-                            }
-                            else
-                            {
-                                MessageBox.Show(
-                                    "Maximum password attempts reached. Backup cancelled.",
-                                    "Authentication Failed",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Error);
-                                return null;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        _password = password;
-                        return password;
-                    }
-                }
-                else
-                {
-                    _password = password;
-                    return password;
-                }
+                Unlocked?.Invoke();
             }
-            
+        }
+        else
+        {
+            _pendingSeed = password;
+        }
+    }
+
+    public Task<string?> GetPasswordAsync() => GetPasswordAsync(PasswordPurpose.Encrypt);
+
+    public async Task<string?> GetPasswordAsync(PasswordPurpose purpose)
+    {
+        var inner = await GetInnerAsync();
+
+        if (purpose == PasswordPurpose.Encrypt && !inner.IsPasswordSet() && NoWindowVisible())
+        {
+            // Background run with the app hidden in the tray: an invisible modal would just hang the backup.
+            BackgroundUnlockNeeded?.Invoke();
+            ShowTrayUnlockNotice();
             return null;
         }
 
-        return null;
+        var password = await inner.GetPasswordAsync(purpose);
+        if (purpose == PasswordPurpose.Encrypt && password != null)
+        {
+            Unlocked?.Invoke();
+        }
+
+        return password;
     }
 
-    public bool IsPasswordSet()
-    {
-        return !string.IsNullOrEmpty(_password);
-    }
+    public bool IsPasswordSet() => _inner?.IsPasswordSet() ?? !string.IsNullOrEmpty(_pendingSeed);
 
     public void ClearPassword()
     {
-        _password = null;
+        _inner?.ClearPassword();
+    }
+
+    private async Task<VerifiedPasswordProvider> GetInnerAsync()
+    {
+        if (_inner != null)
+        {
+            return _inner;
+        }
+
+        await _initGate.WaitAsync();
+        try
+        {
+            if (_inner == null)
+            {
+                var config = await AppServices.GetConfigManagerAsync();
+                var inner = new VerifiedPasswordProvider(config, this, PromptOnUiThreadAsync, ShowNotice);
+                if (!string.IsNullOrEmpty(_pendingSeed))
+                {
+                    inner.SetPassword(_pendingSeed);
+                    _pendingSeed = null;
+                }
+
+                _inner = inner;
+            }
+
+            return _inner;
+        }
+        finally
+        {
+            _initGate.Release();
+        }
+    }
+
+    private async Task<string?> PromptOnUiThreadAsync(PasswordPromptRequest request)
+    {
+        if (!_promptUser)
+        {
+            return null;
+        }
+
+        return await Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            var dialog = new Views.Windows.PasswordPromptWindow(
+                request.Purpose == PasswordPurpose.Encrypt,
+                request.IsConfirmation);
+            return dialog.ShowDialog() == true ? dialog.Password : null;
+        });
+    }
+
+    private static void ShowNotice(string message)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+            MessageBox.Show(message, "Password", MessageBoxButton.OK, MessageBoxImage.Warning));
+    }
+
+    private static bool NoWindowVisible()
+    {
+        return Application.Current.Dispatcher.Invoke(() => Application.Current.MainWindow is not { IsVisible: true });
+    }
+
+    private void ShowTrayUnlockNotice()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastTrayNoticeUtc < TrayNoticeInterval)
+        {
+            return;
+        }
+
+        _lastTrayNoticeUtc = now;
+        // Through the notification service so it also works without a tray icon, honours Focus Assist
+        // and opens Settings when clicked.
+        if (App.Protection is { } protection)
+        {
+            protection.NotifyUnlockNeeded();
+        }
     }
 }

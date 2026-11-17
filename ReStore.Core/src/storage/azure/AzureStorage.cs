@@ -1,4 +1,6 @@
+using System.Runtime.CompilerServices;
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using ReStore.Core.src.utils;
 
@@ -9,7 +11,9 @@ public class AzureStorage(ILogger logger) : StorageBase(logger)
     private BlobContainerClient? _containerClient;
     private bool _disposed = false;
 
-    public override async Task InitializeAsync(Dictionary<string, string> options)
+    public override int MaxConcurrency => 8;
+
+    protected override async Task InitializeCoreAsync(Dictionary<string, string> options)
     {
         ValidateOptions(options);
 
@@ -19,7 +23,7 @@ public class AzureStorage(ILogger logger) : StorageBase(logger)
             var containerName = options["containerName"];
 
             _containerClient = new BlobContainerClient(connectionString, containerName);
-            await _containerClient.CreateIfNotExistsAsync();
+            await _containerClient.CreateIfNotExistsAsync().ConfigureAwait(false);
             
             Logger.Log($"Connected to Azure Blob Container: {containerName}", LogLevel.Info);
         }
@@ -40,39 +44,66 @@ public class AzureStorage(ILogger logger) : StorageBase(logger)
         }
     }
 
-    public override async Task UploadAsync(string localPath, string remotePath)
+    protected override async Task UploadCoreAsync(string localPath, string remotePath, CancellationToken ct)
     {
         var blobClient = _containerClient!.GetBlobClient(remotePath);
-        await blobClient.UploadAsync(localPath, overwrite: true);
+        await blobClient.UploadAsync(localPath, overwrite: true, cancellationToken: ct).ConfigureAwait(false);
     }
 
-    public override async Task DownloadAsync(string remotePath, string localPath)
+    public override async Task UploadAsync(Stream content, string remotePath, CancellationToken ct = default)
+    {
+        var blobClient = _containerClient!.GetBlobClient(Qualify(remotePath));
+        await blobClient.UploadAsync(content, overwrite: true, cancellationToken: ct).ConfigureAwait(false);
+    }
+
+    protected override async Task DownloadCoreAsync(string remotePath, string localPath, CancellationToken ct)
     {
         var blobClient = _containerClient!.GetBlobClient(remotePath);
         
-        // Ensure local directory exists
-        var dir = Path.GetDirectoryName(localPath);
-        if (!string.IsNullOrEmpty(dir))
+        try
         {
-            Directory.CreateDirectory(dir);
+            await DownloadAtomicAsync(localPath, partPath => blobClient.DownloadToAsync(partPath, ct)).ConfigureAwait(false);
         }
-
-        await blobClient.DownloadToAsync(localPath);
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+        {
+            throw new StorageNotFoundException($"Blob not found: {remotePath}", ex) { RemotePath = remotePath };
+        }
     }
 
-    public override async Task<bool> ExistsAsync(string remotePath)
+    protected override async Task<bool> ExistsCoreAsync(string remotePath, CancellationToken ct)
     {
         var blobClient = _containerClient!.GetBlobClient(remotePath);
-        return await blobClient.ExistsAsync();
+        return await blobClient.ExistsAsync(ct).ConfigureAwait(false);
     }
 
-    public override async Task DeleteAsync(string remotePath)
+    protected override async Task<long?> GetSizeCoreAsync(string remotePath, CancellationToken ct)
+    {
+        try
+        {
+            var properties = await _containerClient!.GetBlobClient(remotePath).GetPropertiesAsync(cancellationToken: ct).ConfigureAwait(false);
+            return properties.Value.ContentLength;
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    protected override async IAsyncEnumerable<StorageEntry> ListCoreAsync(string prefix, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var blob in _containerClient!.GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix, ct).ConfigureAwait(false))
+        {
+            yield return new StorageEntry(blob.Name, blob.Properties.ContentLength ?? 0, blob.Properties.LastModified?.UtcDateTime);
+        }
+    }
+
+    protected override async Task DeleteCoreAsync(string remotePath, CancellationToken ct)
     {
         var blobClient = _containerClient!.GetBlobClient(remotePath);
-        await blobClient.DeleteIfExistsAsync();
+        await blobClient.DeleteIfExistsAsync(cancellationToken: ct).ConfigureAwait(false);
     }
 
-    public override Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    protected override Task<string> GenerateShareLinkCoreAsync(string remotePath, TimeSpan expiration)
     {
         var blobClient = _containerClient!.GetBlobClient(remotePath);
         

@@ -1,0 +1,423 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://restore.local/schemas/config.schema.json",
+  "title": "ReStore config.json",
+  "description": "The ReStore configuration file (default %USERPROFILE%\\ReStore\\config.json). Unknown top-level keys are preserved when ReStore rewrites the file, but 'config set' refuses them (typo protection) unless --force. Provider option values may be plain text, 'env:NAME' (read from the environment when used) or 'dpapi:...' (Windows DPAPI, written by 'config protect' or '--protect'). Paths and options accept %VAR% environment references.",
+  "type": "object",
+  "properties": {
+    "configSchemaVersion": {
+      "type": "integer",
+      "description": "Version of this file's layout. Maintained by ReStore (older files are migrated automatically with a backup); do not edit."
+    },
+    "watchDirectories": {
+      "type": "array",
+      "description": "Folders that are backed up. Each entry is an object with a path and an optional storage type; 'config add-watch' and 'config remove-watch' edit the list.",
+      "items": {
+        "type": "object",
+        "description": "One watched folder.",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Folder to back up. May contain %VAR% references such as %USERPROFILE%\\Documents."
+          },
+          "storageType": {
+            "type": ["string", "null"],
+            "description": "Key of a storageSources entry used for this folder; null uses globalStorageType."
+          },
+          "schedule": {
+            "type": ["string", "null"],
+            "description": "When this folder is backed up on a clock instead of the global backupInterval: every <N>m|h|d (at least 5m), daily HH:mm[,HH:mm...], weekdays HH:mm, weekends HH:mm, <days> HH:mm (mon,wed,fri or mon-fri), weekly <day> HH:mm, monthly <1-28|last> HH:mm, cron <5 fields> or off. Local time; absent uses backupInterval. 'config set-schedule' edits it."
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": true
+      }
+    },
+    "globalStorageType": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Key of the storageSources entry used by default (folders without their own storageType, system backup, probe)."
+    },
+    "backupInterval": {
+      "type": "string",
+      "description": "How often the scheduler backs up each folder, as a .NET TimeSpan (d.hh:mm:ss), for example 01:00:00. Must be greater than zero.",
+      "default": "01:00:00"
+    },
+    "sizeThresholdMB": {
+      "type": "integer",
+      "description": "Change size in megabytes after which a folder is backed up without waiting for the interval. Must be greater than zero.",
+      "default": 500
+    },
+    "maxFileSizeMB": {
+      "type": "integer",
+      "description": "Files larger than this many megabytes are skipped. Must be greater than zero.",
+      "default": 100
+    },
+    "backupType": {
+      "type": "string",
+      "enum": ["ChunkSnapshot", "Full", "Incremental"],
+      "description": "Backup engine. ChunkSnapshot (deduplicated snapshots) is the supported mode; the others are legacy.",
+      "default": "ChunkSnapshot"
+    },
+    "retention": {
+      "type": "object",
+      "description": "Which snapshots are kept; older ones are deleted after backups.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Apply the retention policy after backups. When false nothing is ever deleted." },
+        "keepLastPerDirectory": { "type": "integer", "minimum": 1, "description": "Always keep at least this many of the newest snapshots per folder." },
+        "maxAgeDays": { "type": "integer", "minimum": 0, "description": "Snapshots older than this many days may be deleted (subject to keepLastPerDirectory and mode). 0 disables the age rule." },
+        "keepHourly": { "type": "integer", "minimum": 0, "description": "Keep the newest snapshot of each of the last N hours. 0 turns the tier off." },
+        "keepDaily": { "type": "integer", "minimum": 0, "description": "Keep the newest snapshot of each of the last N days. 0 turns the tier off." },
+        "keepWeekly": { "type": "integer", "minimum": 0, "description": "Keep the newest snapshot of each of the last N weeks. 0 turns the tier off." },
+        "keepMonthly": { "type": "integer", "minimum": 0, "description": "Keep the newest snapshot of each of the last N months. 0 turns the tier off." },
+        "keepYearly": { "type": "integer", "minimum": 0, "description": "Keep the newest snapshot of each of the last N years. 0 turns the tier off." },
+        "mode": { "type": "string", "enum": ["any", "all"], "description": "'any' keeps a snapshot when any rule wants it; 'all' only when every enabled rule does." }
+      }
+    },
+    "chunkDiffing": {
+      "type": "object",
+      "description": "Tuning of the chunking engine. The defaults suit almost everyone; changing chunk sizes starts a new deduplication history.",
+      "properties": {
+        "manifestVersion": { "type": "integer", "enum": [0, 2, 3], "description": "Snapshot manifest format. 3 is the newest (encrypted repositories use it for key wrapping); 0 means 'leave to ReStore'." },
+        "compression": { "type": "string", "enum": ["auto", "off"], "description": "'auto' compresses chunks that benefit; 'off' stores them as they are." },
+        "minChunkSizeKB": { "type": "integer", "minimum": 1, "description": "Smallest chunk in kilobytes. Must not exceed targetChunkSizeKB." },
+        "targetChunkSizeKB": { "type": "integer", "minimum": 1, "description": "Average chunk size in kilobytes. Must lie between min and max." },
+        "maxChunkSizeKB": { "type": "integer", "minimum": 1, "description": "Largest chunk in kilobytes." },
+        "rollingHashWindowSize": { "type": "integer", "minimum": 8, "maximum": 512, "description": "Window of the rolling hash that finds chunk boundaries (8 to 512 bytes)." },
+        "maxChunksPerFile": { "type": "integer", "minimum": 1, "description": "Safety limit of chunks per file; larger files are skipped and reported." },
+        "maxFilesPerSnapshot": { "type": "integer", "minimum": 1, "description": "Safety limit of files per snapshot." }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Scheduled integrity checks of stored snapshots.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Run scheduled verification." },
+        "verifyInterval": { "type": "string", "minLength": 1, "description": "How often verification runs, as a TimeSpan (for example 7.00:00:00). Must be greater than zero when enabled." },
+        "localStorageOnly": { "type": "boolean", "description": "Only verify snapshots on local storage (remote verification downloads data and may cost money)." },
+        "snapshotsPerRun": { "type": "integer", "minimum": 1, "description": "How many snapshots each run verifies." },
+        "mode": { "type": "string", "enum": ["full", "sample", "quick"], "description": "full re-reads every chunk, sample re-reads a percentage, quick checks existence and size only." },
+        "samplePercent": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Percentage of chunks re-read in sample mode." }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Desktop notifications of the ReStore app.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Master switch for notifications." },
+        "notifyOnBackupFailure": { "type": "boolean", "description": "Notify when a backup fails." },
+        "notifyOnVerificationFailure": { "type": "boolean", "description": "Notify when a verification fails." },
+        "notifyOnRecovery": { "type": "boolean", "description": "Notify when backups work again after a failure." },
+        "notifyOnEveryBackupSuccess": { "type": "boolean", "description": "Notify after every successful backup (noisy)." }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Log file settings (restore.log under the data folder).",
+      "properties": {
+        "level": { "type": "string", "enum": ["Debug", "Info", "Warning", "Error"], "description": "Minimum level that is logged." }
+      }
+    },
+    "protection": {
+      "type": "object",
+      "description": "Background protection behaviour of the ReStore app.",
+      "properties": {
+        "autoStart": { "type": "boolean", "description": "Start protecting (watching and scheduling) automatically when the app starts." }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "description": "Anonymous usage statistics. Never contains paths, file names, group names, host or user names.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Send anonymous usage statistics." },
+        "crashReports": {
+          "type": "string",
+          "enum": ["ask", "always", "never"],
+          "description": "Scrubbed crash reports (exception types, redacted messages, method-name stack frames; no paths): ask each time (default), always send, or never. Requires telemetry to be enabled."
+        }
+      }
+    },
+    "updates": {
+      "type": "object",
+      "description": "Update checks.",
+      "properties": {
+        "checkAutomatically": { "type": "boolean", "description": "Check for a new ReStore version in the background." },
+        "includePrereleases": { "type": "boolean", "description": "Also offer pre-release versions." }
+      }
+    },
+    "backupWindow": {
+      "type": "object",
+      "description": "Quiet hours: automatic work (scheduled and watcher-triggered backups, the system backup, scheduled verification and retention) only starts inside this window. Manual backups always run and a backup already running may finish. Work due outside the window waits for it to open. Local time; the start is inclusive, the end exclusive; the window may cross midnight and start equal to end means the whole day.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "False keeps the window in the file without applying it.", "default": true },
+        "start": { "type": "string", "description": "Local time of day (HH:mm) the window opens.", "default": "22:00" },
+        "end": { "type": "string", "description": "Local time of day (HH:mm) the window closes; earlier than start means the next morning, equal to start means the whole day.", "default": "06:00" },
+        "days": { "type": "string", "description": "The days a window starts on: all, weekdays, weekends or days such as mon,wed,fri or mon-fri.", "default": "all" }
+      },
+      "additionalProperties": true
+    },
+    "watcher": {
+      "type": "object",
+      "description": "Change-triggered backups by the file watcher.",
+      "properties": {
+        "minSnapshotInterval": { "type": "string", "minLength": 1, "description": "Minimum time between two watcher-triggered snapshots of a folder, as a TimeSpan (00:00:00 disables the minimum)." },
+        "maxDebounceWait": { "type": "string", "minLength": 1, "description": "Longest a continuously changing folder waits before it is backed up, as a TimeSpan (00:00:00 disables the cap)." }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "description": "Backup behaviour.",
+      "properties": {
+        "deepScanIntervalDays": { "type": "integer", "minimum": 0, "description": "Every N days a backup re-reads all files instead of trusting size and timestamp. 0 deep-scans on every run." },
+        "hydrateCloudFiles": { "type": "boolean", "description": "Download cloud-only placeholder files (OneDrive and similar) so they are backed up; otherwise they are skipped." }
+      }
+    },
+    "systemBackup": {
+      "type": "object",
+      "description": "Backup of installed programs, environment variables, Windows settings and developer tools (Windows only).",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Run scheduled system backups." },
+        "includePrograms": { "type": "boolean", "description": "Include the list of installed programs." },
+        "includeEnvironmentVariables": { "type": "boolean", "description": "Include user environment variables." },
+        "includeWindowsSettings": { "type": "boolean", "description": "Include selected Windows settings." },
+        "includeDevTools": { "type": "boolean", "description": "Include developer tool configuration (git, shells, editors)." },
+        "includeSshConfig": { "type": "boolean", "description": "Include the SSH configuration (keys are never included)." },
+        "backupInterval": { "type": "string", "description": "How often the system backup runs, as a TimeSpan (for example 1.00:00:00)." },
+        "schedule": { "type": ["string", "null"], "description": "Clock schedule of the system backup instead of backupInterval (every <N>m|h|d (at least 5m), daily HH:mm[,HH:mm...], weekdays HH:mm, weekends HH:mm, <days> HH:mm (mon,wed,fri or mon-fri), weekly <day> HH:mm, monthly <1-28|last> HH:mm, cron <5 fields> or off). Absent uses systemBackup.backupInterval." },
+        "excludeSystemPrograms": { "type": "array", "items": { "type": "string" }, "description": "Regular expressions of program names left out of the programs list." },
+        "storageType": { "type": ["string", "null"], "description": "Storage for all system backup components; null uses globalStorageType." },
+        "programsStorageType": { "type": ["string", "null"], "description": "Storage for the programs component only; null uses storageType." },
+        "environmentStorageType": { "type": ["string", "null"], "description": "Storage for the environment variables component only; null uses storageType." },
+        "settingsStorageType": { "type": ["string", "null"], "description": "Storage for the Windows settings component only; null uses storageType." },
+        "devToolsStorageType": { "type": ["string", "null"], "description": "Storage for the developer tools component only; null uses storageType." }
+      }
+    },
+    "encryption": {
+      "type": "object",
+      "description": "Client-side encryption (AES-256-GCM). Use 'encryption enable' / 'encryption disable' instead of editing these by hand.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Encrypt new backups." },
+        "salt": { "type": ["string", "null"], "description": "Base64 random salt of the password key derivation. Generated by 'encryption enable'; losing it makes the password check fail." },
+        "keyDerivationIterations": { "type": "integer", "minimum": 1, "description": "PBKDF2-SHA256 iterations used to derive the key from the password." },
+        "verificationToken": { "type": ["string", "null"], "description": "Base64 token that proves a password is the right one without storing it." }
+      }
+    },
+    "excludedPatterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File name patterns (wildcards * and ?) that are never backed up, matched against the file name."
+    },
+    "excludedPaths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Folders (may contain %VAR%) that are never backed up, with everything below them."
+    },
+    "excludePresets": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["dev", "caches", "office-temp", "system"] },
+      "description": "Built-in exclusion sets to apply: dev (build output, node_modules), caches, office-temp, system."
+    },
+    "excludeGlobs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Directory-aware glob exclusions relative to the watched folder (for example **/node_modules/**); unlike excludedPatterns they can prune whole folders."
+    },
+    "storageSources": {
+      "type": "object",
+      "description": "Where backups are written, keyed by storage type: local, s3, gdrive, dropbox, github, azure, gcp, sftp, b2. 'config set-storage' edits an entry; 'probe' tests it.",
+      "properties": {
+        "local": {
+          "type": "object",
+          "description": "A folder on this computer, a drive or a network share.",
+          "properties": {
+            "path": { "type": "string", "description": "Backup folder. The only provider that uses the top-level path as its root; created when missing." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "path": { "type": "string", "description": "Backup folder (same as the top-level path; the top-level path is copied here when absent)." },
+                "prefix": { "type": "string", "description": "Optional sub-folder inside the backup folder; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "gdrive": {
+          "type": "object",
+          "description": "Google Drive (installed-app OAuth). Sign in once with 'auth gdrive'.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "client_id": { "type": "string", "description": "OAuth client ID from the Google Cloud console (Desktop app)." },
+                "client_secret": { "type": "string", "description": "OAuth client secret. Secret: use env:NAME, --protect or --value-stdin." },
+                "token_folder": { "type": "string", "description": "Where the sign-in token is cached; a relative name lives under the data folder (tokens/). Optional." },
+                "backup_folder_name": { "type": "string", "description": "Name of the Drive folder that holds backups. Optional; default ReStoreBackups." },
+                "prefix": { "type": "string", "description": "Optional sub-folder inside the repository location; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "s3": {
+          "type": "object",
+          "description": "Amazon S3.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "accessKeyId": { "type": "string", "description": "AWS access key ID." },
+                "secretAccessKey": { "type": "string", "description": "AWS secret access key. Secret: use env:NAME, --protect or --value-stdin." },
+                "region": { "type": "string", "description": "AWS region of the bucket, for example eu-west-1." },
+                "bucketName": { "type": "string", "description": "Name of the S3 bucket." },
+                "serviceUrl": { "type": "string", "description": "Optional endpoint URL of an S3-compatible service (MinIO, Wasabi, Cloudflare R2, Ceph, ...), for example http://localhost:9000. Path-style addressing is used. Leave unset for Amazon S3." },
+                "prefix": { "type": "string", "description": "Optional key prefix (sub-folder) inside the bucket; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "github": {
+          "type": "object",
+          "description": "A GitHub repository.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "token": { "type": "string", "description": "Personal access token with repository write access. Secret: use env:NAME, --protect or --value-stdin." },
+                "repo": { "type": "string", "description": "Repository name." },
+                "owner": { "type": "string", "description": "Repository owner (user or organisation)." },
+                "prefix": { "type": "string", "description": "Optional sub-folder inside the repository; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "azure": {
+          "type": "object",
+          "description": "Azure Blob Storage.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "connectionString": { "type": "string", "description": "Storage account connection string. Secret: use env:NAME, --protect or --value-stdin." },
+                "containerName": { "type": "string", "description": "Blob container name." },
+                "prefix": { "type": "string", "description": "Optional blob prefix (sub-folder) inside the container; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "gcp": {
+          "type": "object",
+          "description": "Google Cloud Storage.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "bucketName": { "type": "string", "description": "Name of the Cloud Storage bucket." },
+                "credentialPath": { "type": "string", "description": "Path of a service account key file. Optional: application default credentials are used when absent." },
+                "prefix": { "type": "string", "description": "Optional object prefix (sub-folder) inside the bucket; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "dropbox": {
+          "type": "object",
+          "description": "Dropbox. Authorise with 'auth dropbox' (two steps) to obtain the refresh token.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options: either accessToken, or refreshToken together with appKey and appSecret.",
+              "properties": {
+                "accessToken": { "type": "string", "description": "Short-lived access token (expires; prefer refreshToken). Secret." },
+                "refreshToken": { "type": "string", "description": "Long-lived refresh token written by 'auth dropbox --code'. Secret." },
+                "appKey": { "type": "string", "description": "Dropbox app key. Secret-class value: use env:NAME, --protect or --value-stdin." },
+                "appSecret": { "type": "string", "description": "Dropbox app secret. Secret: use env:NAME, --protect or --value-stdin." },
+                "prefix": { "type": "string", "description": "Optional sub-folder of the app folder; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "sftp": {
+          "type": "object",
+          "description": "An SFTP server.",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options: host and username, plus a password or a private key.",
+              "properties": {
+                "host": { "type": "string", "description": "Server host name or address." },
+                "port": { "type": "string", "description": "Server port; 22 when absent." },
+                "username": { "type": "string", "description": "Login user name." },
+                "password": { "type": "string", "description": "Login password. Secret: use env:NAME, --protect or --value-stdin." },
+                "privateKeyPath": { "type": "string", "description": "Path of a private key file used instead of a password." },
+                "passphrase": { "type": "string", "description": "Passphrase of the private key. Secret; optional." },
+                "hostKeyFingerprint": { "type": "string", "description": "Expected server key fingerprint, SHA256:... as printed by ssh-keygen -lf. Optional but recommended." },
+                "prefix": { "type": "string", "description": "Optional sub-folder on the server; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        },
+        "b2": {
+          "type": "object",
+          "description": "Backblaze B2 (S3-compatible API).",
+          "properties": {
+            "path": { "type": "string", "description": "Ignored by remote providers; use options.prefix instead." },
+            "options": {
+              "type": "object",
+              "description": "Provider options.",
+              "properties": {
+                "keyId": { "type": "string", "description": "Application key ID." },
+                "applicationKey": { "type": "string", "description": "Application key. Secret: use env:NAME, --protect or --value-stdin." },
+                "serviceUrl": { "type": "string", "description": "S3 endpoint of the bucket's region, for example https://s3.us-west-004.backblazeb2.com." },
+                "bucketName": { "type": "string", "description": "Name of the bucket." },
+                "prefix": { "type": "string", "description": "Optional key prefix (sub-folder) inside the bucket; must not start with / or contain .." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "A storage source with a custom name.",
+        "properties": {
+          "path": { "type": "string", "description": "Storage path (local providers) or ignored." },
+          "options": {
+            "type": "object",
+            "description": "Provider options as string values.",
+            "additionalProperties": { "type": "string", "description": "A provider option value (text)." }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["watchDirectories", "storageSources", "backupInterval", "sizeThresholdMB"],
+  "additionalProperties": false
+}

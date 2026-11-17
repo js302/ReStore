@@ -16,6 +16,8 @@ That's it! The setting is applied immediately.
 
 Once enabled, you can **right-click any file** in Explorer and select **"Share with ReStore"**. This opens a dialog to upload the file to your chosen cloud provider (S3, Azure, GCP, Dropbox, B2) and generates a shareable link.
 
+From a terminal or a script: `restore share <file> [--storage <type>] [--expires 7d]` does the same and prints the link (see [CLI Usage](cli.md#share-a-file)).
+
 **NOTE**: You must have at least one cloud storage provider configured in ReStore for sharing to work. The files will be **unencrypted** when shared. If you get any error, ensure that the storage provider is correctly set up.
 
 ## Disable Context Menu

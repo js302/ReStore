@@ -1,0 +1,155 @@
+{
+  "watchDirectories": [
+    {
+      "path": "/tmp/restore-fixture-gen.m1Xry9/src-encrypted",
+      "storageType": null
+    }
+  ],
+  "globalStorageType": "local",
+  "configSchemaVersion": 4,
+  "backupInterval": "01:00:00",
+  "sizeThresholdMB": 500,
+  "maxFileSizeMB": 100,
+  "backupType": "ChunkSnapshot",
+  "chunkDiffing": {
+    "manifestVersion": 2,
+    "minChunkSizeKB": 2,
+    "targetChunkSizeKB": 4,
+    "maxChunkSizeKB": 8,
+    "rollingHashWindowSize": 64,
+    "maxChunksPerFile": 200000,
+    "maxFilesPerSnapshot": 200000
+  },
+  "retention": {
+    "enabled": false,
+    "keepLastPerDirectory": 5,
+    "maxAgeDays": 30
+  },
+  "verification": {
+    "enabled": false,
+    "verifyInterval": "7.00:00:00",
+    "localStorageOnly": true,
+    "snapshotsPerRun": 2
+  },
+  "notifications": {
+    "enabled": true,
+    "notifyOnBackupFailure": true,
+    "notifyOnVerificationFailure": true,
+    "notifyOnRecovery": true,
+    "notifyOnEveryBackupSuccess": false
+  },
+  "systemBackup": {
+    "enabled": true,
+    "includePrograms": true,
+    "includeEnvironmentVariables": true,
+    "includeWindowsSettings": true,
+    "backupInterval": "1.00:00:00",
+    "storageType": null,
+    "programsStorageType": null,
+    "environmentStorageType": null,
+    "settingsStorageType": null,
+    "excludeSystemPrograms": [
+      "Microsoft Visual C++",
+      "Microsoft .NET",
+      "Windows SDK",
+      "KB[0-9]+",
+      "Update for",
+      "Security Update"
+    ]
+  },
+  "excludedPatterns": [
+    "*.tmp",
+    "*.temp",
+    "~$*",
+    "Thumbs.db",
+    ".DS_Store",
+    "*.log",
+    "*.pst",
+    "desktop.ini",
+    "*.lnk",
+    "*.crdownload",
+    "*.partial"
+  ],
+  "encryption": {
+    "enabled": true,
+    "salt": "XAHvKr30DjIGkq3dxPryyg==",
+    "keyDerivationIterations": 10000,
+    "verificationToken": "QkmUfCwhS6bXfBpeAejLJnDwNI2rXHioPgBdW58mrIenzpgAe8RKagZcUk1bGsGM0py2yj9bnBaFO4Yc/9R/"
+  },
+  "excludedPaths": [],
+  "storageSources": {
+    "gdrive": {
+      "path": "./backups",
+      "options": {
+        "client_id": "",
+        "client_secret": "",
+        "token_folder": "",
+        "backup_folder_name": "ReStoreBackups"
+      }
+    },
+    "s3": {
+      "path": "./backups",
+      "options": {
+        "accessKeyId": "",
+        "secretAccessKey": "",
+        "region": "",
+        "bucketName": ""
+      }
+    },
+    "github": {
+      "path": "./backups",
+      "options": {
+        "token": "",
+        "repo": "",
+        "owner": ""
+      }
+    },
+    "local": {
+      "path": "__REPO__",
+      "options": {}
+    },
+    "azure": {
+      "path": "my-container",
+      "options": {
+        "connectionString": "",
+        "containerName": "my-container"
+      }
+    },
+    "gcp": {
+      "path": "my-bucket",
+      "options": {
+        "bucketName": "my-bucket",
+        "credentialPath": "C:\\path\\to\\key.json"
+      }
+    },
+    "dropbox": {
+      "path": "/Backups",
+      "options": {
+        "accessToken": "your-access-token",
+        "refreshToken": "optional-refresh-token",
+        "appKey": "optional-app-key",
+        "appSecret": "optional-app-secret"
+      }
+    },
+    "sftp": {
+      "path": "/home/user/backups",
+      "options": {
+        "host": "sftp.example.com",
+        "port": "22",
+        "username": "user",
+        "password": "",
+        "privateKeyPath": "C:\\path\\to\\private_key",
+        "passphrase": "optional-passphrase"
+      }
+    },
+    "b2": {
+      "path": "my-bucket",
+      "options": {
+        "keyId": "your-key-id",
+        "applicationKey": "your-app-key",
+        "serviceUrl": "https://s3.us-west-000.backblazeb2.com",
+        "bucketName": "my-bucket"
+      }
+    }
+  }
+}

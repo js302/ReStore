@@ -2,7 +2,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:behaviors="clr-namespace:ReStore.Behaviors" Background="Transparent" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+    xmlns:behaviors="clr-namespace:ReStore.Behaviors"
+    xmlns:controls="clr-namespace:ReStore.Views.Controls" Background="Transparent" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="20">
             <Grid.RowDefinitions>
@@ -14,6 +15,17 @@
             <StackPanel Grid.Row="0" Margin="0,0,0,20">
                 <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 <TextBlock Text="Configure your backup preferences and storage providers" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+                <Border x:Name="ExternalChangeBanner" Visibility="Collapsed" Margin="0,12,0,0" Padding="12,8" CornerRadius="6"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="ExternalChangeBannerText" VerticalAlignment="Center" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   AutomationProperties.Name="config.json was changed outside ReStore"/>
+                        <Button x:Name="ExternalChangeReloadBtn" Content="Reload" Margin="16,0,0,0" Padding="12,4" Click="ExternalChangeReloadBtn_Click"
+                                AutomationProperties.Name="Reload settings from config.json"/>
+                        <Button x:Name="ExternalChangeKeepBtn" Content="Keep my edits" Margin="8,0,0,0" Padding="12,4" Click="ExternalChangeKeepBtn_Click"
+                                AutomationProperties.Name="Keep my unsaved edits"/>
+                    </StackPanel>
+                </Border>
             </StackPanel>
 
             <StackPanel Grid.Row="1" Orientation="Vertical">
@@ -36,7 +48,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Default backup storage" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                <ComboBox x:Name="StorageCombo" Grid.Column="1" MinWidth="300" HorizontalAlignment="Left">
+                                <ComboBox AutomationProperties.Name="Default backup storage" x:Name="StorageCombo" Grid.Column="1" MinWidth="300" HorizontalAlignment="Left">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding}"/>
@@ -45,14 +57,29 @@
                                 </ComboBox>
                             </Grid>
 
-                            <CheckBox x:Name="ShowConfiguredOnly" Content="Show only configured providers" Margin="0,0,0,16"/>
+                            <CheckBox AutomationProperties.Name="Show only configured providers" x:Name="ShowConfiguredOnly" Content="Show only configured providers" Margin="0,0,0,16"/>
 
-                            <Button x:Name="OpenConfigBtn" Content="📂 Open Config Location" Cursor="Hand" HorizontalAlignment="Left"/>
+                            <Button AutomationProperties.Name="Open config location" x:Name="OpenConfigBtn" Content="📂 Open Config Location" Cursor="Hand" HorizontalAlignment="Left"/>
+
+                            <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,20,0,16"/>
+
+                            <TextBlock Text="Existing backups" FontSize="14" FontWeight="Medium" Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Connect finds backups already in a storage provider (for example from another PC) and adds them to this PC's history. Repair deletes leftover data that no snapshot uses and rebuilds the local bookkeeping; it shows a preview first."/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="ConnectExistingBtn" Content="Connect to existing backups..." Padding="12,6" Cursor="Hand" Click="ConnectExisting_Click"/>
+                                <Button x:Name="RepairStorageBtn" Content="Repair storage..." Padding="12,6" Margin="8,0,0,0" Cursor="Hand" Click="RepairStorage_Click"/>
+                                <Button x:Name="UpgradeFormatBtn" Content="Upgrade backup format..." Padding="12,6" Margin="8,0,0,0" Cursor="Hand" Click="UpgradeFormat_Click"
+                                        AutomationProperties.Name="Upgrade backup format"
+                                        ToolTip="New backup sets start in the newest format. Use this to move backup sets that are still in the older format."/>
+                            </StackPanel>
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,20,0,16"/>
 
                             <!-- Providers -->
                             <TextBlock Text="Configure Providers" FontSize="14" FontWeight="Medium" Margin="0,0,0,12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <CheckBox x:Name="StoreSecretsEncryptedCheck" AutomationProperties.Name="Store secrets encrypted for this Windows user" Content="Store encrypted for this Windows user" IsChecked="True" Margin="0,0,0,12"
+                                      ToolTip="Passwords, keys and tokens are saved as DPAPI-encrypted values (dpapi:...) that only this Windows user on this PC can read. Unchecked saves them as typed. You can also type env:NAME in a secret field to read it from an environment variable."/>
 
                             <Expander Header="Local Storage" Margin="0,0,0,12" IsExpanded="False">
                                 <StackPanel Margin="12,12,12,8">
@@ -62,11 +89,11 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="Path" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                        <TextBox x:Name="LocalPathBox" Grid.Column="1"/>
+                                        <TextBox AutomationProperties.Name="Path" x:Name="LocalPathBox" Grid.Column="1"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveLocalBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestLocalBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Local Storage settings" x:Name="SaveLocalBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Local Storage connection" x:Name="TestLocalBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -86,20 +113,20 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Access Key" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="S3AccessKey" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Access Key" x:Name="S3AccessKey" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Secret Key" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="S3SecretKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Secret Key" x:Name="S3SecretKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Region" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="S3Region" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Region" x:Name="S3Region" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Bucket" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <TextBox x:Name="S3Bucket" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <TextBox AutomationProperties.Name="Bucket" x:Name="S3Bucket" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveS3Btn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestS3Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Amazon S3 settings" x:Name="SaveS3Btn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Amazon S3 connection" x:Name="TestS3Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -119,20 +146,20 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Client ID" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="GDClientId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Client ID" x:Name="GDClientId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Client Secret" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="GDClientSecret" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Client Secret" x:Name="GDClientSecret" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Token Folder" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="GDTokenFolder" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Token Folder" x:Name="GDTokenFolder" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Backup Folder" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <TextBox x:Name="GDBackupFolder" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <TextBox AutomationProperties.Name="Backup Folder" x:Name="GDBackupFolder" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveGDriveBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestGDriveBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Google Drive settings" x:Name="SaveGDriveBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Google Drive connection" x:Name="TestGDriveBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -151,17 +178,17 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Token" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="GhToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Token" x:Name="GhToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Owner" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="GhOwner" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Owner" x:Name="GhOwner" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Repo" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <TextBox x:Name="GhRepo" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <TextBox AutomationProperties.Name="Repo" x:Name="GhRepo" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveGitHubBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestGitHubBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save GitHub settings" x:Name="SaveGitHubBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test GitHub connection" x:Name="TestGitHubBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -179,14 +206,14 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Connection String" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="AzureConnectionString" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Connection String" x:Name="AzureConnectionString" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Container Name" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <TextBox x:Name="AzureContainerName" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <TextBox AutomationProperties.Name="Container Name" x:Name="AzureContainerName" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveAzureBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestAzureBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Azure Blob Storage settings" x:Name="SaveAzureBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Azure Blob Storage connection" x:Name="TestAzureBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -204,14 +231,14 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Bucket Name" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="GcpBucketName" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Bucket Name" x:Name="GcpBucketName" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Credential Path" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <TextBox x:Name="GcpCredentialPath" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12" ToolTip="Path to JSON key file (optional if using env vars)"/>
+                                        <TextBox AutomationProperties.Name="Credential Path" x:Name="GcpCredentialPath" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12" ToolTip="Path to JSON key file (optional if using env vars)"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveGcpBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestGcpBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Google Cloud Storage (GCP) settings" x:Name="SaveGcpBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Google Cloud Storage (GCP) connection" x:Name="TestGcpBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -231,20 +258,20 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Access Token" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="DropboxAccessToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Access Token" x:Name="DropboxAccessToken" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Refresh Token" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="DropboxRefreshToken" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Refresh Token" x:Name="DropboxRefreshToken" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="App Key" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="DropboxAppKey" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="App Key" x:Name="DropboxAppKey" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="App Secret" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <PasswordBox x:Name="DropboxAppSecret" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <PasswordBox AutomationProperties.Name="App Secret" x:Name="DropboxAppSecret" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveDropboxBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestDropboxBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Dropbox settings" x:Name="SaveDropboxBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Dropbox connection" x:Name="TestDropboxBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -263,29 +290,34 @@
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Host" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="SftpHost" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Host" x:Name="SftpHost" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Port" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="SftpPort" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="22"/>
+                                        <TextBox AutomationProperties.Name="Port" x:Name="SftpPort" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="22"/>
 
                                         <TextBlock Text="Username" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="SftpUsername" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Username" x:Name="SftpUsername" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Password" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="SftpPassword" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Password" x:Name="SftpPassword" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Private Key Path" Grid.Row="4" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="SftpKeyPath" Grid.Row="4" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Private Key Path" x:Name="SftpKeyPath" Grid.Row="4" Grid.Column="1" Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="Passphrase" Grid.Row="5" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <PasswordBox x:Name="SftpPassphrase" Grid.Row="5" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <TextBlock Text="Passphrase" Grid.Row="5" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Passphrase" x:Name="SftpPassphrase" Grid.Row="5" Grid.Column="1" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Host key fingerprint" Grid.Row="6" VerticalAlignment="Center" Margin="0,0,0,12"/>
+                                        <TextBox AutomationProperties.Name="Host key fingerprint" x:Name="SftpHostKeyFingerprint" Grid.Row="6" Grid.Column="1" Margin="0,0,0,12"
+                                                 ToolTip="Optional but recommended. SHA256 fingerprint of the server's host key as printed by 'ssh-keygen -lf', for example SHA256:AbC... When set, ReStore refuses to connect if the server presents a different key."/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveSftpBtn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestSftpBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save SFTP settings" x:Name="SaveSftpBtn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test SFTP connection" x:Name="TestSftpBtn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -305,20 +337,20 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Text="Key ID" Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="B2KeyId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <TextBox AutomationProperties.Name="Key ID" x:Name="B2KeyId" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Application Key" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <PasswordBox x:Name="B2AppKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                                        <PasswordBox AutomationProperties.Name="Application Key" x:Name="B2AppKey" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Service URL" Grid.Row="2" VerticalAlignment="Center" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="B2ServiceUrl" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" ToolTip="e.g., https://s3.us-west-000.backblazeb2.com"/>
+                                        <TextBox AutomationProperties.Name="Service URL" x:Name="B2ServiceUrl" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" ToolTip="e.g., https://s3.us-west-000.backblazeb2.com"/>
 
                                         <TextBlock Text="Bucket Name" Grid.Row="3" VerticalAlignment="Center" Margin="0,0,0,12"/>
-                                        <TextBox x:Name="B2BucketName" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                        <TextBox AutomationProperties.Name="Bucket Name" x:Name="B2BucketName" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="SaveB2Btn" Content="💾 Save" Cursor="Hand"/>
-                                        <Button x:Name="TestB2Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Save Backblaze B2 settings" x:Name="SaveB2Btn" Content="💾 Save" Cursor="Hand"/>
+                                        <Button AutomationProperties.Name="Test Backblaze B2 connection" x:Name="TestB2Btn" Content="🔄 Test Connection" Margin="8,0,0,0" Cursor="Hand"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Expander>
@@ -349,7 +381,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🌐 Global Default Storage:" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,12,0"/>
-                                    <ComboBox x:Name="GlobalStorageCombo" Grid.Column="1" MinWidth="150" HorizontalAlignment="Left" VerticalAlignment="Center" SelectionChanged="GlobalStorageCombo_SelectionChanged"/>
+                                    <ComboBox AutomationProperties.Name="Global default storage" x:Name="GlobalStorageCombo" Grid.Column="1" MinWidth="150" HorizontalAlignment="Left" VerticalAlignment="Center" SelectionChanged="GlobalStorageCombo_SelectionChanged"/>
                                     <TextBlock Grid.Column="2" Text="(applies to paths without specific storage)" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="12,0,0,0"/>
                                 </Grid>
                             </Border>
@@ -364,6 +396,7 @@
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto"/>
                                                             <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
                                                         </Grid.RowDefinitions>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="Auto"/>
@@ -374,7 +407,7 @@
                                                         <!-- Directory Path Row -->
                                                         <TextBlock Grid.Row="0" Grid.Column="0" FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,8,0"/>
                                                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Path}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                                                        <Button Grid.Row="0" Grid.Column="2" Content="✕" FontSize="12" Padding="6,2" Tag="{Binding Path}" Click="RemoveWatchDir_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                        <Button AutomationProperties.Name="Remove watched directory" Grid.Row="0" Grid.Column="2" Content="✕" FontSize="12" Padding="6,2" Tag="{Binding Path}" Click="RemoveWatchDir_Click" Cursor="Hand" ToolTip="Remove"/>
 
                                                         <!-- Storage Selection Row -->
                                                         <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="22,6,0,0">
@@ -383,7 +416,7 @@
                                                                 <ColumnDefinition Width="*"/>
                                                             </Grid.ColumnDefinitions>
                                                             <TextBlock Grid.Column="0" Text="Storage:" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0"/>
-                                                            <ComboBox Grid.Column="1" x:Name="PathStorageCombo" MinWidth="120" HorizontalAlignment="Left" FontSize="11" Tag="{Binding}" SelectionChanged="PathStorageCombo_SelectionChanged" Loaded="PathStorageCombo_Loaded">
+                                                            <ComboBox AutomationProperties.Name="Storage for this directory" Grid.Column="1" x:Name="PathStorageCombo" MinWidth="120" HorizontalAlignment="Left" FontSize="11" Tag="{Binding}" SelectionChanged="PathStorageCombo_SelectionChanged" Loaded="PathStorageCombo_Loaded">
                                                                 <ComboBoxItem Content="Use Global Default" Tag=""/>
                                                                 <ComboBoxItem Content="Local" Tag="local"/>
                                                                 <ComboBoxItem Content="Amazon S3" Tag="s3"/>
@@ -396,6 +429,16 @@
                                                                 <ComboBoxItem Content="Backblaze B2" Tag="b2"/>
                                                             </ComboBox>
                                                         </Grid>
+
+                                                        <!-- Schedule Row -->
+                                                        <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="22,6,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="Schedule:" FontSize="11" VerticalAlignment="Top" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,8,0"/>
+                                                            <controls:ScheduleEditorControl Grid.Column="1" Tag="{Binding}" Loaded="FolderSchedule_Loaded" Committed="FolderSchedule_Committed"/>
+                                                        </Grid>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -405,8 +448,8 @@
                             </Border>
 
                             <StackPanel Orientation="Horizontal">
-                                <Button x:Name="AddWatchDirBtn" Content="➕ Add Directory" Cursor="Hand" Margin="0,0,8,0"/>
-                                <Button x:Name="ApplyStorageToAllBtn" Content="📋 Apply Current Global Storage to All Paths" Cursor="Hand" Click="ApplyStorageToAll_Click"/>
+                                <Button AutomationProperties.Name="Add directory" x:Name="AddWatchDirBtn" Content="➕ Add Directory" Cursor="Hand" Margin="0,0,8,0"/>
+                                <Button AutomationProperties.Name="Apply current global storage to all paths" x:Name="ApplyStorageToAllBtn" Content="📋 Apply Current Global Storage to All Paths" Cursor="Hand" Click="ApplyStorageToAll_Click"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -438,7 +481,7 @@
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Text="Backup Type" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <ComboBox x:Name="BackupTypeCombo" Grid.Row="0" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left" Margin="0,0,0,12">
+                                <ComboBox AutomationProperties.Name="Backup Type" x:Name="BackupTypeCombo" Grid.Row="0" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left" Margin="0,0,0,12">
                                     <ComboBoxItem Content="Full" Tag="Full"/>
                                     <ComboBoxItem Content="Incremental" Tag="Incremental"/>
                                     <ComboBoxItem Content="Chunk Snapshot" Tag="ChunkSnapshot"/>
@@ -446,22 +489,43 @@
 
                                 <TextBlock Grid.Row="1" Text="Backup Interval" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
                                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                    <TextBox x:Name="BackupIntervalHoursBox" Width="60" HorizontalAlignment="Left"/>
+                                    <TextBox AutomationProperties.Name="Backup interval in hours" x:Name="BackupIntervalHoursBox" Width="60" HorizontalAlignment="Left"/>
                                     <TextBlock Text="hours" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="2" Text="Size Threshold" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
                                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                    <TextBox x:Name="SizeThresholdBox" Width="80" HorizontalAlignment="Left"/>
+                                    <TextBox AutomationProperties.Name="Size threshold in MB" x:Name="SizeThresholdBox" Width="80" HorizontalAlignment="Left"/>
                                     <TextBlock Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="3" Text="Max File Size" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
                                 <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                    <TextBox x:Name="MaxFileSizeBox" Width="80" HorizontalAlignment="Left"/>
+                                    <TextBox AutomationProperties.Name="Maximum file size in MB" x:Name="MaxFileSizeBox" Width="80" HorizontalAlignment="Left"/>
                                     <TextBlock Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                             </Grid>
+
+                            <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,8,0,12"/>
+
+                            <TextBlock Text="Backup window" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Automatic work (scheduled and change-triggered backups, system backup, scheduled verification, retention) only starts inside the window; what is due outside it waits for it to open. Manual backups always run, and a backup already running may finish after the window closes. Times are local." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
+                            <CheckBox AutomationProperties.Name="Only start automatic backups inside the backup window" x:Name="BackupWindowEnabledCheckBox" Content="Only start automatic backups inside this window" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="From" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0"/>
+                                <TextBox AutomationProperties.Name="Backup window start time, HH:mm" x:Name="BackupWindowStartBox" Width="60"/>
+                                <TextBlock Text="to" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="8,0,8,0"/>
+                                <TextBox AutomationProperties.Name="Backup window end time, HH:mm" x:Name="BackupWindowEndBox" Width="60"/>
+                                <TextBlock Text="on" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="8,0,8,0"/>
+                                <ComboBox AutomationProperties.Name="Backup window days" x:Name="BackupWindowDaysCombo" MinWidth="110">
+                                    <ComboBoxItem Content="Every day" Tag="EveryDay"/>
+                                    <ComboBoxItem Content="Weekdays" Tag="Weekdays"/>
+                                    <ComboBoxItem Content="Weekends" Tag="Weekends"/>
+                                    <ComboBoxItem Content="Custom days" Tag="Custom"/>
+                                </ComboBox>
+                                <TextBox AutomationProperties.Name="Backup window custom days, for example mon,wed,fri" x:Name="BackupWindowCustomDaysBox" Width="130" Margin="8,0,0,0" Visibility="Collapsed" ToolTip="For example mon,wed,fri or mon-fri. The days a window starts on."/>
+                            </StackPanel>
+                            <TextBlock x:Name="BackupWindowPreviewText" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,8,0,12"/>
 
@@ -477,30 +541,73 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Text="Enable Retention" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <CheckBox x:Name="RetentionEnabledCheckBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,12"/>
+                                <CheckBox AutomationProperties.Name="Enable Retention" x:Name="RetentionEnabledCheckBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,12"/>
 
                                 <TextBlock Grid.Row="1" Text="Keep Last" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
                                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                    <TextBox x:Name="RetentionKeepLastBox" Width="60" HorizontalAlignment="Left"/>
+                                    <TextBox AutomationProperties.Name="Keep last backups per directory" x:Name="RetentionKeepLastBox" Width="60" HorizontalAlignment="Left"/>
                                     <TextBlock Text="backups per directory" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
 
-                                <TextBlock Grid.Row="2" Text="Max Age" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,0"/>
-                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
-                                    <TextBox x:Name="RetentionMaxAgeDaysBox" Width="60" HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Row="2" Text="Max Age" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBox AutomationProperties.Name="Maximum backup age in days, 0 disables" x:Name="RetentionMaxAgeDaysBox" Width="60" HorizontalAlignment="Left"/>
                                     <TextBlock Text="days (0 = disabled)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
+
+                                <TextBlock Grid.Row="3" Text="Keep per period" VerticalAlignment="Top" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,4,0,12"/>
+                                <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,12">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBox AutomationProperties.Name="Keep hourly backups" x:Name="RetentionKeepHourlyBox" Width="45"/>
+                                        <TextBlock Text="hourly" VerticalAlignment="Center" Margin="4,0,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBox AutomationProperties.Name="Keep daily backups" x:Name="RetentionKeepDailyBox" Width="45"/>
+                                        <TextBlock Text="daily" VerticalAlignment="Center" Margin="4,0,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBox AutomationProperties.Name="Keep weekly backups" x:Name="RetentionKeepWeeklyBox" Width="45"/>
+                                        <TextBlock Text="weekly" VerticalAlignment="Center" Margin="4,0,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBox AutomationProperties.Name="Keep monthly backups" x:Name="RetentionKeepMonthlyBox" Width="45"/>
+                                        <TextBlock Text="monthly" VerticalAlignment="Center" Margin="4,0,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBox AutomationProperties.Name="Keep yearly backups" x:Name="RetentionKeepYearlyBox" Width="45"/>
+                                        <TextBlock Text="yearly" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Keeps the newest backup of each of the last N hours/days/weeks/months/years (0 = off)." FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="4" Text="Rule mode" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
+                                    <ComboBox AutomationProperties.Name="Retention rule mode" x:Name="RetentionModeCombo" MinWidth="200" SelectedIndex="0">
+                                        <ComboBoxItem Content="Keep if any rule keeps it" Tag="any"/>
+                                        <ComboBoxItem Content="Keep only if all rules keep it" Tag="all"/>
+                                    </ComboBox>
+                                    <Button AutomationProperties.Name="Preview retention" x:Name="RetentionPreviewBtn" Content="Preview retention" Cursor="Hand" Margin="12,0,0,0"/>
+                                </StackPanel>
                             </Grid>
+
+                            <TextBlock Text="Scheduled verification" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="Mode" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,12,0"/>
+                                <ComboBox AutomationProperties.Name="Scheduled verification mode" x:Name="VerificationModeCombo" MinWidth="200" SelectedIndex="2">
+                                    <ComboBoxItem Content="Quick (existence and size, no downloads)" Tag="quick"/>
+                                    <ComboBoxItem Content="Sample (random share of chunks)" Tag="sample"/>
+                                    <ComboBoxItem Content="Full (every chunk)" Tag="full"/>
+                                </ComboBox>
+                                <TextBlock Text="Sample %" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="16,0,8,0"/>
+                                <TextBox AutomationProperties.Name="Verification sample percent" x:Name="VerificationSamplePercentBox" Width="50"/>
+                            </StackPanel>
+                            <TextBlock Text="Applies when scheduled verification is enabled in config.json (verification.enabled). Only Full proves every file can be rebuilt." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
+
+                            <TextBox AutomationProperties.Name="Retention preview" x:Name="RetentionPreviewText" IsReadOnly="True" Visibility="Collapsed" TextWrapping="NoWrap" FontFamily="Consolas" FontSize="11" MaxHeight="240" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
 
                             <TextBlock Text="Backup Type:" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
                             <TextBlock Text="• Full: Backs up all files every time" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2"/>
                             <TextBlock Text="• Incremental: Backs up only files changed since last backup" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,2"/>
                             <TextBlock Text="• Chunk Snapshot: Creates point-in-time manifests with chunk-level reuse across snapshots" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"/>
 
-                            <Button x:Name="SaveBackupConfigBtn" Content="💾 Save Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
+                            <Button AutomationProperties.Name="Save backup configuration" x:Name="SaveBackupConfigBtn" Content="💾 Save Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                 </Expander>
@@ -530,7 +637,12 @@
                             </Grid>
 
                             <!-- Enable/Disable Button -->
-                            <ui:Button x:Name="ToggleEncryptionBtn" Content="Enable Encryption" Appearance="Primary" Click="ToggleEncryption_Click" HorizontalAlignment="Left" Margin="0,0,0,16"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <ui:Button x:Name="ToggleEncryptionBtn" Content="Enable Encryption" Appearance="Primary" Click="ToggleEncryption_Click" HorizontalAlignment="Left"/>
+                                <ui:Button x:Name="ChangePasswordBtn" Content="Change password..." Appearance="Secondary" Click="ChangePassword_Click" Margin="8,0,0,0" Visibility="Collapsed"
+                                           AutomationProperties.Name="Change encryption password"
+                                           ToolTip="Re-wraps the key that protects your backups (encrypted v3 format). Nothing is uploaded again."/>
+                            </StackPanel>
 
                             <!-- Security Warning -->
                             <Border Background="{DynamicResource SystemFillColorCautionBackgroundBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,16">
@@ -548,8 +660,8 @@
                                 <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" Margin="0,8,0,0">
                                     <StackPanel>
                                         <TextBlock Text="• Algorithm: AES-256-GCM" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
-                                        <TextBlock Text="• Key Derivation: PBKDF2-SHA256 (100,000 iterations)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
-                                        <TextBlock Text="• Each backup uses a unique encryption key" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock x:Name="EncryptionKdfText" Text="• Key Derivation: PBKDF2-SHA256" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="• Chunk keys are derived from your password and the chunk contents" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
                                         <TextBlock Text="• Authenticated encryption prevents tampering" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     </StackPanel>
                                 </Border>
@@ -560,9 +672,9 @@
                                 <StackPanel>
                                     <TextBlock Text="How It Works" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
                                     <TextBlock Text="1. When enabled, you'll set a master password" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
-                                    <TextBlock Text="2. Each backup is encrypted with a unique key derived from your password" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="2. Each chunk is encrypted with its own key, derived from your password (identical content stays deduplicated)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
                                     <TextBlock Text="3. When restoring, you'll be prompted for your password" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,4"/>
-                                    <TextBlock Text="4. Encrypted backups are stored with .enc extension" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="4. System backup archives are stored with an .enc extension; file chunks are encrypted in place" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -594,25 +706,37 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Text="Enable System Backup" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <CheckBox x:Name="SystemBackupEnabledCheckBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,12"/>
+                                <CheckBox AutomationProperties.Name="Enable System Backup" x:Name="SystemBackupEnabledCheckBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,12"/>
 
                                 <TextBlock Grid.Row="1" Text="Include Programs" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <CheckBox x:Name="SystemBackupIncludeProgramsCheckBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12"/>
+                                <CheckBox AutomationProperties.Name="Include Programs" x:Name="SystemBackupIncludeProgramsCheckBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,12"/>
 
                                 <TextBlock Grid.Row="2" Text="Include Environment Variables" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <CheckBox x:Name="SystemBackupIncludeEnvCheckBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
+                                <CheckBox AutomationProperties.Name="Include Environment Variables" x:Name="SystemBackupIncludeEnvCheckBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,12"/>
 
                                 <TextBlock Grid.Row="3" Text="Include Windows Settings" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <CheckBox x:Name="SystemBackupIncludeSettingsCheckBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
+                                <CheckBox AutomationProperties.Name="Include Windows Settings" x:Name="SystemBackupIncludeSettingsCheckBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,12"/>
 
-                                <TextBlock Grid.Row="4" Text="System Backup Interval" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
-                                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                    <TextBox x:Name="SystemBackupIntervalHoursBox" Width="60" HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Row="4" Text="Include Developer Tools" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12" ToolTip="Windows Terminal, PowerShell profiles, VS Code settings and extension list, git config."/>
+                                <CheckBox AutomationProperties.Name="Include Developer Tools" x:Name="SystemBackupIncludeDevToolsCheckBox" Grid.Row="4" Grid.Column="1" Margin="0,0,0,12"/>
+
+                                <TextBlock Grid.Row="5" Text="Include SSH Config" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12" ToolTip="Only ~/.ssh/config. Private keys are never backed up."/>
+                                <CheckBox AutomationProperties.Name="Include SSH config (never private keys)" x:Name="SystemBackupIncludeSshCheckBox" Grid.Row="5" Grid.Column="1" Margin="0,0,0,12" Content="~/.ssh/config only, never keys"/>
+
+                                <TextBlock Grid.Row="6" Text="System Backup Interval" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,12"/>
+                                <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBox AutomationProperties.Name="System backup interval in hours" x:Name="SystemBackupIntervalHoursBox" Width="60" HorizontalAlignment="Left"/>
                                     <TextBlock Text="hours" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
+
+                                <TextBlock Grid.Row="7" Text="System Backup Schedule" VerticalAlignment="Top" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,5,0,12"/>
+                                <controls:ScheduleEditorControl x:Name="SystemScheduleEditor" Grid.Row="7" Grid.Column="1" Margin="0,0,0,12" DefaultDescription="Follows the system backup interval above."/>
                             </Grid>
 
                             <TextBlock Text="Exclude System Programs (regex patterns)" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,8,0,8"/>
@@ -630,7 +754,7 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                                        <Button Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemoveSystemProgram_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                        <Button AutomationProperties.Name="Remove excluded system program pattern" Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemoveSystemProgram_Click" Cursor="Hand" ToolTip="Remove"/>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -640,11 +764,11 @@
                             </Border>
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <TextBox x:Name="NewSystemProgramPatternBox" Width="250" ToolTip="e.g., Microsoft Visual C++, KB[0-9]+"/>
-                                <Button x:Name="AddSystemProgramBtn" Content="➕ Add" Margin="8,0,0,0" Cursor="Hand"/>
+                                <TextBox AutomationProperties.Name="New excluded system program pattern" x:Name="NewSystemProgramPatternBox" Width="250" ToolTip="e.g., Microsoft Visual C++, KB[0-9]+"/>
+                                <Button AutomationProperties.Name="Add excluded system program pattern" x:Name="AddSystemProgramBtn" Content="➕ Add" Margin="8,0,0,0" Cursor="Hand"/>
                             </StackPanel>
 
-                            <Button x:Name="SaveSystemBackupConfigBtn" Content="💾 Save System Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
+                            <Button AutomationProperties.Name="Save system backup configuration" x:Name="SaveSystemBackupConfigBtn" Content="💾 Save System Backup Configuration" Cursor="Hand" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                 </Expander>
@@ -662,8 +786,17 @@
                     <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" RenderOptions.ClearTypeHint="Enabled" Margin="0,8,0,0">
                         <StackPanel Orientation="Vertical">
 
+                            <TextBlock Text="Built-in Exclusion Presets" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Ready-made lists of things you rarely want in a backup. Folder names match at any depth and skip everything inside." Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+                            <CheckBox x:Name="PresetDevCheck" Tag="dev" Click="Preset_Click" Content="Developer folders (node_modules, .git, bin, obj, .vs, target, __pycache__, .venv)" Margin="0,0,0,4"/>
+                            <CheckBox x:Name="PresetCachesCheck" Tag="caches" Click="Preset_Click" Content="Caches and temporary folders (browser/app caches, Temp, *.tmp)" Margin="0,0,0,4"/>
+                            <CheckBox x:Name="PresetOfficeTempCheck" Tag="office-temp" Click="Preset_Click" Content="Office lock files (~$*, *.~lock*)" Margin="0,0,0,4"/>
+                            <CheckBox x:Name="PresetSystemCheck" Tag="system" Click="Preset_Click" Content="Windows system files (Thumbs.db, desktop.ini, $RECYCLE.BIN, System Volume Information)" Margin="0,0,0,12"/>
+                            <CheckBox x:Name="HydrateCloudFilesCheck" Click="HydrateCloudFiles_Click" Content="Download cloud-only OneDrive files so they can be backed up" Margin="0,0,0,4"/>
+                            <TextBlock Text="Off by default: files that are only in the cloud are skipped (and reported) instead of being downloaded. Junctions and symbolic links to folders are never followed." Margin="0,0,0,20" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+
                             <TextBlock Text="Excluded File Patterns" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
-                            <TextBlock Text="File patterns to exclude from backups (e.g., *.tmp, *.log)" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+                            <TextBlock Text="Files by name with * and ? (e.g., *.tmp, *.log). To exclude folders, end with / (node_modules/) or use ** for any depth (**/bin/): the whole folder is skipped." Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
 
                             <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" MaxHeight="150" Margin="0,0,0,12">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" behaviors:NestedScrollBehavior.CooperativeScrolling="True">
@@ -677,7 +810,7 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                                        <Button Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemovePattern_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                        <Button AutomationProperties.Name="Remove excluded pattern" Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemovePattern_Click" Cursor="Hand" ToolTip="Remove"/>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -687,8 +820,8 @@
                             </Border>
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
-                                <TextBox x:Name="NewPatternBox" Width="200" ToolTip="e.g., *.tmp, *.log"/>
-                                <Button x:Name="AddPatternBtn" Content="➕ Add" Margin="8,0,0,0" Cursor="Hand"/>
+                                <TextBox AutomationProperties.Name="New excluded file pattern" x:Name="NewPatternBox" Width="200" ToolTip="e.g., *.tmp, node_modules/, **/bin/"/>
+                                <Button AutomationProperties.Name="Add excluded file pattern" x:Name="AddPatternBtn" Content="➕ Add" Margin="8,0,0,0" Cursor="Hand"/>
                             </StackPanel>
 
                             <TextBlock Text="Excluded Paths" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
@@ -706,7 +839,7 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
-                                                        <Button Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemovePath_Click" Cursor="Hand" ToolTip="Remove"/>
+                                                        <Button AutomationProperties.Name="Remove excluded path" Grid.Column="1" Content="✕" FontSize="10" Padding="4,2" Tag="{Binding}" Click="RemovePath_Click" Cursor="Hand" ToolTip="Remove"/>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -716,7 +849,7 @@
                             </Border>
 
                             <StackPanel Orientation="Horizontal">
-                                <Button x:Name="AddPathBtn" Content="➕ Add Path" Cursor="Hand"/>
+                                <Button AutomationProperties.Name="Add excluded path" x:Name="AddPathBtn" Content="➕ Add Path" Cursor="Hand"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -735,10 +868,42 @@
                     <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" RenderOptions.ClearTypeHint="Enabled" Margin="0,8,0,0">
                         <StackPanel Orientation="Vertical">
                             <CheckBox x:Name="RunAtStartupCheckBox" Content="Run at Windows startup" Margin="0,0,0,12"/>
-                            <TextBlock Text="When enabled, ReStore will automatically start when you log in to Windows." Margin="0,4,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+                            <TextBlock x:Name="RunAtStartupNote" Text="When enabled, ReStore will automatically start when you log in to Windows." Margin="0,4,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+
+                            <CheckBox x:Name="AutoStartProtectionCheckBox" Content="Start protection automatically" Margin="0,0,0,8"/>
+                            <TextBlock Text="When enabled, ReStore starts watching and scheduling backups as soon as it launches (once at least one folder is configured). If you turn this off, start protection yourself from the Dashboard or the tray menu. A pause you set is kept across restarts." Margin="0,4,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
 
                             <CheckBox x:Name="MinimizeToTrayCheckBox" Content="Minimize to system tray on close" Margin="0,0,0,8"/>
                             <TextBlock Text="When enabled, closing the window will minimize the app to the system tray instead of exiting. Double-click the tray icon to restore or right-click for options." Margin="0,4,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+
+                            <CheckBox x:Name="UseToastsCheckBox" Content="Use Windows notifications (toasts)" Margin="0,0,0,8"/>
+                            <TextBlock Text="Backup alerts appear as Windows notifications with buttons such as Retry now, Open log, Unlock, Back up now and View report. Turn this off to use tray balloons instead. Toasts are only available in the installed (MSIX) version; otherwise balloons are always used." Margin="0,4,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+
+                            <CheckBox x:Name="ShareTelemetryCheckBox" Content="Share anonymous usage statistics" Margin="0,0,0,8"/>
+                            <TextBlock Text="Which features are used, whether they succeed and how long they take. Never file names, paths or file contents. Takes effect immediately; turning it off also deletes statistics waiting on this PC." Margin="0,4,0,8" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button x:Name="TelemetryWhatIsCollectedBtn" Content="What is collected" Padding="12,4" Click="TelemetryWhatIsCollectedBtn_Click"/>
+                                <Button x:Name="TelemetryShowDataBtn" Content="Show collected data" Padding="12,4" Margin="8,0,0,0" Click="TelemetryShowDataBtn_Click"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="Crash reports:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <ComboBox AutomationProperties.Name="Crash reports" x:Name="CrashReportsCombo" MinWidth="170" SelectionChanged="CrashReportsCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Ask each time" Tag="ask"/>
+                                    <ComboBoxItem Content="Always send" Tag="always"/>
+                                    <ComboBoxItem Content="Never send" Tag="never"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="After a crash, an anonymous report (error type, scrubbed message, method names; never paths or file names) can be sent along with usage statistics. It needs usage statistics to be on. Nothing is sent until a collection server is configured; reports wait on this PC and can be reviewed under About." Margin="0,0,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
+
+                            <!-- Updates -->
+                            <CheckBox x:Name="CheckForUpdatesCheckBox" Content="Check for updates automatically" Margin="0,0,0,8"/>
+                            <CheckBox x:Name="IncludePrereleasesCheckBox" Content="Include pre-releases" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                <Button x:Name="CheckNowButton" Content="Check now" Padding="12,4" Cursor="Hand"/>
+                                <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                            <TextBlock Text="ReStore asks GitHub once a day whether a newer version exists and sends nothing about you. Installing an update always needs your confirmation." Margin="0,4,0,16" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="18"/>
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,4,0,16"/>
 
@@ -756,6 +921,8 @@
                                     <CheckBox x:Name="ContextMenuCheckBox" Content="Enable 'Share with ReStore' context menu" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="ContextMenuStatusText" Grid.Column="2" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </Grid>
+                                <TextBlock x:Name="ContextMenuPackagedNote" Visibility="Collapsed" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Text="Not available in the packaged (Microsoft Store / MSIX) version of ReStore: Windows does not let a packaged app add a classic Explorer context-menu entry. Use the installer version of ReStore if you want 'Share with ReStore' in Explorer."/>
                             </StackPanel>
 
                             <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Opacity="0.3" Margin="0,4,0,16"/>
@@ -790,12 +957,54 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Theme" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                <ComboBox x:Name="ThemeSelector" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left">
+                                <ComboBox AutomationProperties.Name="Theme" x:Name="ThemeSelector" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left">
                                     <ComboBoxItem Content="System"/>
                                     <ComboBoxItem Content="Light"/>
                                     <ComboBoxItem Content="Dark"/>
                                 </ComboBox>
                             </Grid>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- Settings backup & logging Section -->
+                <Expander IsExpanded="False" Margin="0,0,0,16">
+                    <Expander.Header>
+                        <Border Background="Transparent" Padding="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE9D9;" FontSize="18" VerticalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,10,0"/>
+                                <TextBlock Text="Export, import and logging" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </Expander.Header>
+                    <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" RenderOptions.ClearTypeHint="Enabled" Margin="0,8,0,0">
+                        <StackPanel Orientation="Vertical">
+                            <TextBlock Text="Settings backup" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Export writes your configuration and preferences to a file. Passwords, keys and tokens are never included; enter them again after importing on another PC." FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                <ui:Button x:Name="ExportSettingsBtn" Content="Export settings..." Click="ExportSettings_Click" Margin="0,0,8,0"/>
+                                <ui:Button x:Name="ImportSettingsBtn" Content="Import settings..." Click="ImportSettings_Click"/>
+                            </StackPanel>
+
+                            <TextBlock Text="Logging" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Log level" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <ComboBox AutomationProperties.Name="Log level" x:Name="LogLevelCombo" Grid.Column="1" MinWidth="200" HorizontalAlignment="Left" SelectionChanged="LogLevelCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Debug"/>
+                                    <ComboBoxItem Content="Info"/>
+                                    <ComboBoxItem Content="Warning"/>
+                                    <ComboBoxItem Content="Error"/>
+                                </ComboBox>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <ui:Button x:Name="OpenLogFolderBtn" Content="Open log folder" Click="OpenLogFolder_Click" Margin="0,0,8,0"/>
+                                <ui:Button x:Name="CopyDiagnosticsBtn" Content="Copy diagnostics" Click="CopyDiagnostics_Click"/>
+                            </StackPanel>
+                            <TextBlock Text="Diagnostics contain versions, your OS, the configuration and the last 200 log lines, with secrets removed." FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,8,0,0"/>
                         </StackPanel>
                     </Border>
                 </Expander>

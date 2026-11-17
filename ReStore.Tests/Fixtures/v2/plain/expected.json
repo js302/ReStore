@@ -1,0 +1,23 @@
+{
+  "ManifestPath": "snapshots/src-plain_7144f3203089829e/snapshot_20261116092719_6f83701197b14b1e8ff86394c3a8154b.manifest.json",
+  "HeadPath": "snapshots/src-plain_7144f3203089829e/HEAD",
+  "Password": null,
+  "Files": {
+    "big.bin": {
+      "Size": 49152,
+      "Sha256": "219dcfc928ea4f755fa3f4d4b462f0f53c32bdbd134d7f7b9e9fd9c1a8612697"
+    },
+    "empty.txt": {
+      "Size": 0,
+      "Sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/readme.txt": {
+      "Size": 17,
+      "Sha256": "d0407cbc9c5a8be5ada807451d208ae7d7cced5aba7779d2bf644cf036756a46"
+    },
+    "docs/notes/unicode-\u00E9.txt": {
+      "Size": 5200,
+      "Sha256": "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d"
+    }
+  }
+}

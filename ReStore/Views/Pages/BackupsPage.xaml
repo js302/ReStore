@@ -34,9 +34,9 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBox x:Name="SearchBox" Grid.Column="0" MinWidth="300" ToolTip="Search by directory name" VerticalContentAlignment="Center" Padding="8"/>
+                    <TextBox AutomationProperties.Name="Search backups by directory name" x:Name="SearchBox" Grid.Column="0" MinWidth="300" ToolTip="Search by directory name" VerticalContentAlignment="Center" Padding="8"/>
 
-                    <ComboBox x:Name="FilterTypeCombo" Grid.Column="1" MinWidth="150" Margin="12,0,0,0" VerticalContentAlignment="Center">
+                    <ComboBox AutomationProperties.Name="Filter by backup type" x:Name="FilterTypeCombo" Grid.Column="1" MinWidth="150" Margin="12,0,0,0" VerticalContentAlignment="Center">
                         <ComboBoxItem Content="All Backups" Tag="all" IsSelected="True"/>
                         <ComboBoxItem Content="Encrypted" Tag="encrypted"/>
                         <ComboBoxItem Content="Not Encrypted" Tag="plain"/>
@@ -44,9 +44,9 @@
                         <ComboBoxItem Content="Older Than 30 Days" Tag="old"/>
                     </ComboBox>
 
-                    <ComboBox x:Name="FilterStorageCombo" Grid.Column="2" MinWidth="140" Margin="12,0,0,0" VerticalContentAlignment="Center" ToolTip="Filter by storage provider"/>
+                    <ComboBox AutomationProperties.Name="Filter by storage provider" x:Name="FilterStorageCombo" Grid.Column="2" MinWidth="140" Margin="12,0,0,0" VerticalContentAlignment="Center" ToolTip="Filter by storage provider"/>
 
-                    <ComboBox x:Name="SortCombo" Grid.Column="3" MinWidth="150" Margin="12,0,0,0" VerticalContentAlignment="Center">
+                    <ComboBox AutomationProperties.Name="Sort backups" x:Name="SortCombo" Grid.Column="3" MinWidth="150" Margin="12,0,0,0" VerticalContentAlignment="Center">
                         <ComboBoxItem Content="Newest First" Tag="newest" IsSelected="True"/>
                         <ComboBoxItem Content="Oldest First" Tag="oldest"/>
                         <ComboBoxItem Content="Directory A-Z" Tag="dir_asc"/>
@@ -54,15 +54,15 @@
                         <ComboBoxItem Content="Largest First" Tag="size_desc"/>
                     </ComboBox>
 
-                    <Button x:Name="RefreshBtn" Grid.Column="4" Content="🔄 Refresh" Padding="12,8" Margin="12,0,0,0" Cursor="Hand"/>
+                    <Button AutomationProperties.Name="Refresh backups" x:Name="RefreshBtn" Grid.Column="4" Content="🔄 Refresh" Padding="12,8" Margin="12,0,0,0" Cursor="Hand"/>
                 </Grid>
 
                 <!-- Action Buttons -->
                 <StackPanel Grid.Row="1">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Selected Actions:" FontSize="13" FontWeight="Medium" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,12,0"/>
-                        <Button x:Name="RestoreSelectedBtn" Content="📥 Restore Selected" Padding="12,8" Cursor="Hand" IsEnabled="False"/>
-                        <Button x:Name="DeleteSelectedBtn" Content="🗑️ Delete Selected" Padding="12,8" Margin="12,0,0,0" Cursor="Hand" IsEnabled="False"/>
+                        <Button AutomationProperties.Name="Restore selected backups" x:Name="RestoreSelectedBtn" Content="📥 Restore Selected" Padding="12,8" Cursor="Hand" IsEnabled="False"/>
+                        <Button AutomationProperties.Name="Delete selected backups" x:Name="DeleteSelectedBtn" Content="🗑️ Delete Selected" Padding="12,8" Margin="12,0,0,0" Cursor="Hand" IsEnabled="False"/>
                         <Button x:Name="SelectAllBtn" Content="Select All" Padding="12,8" Margin="12,0,0,0" Cursor="Hand"/>
                         <Button x:Name="DeselectAllBtn" Content="Deselect All" Padding="12,8" Margin="12,0,0,0" Cursor="Hand"/>
 
@@ -83,9 +83,33 @@
                     <TextBlock Text="All Backups" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
 
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ItemsControl x:Name="BackupsList" Padding="0,0,0,8">
-                        <ItemsControl.ItemTemplate>
+                <!-- Virtualised: only the rows in view are realised. Do not wrap this in another ScrollViewer or
+                     set CanContentScroll=False, either of which would realise every row again. -->
+                <ListView AutomationProperties.Name="Backups" x:Name="BackupsList" Style="{x:Null}" Background="Transparent" BorderThickness="0" Padding="0,0,0,8"
+                          ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
+                          IsSynchronizedWithCurrentItem="False" SelectionMode="Single">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel IsVirtualizing="True" VirtualizationMode="Recycling"/>
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Focusable" Value="False"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListViewItem">
+                                        <ContentPresenter/>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="16" Margin="0,0,0,8">
                                     <Grid>
@@ -100,14 +124,15 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
                                         <!-- Checkbox -->
-                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <CheckBox AutomationProperties.Name="Select backup" Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,12,0"/>
 
                                         <!-- Icon -->
                                         <Border Grid.Column="1" Width="40" Height="40" Background="{DynamicResource AccentFillColorDefaultBrush}" CornerRadius="6" Margin="0,0,12,0">
-                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="20" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
 
                                         <!-- Info -->
@@ -115,10 +140,10 @@
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding Directory, Mode=OneWay}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                                 <Border Background="{DynamicResource AccentFillColorDefaultBrush}" CornerRadius="3" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding LabelVisibility, Mode=OneWay}">
-                                                    <TextBlock Text="{Binding LabelDisplay, Mode=OneWay}" FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                                                    <TextBlock Text="{Binding LabelDisplay, Mode=OneWay}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"/>
                                                 </Border>
                                             </StackPanel>
-                                            <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
+                                            <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0" ToolTip="{Binding TimestampTooltip, Mode=OneWay}">
                                                 <Run Text="{Binding TimestampLabel, Mode=OneWay}"/>
                                                 <Run Text="•"/>
                                                 <Run Text="{Binding TypeLabel, Mode=OneWay}"/>
@@ -134,18 +159,18 @@
                                         </Border>
 
                                         <!-- Action Buttons -->
-                                        <Button Grid.Column="4" Content="📥" ToolTip="Restore" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanRestore, Mode=OneWay}" Click="RestoreBackup_Click"/>
-                                        <Button Grid.Column="5" Content="🏷️" ToolTip="Label this restore point" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="LabelBackup_Click"/>
-                                        <Button Grid.Column="6" Content="📂" ToolTip="Open Backup Location" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Visibility="{Binding OpenLocationVisibility, Mode=OneWay}" Click="OpenBackupLocation_Click"/>
-                                        <Button Grid.Column="7" Content="✅" ToolTip="Verify Snapshot" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanVerify, Mode=OneWay}" Click="VerifyBackup_Click"/>
-                                        <Button Grid.Column="8" Content="ℹ️" ToolTip="Details" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="ShowDetails_Click"/>
-                                        <Button Grid.Column="9" Content="🗑️" ToolTip="Delete" FontSize="16" Padding="8" Cursor="Hand" Tag="{Binding}" Click="DeleteBackup_Click"/>
+                                        <Button AutomationProperties.Name="Browse files in this backup" Grid.Column="4" Content="🗂️" ToolTip="Browse files, file history and changes" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanRestore, Mode=OneWay}" Click="BrowseBackup_Click"/>
+                                        <Button AutomationProperties.Name="Restore backup" Grid.Column="5" Content="📥" ToolTip="Restore" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanRestore, Mode=OneWay}" Click="RestoreBackup_Click"/>
+                                        <Button AutomationProperties.Name="Label this restore point" Grid.Column="6" Content="🏷️" ToolTip="Label this restore point" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="LabelBackup_Click"/>
+                                        <Button AutomationProperties.Name="Open backup location" Grid.Column="7" Content="📂" ToolTip="Open Backup Location" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Visibility="{Binding OpenLocationVisibility, Mode=OneWay}" Click="OpenBackupLocation_Click"/>
+                                        <Button AutomationProperties.Name="Verify snapshot" Grid.Column="8" Content="✅" ToolTip="Verify Snapshot" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" IsEnabled="{Binding CanVerify, Mode=OneWay}" Click="VerifyBackup_Click"/>
+                                        <Button AutomationProperties.Name="Show backup details" Grid.Column="9" Content="ℹ️" ToolTip="Details" FontSize="16" Padding="8" Margin="0,0,4,0" Cursor="Hand" Tag="{Binding}" Click="ShowDetails_Click"/>
+                                        <Button AutomationProperties.Name="Delete backup" Grid.Column="10" Content="🗑️" ToolTip="Delete" FontSize="16" Padding="8" Cursor="Hand" Tag="{Binding}" Click="DeleteBackup_Click"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                    </ListView.ItemTemplate>
+                </ListView>
             </DockPanel>
         </Border>
     </Grid>

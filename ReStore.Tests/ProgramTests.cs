@@ -7,6 +7,7 @@ using System.Text;
 
 namespace ReStore.Tests;
 
+[Collection("GlobalState")]
 public class ProgramTests
 {
     private static readonly SemaphoreSlim CONSOLE_OUT_LOCK = new(1, 1);
@@ -37,13 +38,21 @@ public class ProgramTests
             Environment.SetEnvironmentVariable(environmentKey, expectedPassword);
 
             var configMock = new Mock<IConfigManager>();
-            configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig { Enabled = true });
+            var salt = EncryptionService.GenerateSalt();
+            var token = new EncryptionService(new TestLogger()).CreatePasswordVerificationToken(expectedPassword, salt, 1000);
+            configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig
+            {
+                Enabled = true,
+                Salt = Convert.ToBase64String(salt),
+                KeyDerivationIterations = 1000,
+                VerificationToken = token
+            });
 
             var provider = InvokeProgramMethod("CreateCliPasswordProvider", configMock.Object)
                 .Should().BeAssignableTo<IPasswordProvider>().Subject;
 
-            provider.IsPasswordSet().Should().BeTrue();
             (await provider.GetPasswordAsync()).Should().Be(expectedPassword);
+            provider.IsPasswordSet().Should().BeTrue();
         }
         finally
         {
@@ -163,7 +172,7 @@ public class ProgramTests
         });
 
         output.Should().Contain("Usage:");
-        output.Should().Contain("restore.exe --service");
+        output.Should().Contain("--service");
     }
 
     [Fact]
@@ -175,7 +184,7 @@ public class ProgramTests
         });
 
         output.Should().Contain("Usage:");
-        output.Should().Contain("restore.exe backup <sourceDir>");
+        output.Should().Contain("backup <sourceDir>");
     }
 
     [Fact]

@@ -28,3 +28,7 @@ In `%USERPROFILE%\ReStore\config.json`, configure the local storage source:
 - You can use environment variables like `%USERPROFILE%`, `%APPDATA%`, etc.
 - Ensure the directory has sufficient free space for your backups
 - For network shares, use UNC paths like `\\server\share\backups`
+
+## Optional: `prefix` option
+
+Add `"prefix": "my-laptop"` to this source's `options` to keep the repository under a sub-folder of the storage root. It is applied to every path (uploads, downloads, listing, sharing) and is empty by default, so existing repositories are unaffected. It must not start with `/` or contain `..`. Changing it later points ReStore at a different (empty) repository; it does not move existing data.

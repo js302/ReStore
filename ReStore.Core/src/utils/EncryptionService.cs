@@ -19,7 +19,13 @@ public class EncryptionService
     private const int SALT_SIZE_BYTES = 32;
     private const int IV_SIZE_BYTES = 12;
     private const int TAG_SIZE_BYTES = 16;
+
+    /// <summary>Bytes a deterministic chunk encryption adds to the plaintext length.</summary>
+    public const int ChunkEncryptionOverheadBytes = TAG_SIZE_BYTES;
     private const int DEFAULT_ITERATIONS = 1_000_000;
+
+    /// <summary>PBKDF2 iteration count used for new encryption setups (shown in the GUI).</summary>
+    public const int DefaultKeyDerivationIterations = DEFAULT_ITERATIONS;
 
     private readonly ILogger _logger;
 
@@ -39,7 +45,8 @@ public class EncryptionService
         );
     }
 
-    public static byte[] EncryptChunkDeterministic(byte[] plaintext, byte[] masterKey, string chunkId)
+    /// <param name="codecContext">Encrypted v3: the chunk codec, bound into the key, IV and AAD so a raw and a compressed form of one id never share a key stream. Null (v2) keeps the original derivation.</param>
+    public static byte[] EncryptChunkDeterministic(byte[] plaintext, byte[] masterKey, string chunkId, string? codecContext = null)
     {
         ArgumentNullException.ThrowIfNull(plaintext);
 
@@ -53,9 +60,9 @@ public class EncryptionService
             throw new ArgumentException("Chunk id cannot be null or empty", nameof(chunkId));
         }
 
-        var chunkKey = DeriveDeterministicBytes(masterKey, chunkId, "chunk-key", KEY_SIZE_BYTES);
-        var chunkIv = DeriveDeterministicBytes(masterKey, chunkId, "chunk-iv", IV_SIZE_BYTES);
-        var additionalData = Encoding.UTF8.GetBytes(chunkId);
+        var chunkKey = DeriveDeterministicBytes(masterKey, chunkId, "chunk-key", KEY_SIZE_BYTES, codecContext);
+        var chunkIv = DeriveDeterministicBytes(masterKey, chunkId, "chunk-iv", IV_SIZE_BYTES, codecContext);
+        var additionalData = Encoding.UTF8.GetBytes(codecContext == null ? chunkId : $"{codecContext}:{chunkId}");
 
         var ciphertext = new byte[plaintext.Length];
         var tag = new byte[TAG_SIZE_BYTES];
@@ -70,7 +77,7 @@ public class EncryptionService
         return encryptedPayload;
     }
 
-    public static byte[] DecryptChunkDeterministic(byte[] encryptedPayload, byte[] masterKey, string chunkId)
+    public static byte[] DecryptChunkDeterministic(byte[] encryptedPayload, byte[] masterKey, string chunkId, string? codecContext = null)
     {
         ArgumentNullException.ThrowIfNull(encryptedPayload);
 
@@ -89,9 +96,9 @@ public class EncryptionService
             throw new ArgumentException("Chunk id cannot be null or empty", nameof(chunkId));
         }
 
-        var chunkKey = DeriveDeterministicBytes(masterKey, chunkId, "chunk-key", KEY_SIZE_BYTES);
-        var chunkIv = DeriveDeterministicBytes(masterKey, chunkId, "chunk-iv", IV_SIZE_BYTES);
-        var additionalData = Encoding.UTF8.GetBytes(chunkId);
+        var chunkKey = DeriveDeterministicBytes(masterKey, chunkId, "chunk-key", KEY_SIZE_BYTES, codecContext);
+        var chunkIv = DeriveDeterministicBytes(masterKey, chunkId, "chunk-iv", IV_SIZE_BYTES, codecContext);
+        var additionalData = Encoding.UTF8.GetBytes(codecContext == null ? chunkId : $"{codecContext}:{chunkId}");
 
         var tag = new byte[TAG_SIZE_BYTES];
         var ciphertext = new byte[encryptedPayload.Length - TAG_SIZE_BYTES];
@@ -118,7 +125,7 @@ public class EncryptionService
 
         var encryptedDEK = EncryptDEK(dek, kek);
 
-        await EncryptFileWithDEKAsync(inputPath, outputPath, dek, iv);
+        await EncryptFileWithDEKAsync(inputPath, outputPath, dek, iv).ConfigureAwait(false);
 
         var metadata = new EncryptionMetadata
         {
@@ -141,7 +148,7 @@ public class EncryptionService
         var kek = DeriveKeyFromPassword(password, metadata.Salt, metadata.KeyDerivationIterations);
         var dek = DecryptDEK(metadata.EncryptedDEK, kek);
 
-        await DecryptFileWithDEKAsync(inputPath, outputPath, dek, metadata.IV);
+        await DecryptFileWithDEKAsync(inputPath, outputPath, dek, metadata.IV).ConfigureAwait(false);
 
         _logger.Log($"File decrypted successfully: {Path.GetFileName(outputPath)}", LogLevel.Info);
     }
@@ -178,7 +185,7 @@ public class EncryptionService
 
                 chunkIndex++;
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     private static async Task DecryptFileWithDEKAsync(string inputPath, string outputPath, byte[] key, byte[] iv)
@@ -253,7 +260,7 @@ public class EncryptionService
 
                 chunkIndex++;
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -300,10 +307,10 @@ public class EncryptionService
         return result;
     }
 
-    private static byte[] DeriveDeterministicBytes(byte[] masterKey, string chunkId, string label, int outputLength)
+    private static byte[] DeriveDeterministicBytes(byte[] masterKey, string chunkId, string label, int outputLength, string? codecContext = null)
     {
         using var hmac = new HMACSHA256(masterKey);
-        var source = Encoding.UTF8.GetBytes($"{label}:{chunkId}");
+        var source = Encoding.UTF8.GetBytes(codecContext == null ? $"{label}:{chunkId}" : $"{label}:{codecContext}:{chunkId}");
         var digest = hmac.ComputeHash(source);
 
         if (outputLength > digest.Length)
@@ -345,7 +352,7 @@ public class EncryptionService
         {
             WriteIndented = true
         });
-        await File.WriteAllTextAsync(metadataPath, json);
+        await File.WriteAllTextAsync(metadataPath, json).ConfigureAwait(false);
     }
 
     public static async Task<EncryptionMetadata> LoadMetadataAsync(string metadataPath)
@@ -355,7 +362,7 @@ public class EncryptionService
             throw new FileNotFoundException($"Encryption metadata not found: {metadataPath}");
         }
 
-        var json = await File.ReadAllTextAsync(metadataPath);
+        var json = await File.ReadAllTextAsync(metadataPath).ConfigureAwait(false);
         var metadata = System.Text.Json.JsonSerializer.Deserialize<EncryptionMetadata>(json);
 
         if (metadata == null)

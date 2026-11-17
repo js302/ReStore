@@ -320,12 +320,11 @@ public class RestorePreviewTests : IDisposable
         var manifestLocalPath = Path.Combine(
             fixture.StorageDirectory,
             fixture.ManifestPath.Replace('/', Path.DirectorySeparatorChar));
-        var manifest = System.Text.Json.JsonSerializer.Deserialize<SnapshotManifest>(
-            await File.ReadAllTextAsync(manifestLocalPath));
+        var manifest = ManifestIo.Read(manifestLocalPath);
 
         manifest!.Files[0].RelativePath = "../escape.txt";
         manifest.RootHash = SnapshotManifestHasher.ComputeRootHash(manifest);
-        await File.WriteAllTextAsync(manifestLocalPath, System.Text.Json.JsonSerializer.Serialize(manifest));
+        await ManifestIo.WriteAsync(manifestLocalPath, manifest);
 
         var restore = new Restore(_logger, fixture.Storage, null, fixture.State);
 
@@ -513,15 +512,11 @@ public class RestorePreviewTests : IDisposable
         SystemState State);
 
     /// <summary>Counts chunk fetches so a preview can be shown to make none.</summary>
-    private sealed class CountingStorage(LocalStorage inner) : ReStore.Core.src.storage.IStorage
+    private sealed class CountingStorage(LocalStorage inner) : DelegatingStorage(inner)
     {
         public int ChunkDownloads { get; private set; }
 
-        public Task InitializeAsync(Dictionary<string, string> options) => inner.InitializeAsync(options);
-
-        public Task UploadAsync(string localPath, string remotePath) => inner.UploadAsync(localPath, remotePath);
-
-        public Task DownloadAsync(string remotePath, string localPath)
+        public override Task DownloadAsync(string remotePath, string localPath, CancellationToken ct = default)
         {
             if (remotePath.Contains("/chunks/", StringComparison.OrdinalIgnoreCase)
                 || remotePath.StartsWith("chunks/", StringComparison.OrdinalIgnoreCase))
@@ -529,18 +524,9 @@ public class RestorePreviewTests : IDisposable
                 ChunkDownloads++;
             }
 
-            return inner.DownloadAsync(remotePath, localPath);
+            return Inner.DownloadAsync(remotePath, localPath, ct);
         }
 
-        public Task DeleteAsync(string remotePath) => inner.DeleteAsync(remotePath);
-
-        public Task<bool> ExistsAsync(string remotePath) => inner.ExistsAsync(remotePath);
-
-        public Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
-            => inner.GenerateShareLinkAsync(remotePath, expiration);
-
-        public bool SupportsSharing => inner.SupportsSharing;
-
-        public void Dispose() => inner.Dispose();
+        public override void Dispose() => Inner.Dispose();
     }
 }

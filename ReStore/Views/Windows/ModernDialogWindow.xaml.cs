@@ -14,8 +14,11 @@ public partial class ModernDialogWindow : FluentWindow
 
     public MessageBoxResult Result { get; private set; } = MessageBoxResult.None;
 
-    public ModernDialogWindow(string messageText, string caption, MessageBoxButton buttons, MessageBoxImage icon)
+    private readonly string? _details;
+
+    public ModernDialogWindow(string messageText, string caption, MessageBoxButton buttons, MessageBoxImage icon, string? details = null)
     {
+        _details = details;
         InitializeComponent();
 
         var resolvedCaption = string.IsNullOrWhiteSpace(caption) ? "ReStore" : caption;
@@ -25,6 +28,15 @@ public partial class ModernDialogWindow : FluentWindow
 
         ConfigureIcon(icon);
         ConfigureButtons(buttons);
+
+        if (!string.IsNullOrEmpty(_details) && SecondaryButton.Visibility != Visibility.Visible)
+        {
+            SecondaryButton.Content = "Copy details";
+            SecondaryButton.Tag = null;
+            SecondaryButton.Visibility = Visibility.Visible;
+            SecondaryButton.Click -= DialogButton_Click;
+            SecondaryButton.Click += CopyDetails_Click;
+        }
 
         Loaded += ModernDialogWindow_Loaded;
         PreviewKeyDown += ModernDialogWindow_PreviewKeyDown;
@@ -145,6 +157,20 @@ public partial class ModernDialogWindow : FluentWindow
                 e.Handled = true;
                 CloseWithResult(_defaultResult);
             }
+        }
+    }
+
+    private void CopyDetails_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(_details ?? string.Empty);
+            SecondaryButton.Content = "Copied";
+        }
+        catch (Exception)
+        {
+            // Clipboard can be locked by another process; the details are also in the log/crash file.
+            SecondaryButton.Content = "Copy failed";
         }
     }
 

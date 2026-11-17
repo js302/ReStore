@@ -110,7 +110,7 @@ Current implementation note:
 
 - User-file backups are chunk snapshots.
 - Snapshot manifests, HEAD pointers, and deduplicated chunks are the canonical artifact format.
-- `DiffManager` is a standalone binary diff prototype and is not part of the production backup or restore flow.
+- Backups, restores, deletes and repairs take a lease from `RepositoryCoordinator`, so only one repository-changing operation runs at a time (per process, and per machine through `state/repository.lock`).
 
 ## Restore Flow
 
@@ -167,20 +167,20 @@ ReStore.exe --share "path/to/file" launches
   ↓
 ShareWindow opens with provider selection
   ↓
-User selects storage provider and expiration
+User selects storage provider (the link expiry is fixed at 7 days)
   ↓
 ShareService.ShareFileAsync() called
   ↓
 File uploaded unencrypted to shared/ folder
   ↓
-Storage.GenerateShareLinkAsync() creates presigned URL
+Storage.GenerateShareLinkAsync() creates a presigned URL (7-day expiry; Dropbox links do not expire)
   ↓
 Share link displayed and copied to clipboard
   ↓
 App exits (shutdownOnClose=true)
 ```
 
-## Encryption Flow (Backup)
+## Encryption Flow (System Backup)
 
 ```
 User enables encryption in Settings
@@ -259,7 +259,7 @@ GUI shows success message
 ```
 Backup completes successfully
   ↓
-RetentionManager.ApplyRetentionPolicyAsync() called
+RetentionManager.ApplyGroupAsync(group) called (after each backup; ApplyAllAsync() covers every group)
   ↓
 SystemState.GetBackupGroups() returns all backup groups
   ↓

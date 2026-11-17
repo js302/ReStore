@@ -40,3 +40,9 @@
 *.zip       binary
 *.msix      binary
 *.appx      binary
+
+# Test fixtures (golden v2 repositories): never convert line endings, diff as binary.
+ReStore.Tests/Fixtures/** binary
+# ...except the fixtures' own documentation and generator script, which are ordinary text.
+ReStore.Tests/Fixtures/*.md text eol=lf
+ReStore.Tests/Fixtures/*.sh text eol=lf

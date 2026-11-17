@@ -11,7 +11,9 @@ namespace ReStore.Views.Windows
 {
     public partial class RestoreProgressWindow : Window, ILogger
     {
-        private readonly StringBuilder _logBuffer = new();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _pendingLog = new();
+        private int _logFlushScheduled;
+        private System.Windows.Threading.DispatcherTimer? _flushTimer;
         private readonly IStorage _storage;
         private readonly SystemState _state;
         private readonly string _backupType;
@@ -19,11 +21,14 @@ namespace ReStore.Views.Windows
         private string? _scriptsFolder;
         private bool _isComplete = false;
         private readonly IPasswordProvider? _passwordProvider;
+        private readonly IConfigManager _config;
+        private readonly CancellationTokenSource _cancellation = new();
 
-        public RestoreProgressWindow(IStorage storage, SystemState state, string backupType, string backupPath, IPasswordProvider? passwordProvider = null)
+        public RestoreProgressWindow(IStorage storage, IConfigManager config, SystemState state, string backupType, string backupPath, IPasswordProvider? passwordProvider = null)
         {
             InitializeComponent();
             _storage = storage;
+            _config = config;
             _state = state;
             _backupType = backupType;
             _backupPath = backupPath;
@@ -32,16 +37,37 @@ namespace ReStore.Views.Windows
             Loaded += async (_, __) => await StartRestoreAsync();
         }
 
+        /// <summary>
+        /// Thread-safe: the restore runs on a pool thread. Lines are queued and appended in batches on the UI
+        /// thread (one dispatcher post per batch, not per line).
+        /// </summary>
         public void Log(string message, LogLevel level = LogLevel.Info)
         {
-            var logLine = $"[{DateTime.Now:HH:mm:ss}] [{level}] {message}";
+            _pendingLog.Enqueue($"[{DateTime.Now:HH:mm:ss}] [{level}] {message}");
 
-            Dispatcher.Invoke(() =>
+            if (Interlocked.Exchange(ref _logFlushScheduled, 1) == 0)
             {
-                _logBuffer.AppendLine(logLine);
-                LogBox.Text = _logBuffer.ToString();
-                LogBox.ScrollToEnd();
-            });
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, DrainLog);
+            }
+        }
+
+        private void DrainLog()
+        {
+            Volatile.Write(ref _logFlushScheduled, 0);
+
+            var batch = new StringBuilder();
+            while (_pendingLog.TryDequeue(out var line))
+            {
+                batch.AppendLine(line);
+            }
+
+            if (batch.Length == 0)
+            {
+                return;
+            }
+
+            LogBox.AppendText(batch.ToString());
+            LogBox.ScrollToEnd();
         }
 
         private async Task StartRestoreAsync()
@@ -51,92 +77,76 @@ namespace ReStore.Views.Windows
                 Log("Starting system restore...", LogLevel.Info);
                 DetailText.Text = "Downloading backup archive...";
 
-                var tempDir = Path.Combine(Path.GetTempPath(), "ReStore_SystemRestore", DateTime.Now.ToString("yyyyMMddHHmmss"));
-                Directory.CreateDirectory(tempDir);
-
-                Log($"Created temporary directory: {tempDir}", LogLevel.Debug);
-
-                var isEncrypted = _backupPath.EndsWith(".enc", StringComparison.OrdinalIgnoreCase);
-                var downloadPath = Path.Combine(tempDir, isEncrypted ? "backup.zip.enc" : "backup.zip");
-
-                await _storage.DownloadAsync(_backupPath, downloadPath);
-
-                // If encrypted, also download the metadata file
-                if (isEncrypted)
+                if (!OperatingSystem.IsWindows())
                 {
-                    var metadataPath = downloadPath + ".meta";
-                    var remoteMetadataPath = _backupPath + ".meta";
-                    Log("Downloading encryption metadata...", LogLevel.Debug);
-                    await _storage.DownloadAsync(remoteMetadataPath, metadataPath);
+                    throw new PlatformNotSupportedException("System restore requires Windows.");
                 }
 
-                Log("Download complete. Extracting archive...", LogLevel.Info);
-                DetailText.Text = "Extracting backup files...";
-
-                var extractDir = Path.Combine(tempDir, "extracted");
-                var compressionUtil = new CompressionUtil();
-
-                if (isEncrypted)
+                // The download/decrypt/extract/apply pipeline lives in Core; the window only shows progress and asks the questions.
+                IProgress<SystemRestoreProgress> uiProgress = new Progress<SystemRestoreProgress>(ShowProgress);
+                var throttledProgress = new ThrottledProgress<SystemRestoreProgress>(uiProgress.Report, TimeSpan.FromMilliseconds(100));
+                _flushTimer = new System.Windows.Threading.DispatcherTimer(
+                    TimeSpan.FromMilliseconds(100), System.Windows.Threading.DispatcherPriority.Background, (_, __) => throttledProgress.Flush(), Dispatcher);
+                _flushTimer.Start();
+                var manager = new SystemBackupManager(this, _config, _state, _passwordProvider);
+                var options = new SystemRestoreOptions
                 {
-                    Log("Backup is encrypted, requesting password...", LogLevel.Info);
+                    Confirm = ConfirmAsync,
+                    // The preview (per-item checkboxes) replaces the per-component yes/no prompts.
+                    SelectActions = SelectActionsAsync,
+                    // Created here on the UI thread, so ShowProgress runs on it even though the restore does not.
+                    Progress = throttledProgress
+                };
 
-                    if (_passwordProvider == null)
-                    {
-                        throw new InvalidOperationException("This backup is encrypted but no password provider is available.");
-                    }
-
-                    var password = await _passwordProvider.GetPasswordAsync();
-                    if (string.IsNullOrEmpty(password))
-                    {
-                        throw new OperationCanceledException("Password required to decrypt backup.");
-                    }
-
-                    DetailText.Text = "Decrypting and extracting backup...";
-
-                    try
-                    {
-                        await CompressionUtil.DecryptAndDecompressAsync(downloadPath, password, extractDir, this);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Clear cached password on decryption failure so user can retry
-                        _passwordProvider.ClearPassword();
-                        Log("Decryption failed. Password cleared for retry.", LogLevel.Debug);
-                        throw new InvalidOperationException($"Failed to decrypt backup: {ex.Message}", ex);
-                    }
+                // Off the UI thread; nothing inside touches UI directly (Log, Progress and Confirm all marshal).
+                var token = _cancellation.Token;
+                SystemRestoreResult result;
+                try
+                {
+                    result = await Task.Run(() => manager.RestoreSystemAsync(_storage, _backupType, _backupPath, options, token));
                 }
-                else
+                finally
                 {
-                    await CompressionUtil.DecompressAsync(downloadPath, extractDir);
+                    _flushTimer?.Stop();
+                    await ReStore.Core.src.core.ActivityRecorder.TryPersistAsync(_state);
                 }
 
-                _scriptsFolder = extractDir;
-                Log($"Extraction complete: {extractDir}", LogLevel.Info);
-
-                // Process based on type
-                if (_backupType == "system_programs")
-                {
-                    await RestoreProgramsAsync(extractDir);
-                }
-                else if (_backupType == "system_environment")
-                {
-                    await RestoreEnvironmentAsync(extractDir);
-                }
-                else if (_backupType == "system_settings")
-                {
-                    await RestoreWindowsSettingsAsync(extractDir);
-                }
-
-                // Complete
+                _scriptsFolder = result.ScriptsFolder;
                 _isComplete = true;
-                StatusText.Text = "Restore Complete!";
-                DetailText.Text = "System restore finished successfully.";
+                TotalCountText.Text = result.Total > 0 ? result.Total.ToString() : "N/A";
+                SuccessCountText.Text = result.Succeeded.ToString();
+                FailedCountText.Text = result.Failed.ToString();
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = 100;
                 CloseButton.IsEnabled = true;
                 OpenScriptsBtn.Visibility = Visibility.Visible;
 
-                Log("Restore completed successfully!", LogLevel.Info);
+                if (result.Failed > 0)
+                {
+                    StatusText.Text = "Restore Completed With Errors";
+                    DetailText.Text = result.Messages.FirstOrDefault() ?? $"{result.Failed} item(s) failed. See the log for details.";
+                    ProgressBar.Foreground = System.Windows.Media.Brushes.Orange;
+                }
+                else
+                {
+                    StatusText.Text = "Restore Complete!";
+                    DetailText.Text = result.Messages.FirstOrDefault() ?? "System restore finished successfully.";
+                }
+
+                foreach (var message in result.Messages)
+                {
+                    Log(message, LogLevel.Info);
+                }
+
+                Log("Restore finished.", LogLevel.Info);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText.Text = "Restore Cancelled";
+                DetailText.Text = "The restore was cancelled.";
+                ProgressBar.IsIndeterminate = false;
+                CloseButton.IsEnabled = true;
+                Log("Restore cancelled.", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -151,229 +161,40 @@ namespace ReStore.Views.Windows
             }
         }
 
-        private async Task RestoreProgramsAsync(string extractDir)
+        private void ShowProgress(SystemRestoreProgress progress)
         {
-            StatusText.Text = "Restoring Programs";
-            DetailText.Text = "Processing program list...";
-
-            var jsonPath = Path.Combine(extractDir, "installed_programs.json");
-            if (!File.Exists(jsonPath))
-            {
-                Log("Programs JSON not found in backup", LogLevel.Warning);
-                TotalCountText.Text = "N/A";
-                DetailText.Text = "Program list not found. Scripts are available for manual execution.";
-                return;
-            }
-
-            Log("Loading program list from backup...", LogLevel.Info);
-
-            // Check if we can use ProgramRestoreManager
-            if (OperatingSystem.IsWindows())
-            {
-                var restoreManager = new ProgramRestoreManager(this);
-
-                // Do a dry run first to see what we're dealing with
-                DetailText.Text = "Analyzing programs to restore...";
-                var dryRunResult = await restoreManager.RestoreProgramsFromJsonAsync(jsonPath, wingetOnly: false, dryRun: true);
-
-                TotalCountText.Text = (dryRunResult.WingetPrograms + dryRunResult.ManualPrograms).ToString();
-
-                Log($"Found {dryRunResult.WingetPrograms} winget programs and {dryRunResult.ManualPrograms} manual programs", LogLevel.Info);
-
-                // Ask user if they want to proceed with winget installation
-                var result = MessageBox.Show(
-                    $"Found {dryRunResult.WingetPrograms} programs available via Winget and {dryRunResult.ManualPrograms} that require manual installation.\n\n" +
-                    "Would you like to automatically install the Winget programs now?\n\n" +
-                    "(This may take several minutes and requires an internet connection)",
-                    "Install Programs",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    DetailText.Text = "Installing programs via Winget...";
-                    ProgressBar.IsIndeterminate = true;
-
-                    var installResult = await restoreManager.RestoreProgramsFromJsonAsync(jsonPath, wingetOnly: false, dryRun: false);
-
-                    SuccessCountText.Text = installResult.SuccessfulInstalls.ToString();
-                    FailedCountText.Text = installResult.FailedInstalls.ToString();
-
-                    Log($"Installation complete: {installResult.SuccessfulInstalls} succeeded, {installResult.FailedInstalls} failed", LogLevel.Info);
-
-                    if (installResult.FailedInstalls > 0)
-                    {
-                        Log($"Some programs failed to install. Check the scripts folder for manual installation.", LogLevel.Warning);
-                    }
-                }
-                else
-                {
-                    Log("User skipped automatic installation", LogLevel.Info);
-                    DetailText.Text = "Skipped automatic installation. Scripts are available.";
-                }
-            }
-            else
-            {
-                Log("Program restoration is only available on Windows", LogLevel.Warning);
-                DetailText.Text = "Program restoration requires Windows.";
-            }
-
-            Log("Restore scripts are available in the extracted folder", LogLevel.Info);
+            StatusText.Text = progress.Status;
+            DetailText.Text = progress.Detail;
+            if (progress.Total.HasValue) TotalCountText.Text = progress.Total.Value.ToString();
+            if (progress.Succeeded.HasValue) SuccessCountText.Text = progress.Succeeded.Value.ToString();
+            if (progress.Failed.HasValue) FailedCountText.Text = progress.Failed.Value.ToString();
         }
 
-        private async Task RestoreEnvironmentAsync(string extractDir)
+        private Task<IReadOnlyCollection<string>?> SelectActionsAsync(SystemRestorePlan plan)
         {
-            StatusText.Text = "Restoring Environment Variables";
-            DetailText.Text = "Processing environment variables...";
-
-            var jsonPath = Path.Combine(extractDir, "environment_variables.json");
-            if (!File.Exists(jsonPath))
+            return Dispatcher.InvokeAsync<IReadOnlyCollection<string>?>(() =>
             {
-                Log("Environment variables JSON not found in backup", LogLevel.Warning);
-                DetailText.Text = "Environment variables not found. Scripts are available for manual execution.";
-                return;
-            }
-
-            Log("Loading environment variables from backup...", LogLevel.Info);
-
-            try
-            {
-                var envManager = new EnvironmentVariablesManager(this);
-
-                // Read the JSON to count variables
-                var json = await File.ReadAllTextAsync(jsonPath);
-                var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
-                int variableCount = 0;
-                if (data.TryGetProperty("variables", out var variablesElement))
-                {
-                    variableCount = variablesElement.GetArrayLength();
-                }
-
-                TotalCountText.Text = variableCount.ToString();
-                Log($"Found {variableCount} environment variables", LogLevel.Info);
-
-                var result = MessageBox.Show(
-                    $"Found {variableCount} environment variables to restore.\n\n" +
-                    "Would you like to restore them now?\n\n" +
-                    "(This requires administrator privileges and will modify system settings)",
-                    "Restore Environment Variables",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    DetailText.Text = "Restoring environment variables...";
-
-                    await envManager.RestoreEnvironmentVariablesAsync(jsonPath);
-
-                    SuccessCountText.Text = variableCount.ToString();
-                    Log("Environment variables restored successfully", LogLevel.Info);
-                }
-                else
-                {
-                    Log("User skipped environment variable restoration", LogLevel.Info);
-                    DetailText.Text = "Skipped restoration. Scripts are available.";
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"Failed to restore environment variables: {ex.Message}", LogLevel.Error);
-                FailedCountText.Text = "Error";
-                throw;
-            }
+                var preview = new RestorePreviewWindow(plan) { Owner = this };
+                return preview.ShowDialog() == true ? preview.SelectedIds : null;
+            }).Task;
         }
 
-        private async Task RestoreWindowsSettingsAsync(string extractDir)
+        private Task<bool> ConfirmAsync(RestorePrompt prompt)
         {
-            StatusText.Text = "Restoring Windows Settings";
-            DetailText.Text = "Processing Windows settings...";
+            return Dispatcher.InvokeAsync(() =>
+                MessageBox.Show(
+                    prompt.Message,
+                    prompt.Title,
+                    MessageBoxButton.YesNo,
+                    prompt.IsWarning ? MessageBoxImage.Warning : MessageBoxImage.Question) == MessageBoxResult.Yes).Task;
+        }
 
-            var manifestPath = Path.Combine(extractDir, "settings_manifest.json");
-            WindowsSettingsExport? manifest = null;
-
-            if (File.Exists(manifestPath))
-            {
-                try
-                {
-                    var json = await File.ReadAllTextAsync(manifestPath);
-                    manifest = System.Text.Json.JsonSerializer.Deserialize<WindowsSettingsExport>(json);
-
-                    var exportedFileCount = manifest?.ExportedFiles.Count ?? 0;
-                    TotalCountText.Text = exportedFileCount.ToString();
-                    Log($"Found {exportedFileCount} Windows settings registry exports", LogLevel.Info);
-                }
-                catch (Exception ex)
-                {
-                    Log($"Failed to read Windows settings manifest: {ex.Message}", LogLevel.Warning);
-                    TotalCountText.Text = "N/A";
-                }
-            }
-            else
-            {
-                Log("Windows settings manifest not found in backup", LogLevel.Warning);
-                TotalCountText.Text = "N/A";
-            }
-
-            var scriptPath = Path.Combine(extractDir, "restore_windows_settings.ps1");
-            if (!File.Exists(scriptPath))
-            {
-                Log("Windows settings restore script not found in backup", LogLevel.Warning);
-                DetailText.Text = "Windows settings restore script not found.";
-                return;
-            }
-
-            Log($"Windows settings restore script available: {scriptPath}", LogLevel.Info);
-
-            var categoryText = manifest?.ExportedCategories.Count > 0
-                ? $"{manifest.ExportedCategories.Count} settings categor{(manifest.ExportedCategories.Count == 1 ? "y" : "ies")}"
-                : "Windows settings";
-
-            var result = MessageBox.Show(
-                $"Found {categoryText} to restore.\n\n" +
-                "Would you like to run the restore script now?\n\n" +
-                "This will modify Windows registry settings and may require administrator privileges.",
-                "Restore Windows Settings",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (result != MessageBoxResult.Yes)
-            {
-                Log("User skipped Windows settings restoration", LogLevel.Info);
-                DetailText.Text = "Skipped restoration. Scripts are available.";
-                return;
-            }
-
-            try
-            {
-                DetailText.Text = "Launching Windows settings restore script...";
-                var escapedScriptPath = scriptPath.Replace("\"", "\\\"");
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{escapedScriptPath}\"",
-                    UseShellExecute = true,
-                    Verb = "runas"
-                };
-
-                var process = Process.Start(processInfo);
-                if (process == null)
-                {
-                    FailedCountText.Text = "Launch failed";
-                    DetailText.Text = "Could not launch the Windows settings restore script.";
-                    Log("Could not launch Windows settings restore script", LogLevel.Warning);
-                    return;
-                }
-
-                SuccessCountText.Text = "Started";
-                DetailText.Text = "Windows settings restore script launched.";
-                Log("Windows settings restore script launched", LogLevel.Info);
-            }
-            catch (System.ComponentModel.Win32Exception ex)
-            {
-                FailedCountText.Text = "Canceled";
-                DetailText.Text = "Windows settings restore script was not launched.";
-                Log($"Windows settings restore script was not launched: {ex.Message}", LogLevel.Warning);
-            }
+        protected override void OnClosed(EventArgs e)
+        {
+            // Closing the window mid-restore cancels the pipeline (which also removes the private work directory).
+            _cancellation.Cancel();
+            _cancellation.Dispose();
+            base.OnClosed(e);
         }
 
         private void OpenScriptsBtn_Click(object sender, RoutedEventArgs e)
@@ -410,6 +231,8 @@ namespace ReStore.Views.Windows
                 {
                     return;
                 }
+
+                _cancellation.Cancel();
             }
 
             Close();

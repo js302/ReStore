@@ -13,6 +13,7 @@ namespace ReStore.Views.Windows
             Title = title;
             TitleText.Text = title;
             PromptText.Text = prompt;
+            System.Windows.Automation.AutomationProperties.SetName(InputBox, prompt);
             InputBox.Text = initialValue ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(hint))

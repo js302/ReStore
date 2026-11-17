@@ -39,7 +39,11 @@ different passwords never collide in the same store.
 - `keyDerivationIterations`: PBKDF2 iterations used for encryption key derivation
 - `chunkStorageNamespace`: subdirectory chunks live under, derived from the encryption key
   (see Encryption and Deduplication below). Null for unencrypted snapshots
-- `profile`: chunking profile (min/target/max chunk sizes and rolling window)
+- `profile`: chunking profile (min/target/max chunk sizes, rolling window, and `AlgorithmVersion`:
+  1 = pre-1.7 hash, 2 = `RollingWindowHash` from 1.7). The version is not part of the root hash. When absent
+  it is inferred from `createdUtc` (before the 1.7.0 release = 1, otherwise 2). If the previous snapshot's
+  version differs from the current one, Backup re-chunks every file instead of reusing/carrying previous
+  entries (unchanged chunks still dedup by id); unreadable files are then omitted and reported as skipped
 - `files[]`: per-file metadata and chunk references
 - `rootHash`: integrity hash over manifest content
 
@@ -48,6 +52,9 @@ content-defined boundaries. Chunk IDs are content hashes, so boundaries are a
 compatibility surface: if the algorithm changes, the same file yields different chunk IDs
 and nothing already in storage can be reused. `ChunkingServiceTests` pins the boundaries
 with a golden vector so such a change cannot land unnoticed.
+
+Release note: v1.7.0 changed chunk boundaries (the 1.6 to 1.7 upgrade). Users upgrading from 1.6 had a
+one-time re-chunk of all files on their first 1.7 backup; the manifest `AlgorithmVersion` now makes this explicit.
 
 Each file entry stores:
 
@@ -61,6 +68,12 @@ Each chunk entry stores:
 - Chunk ID (content address)
 - Plain content hash
 - Plain size and stored size
+- `codec` (v3 only; absent = `raw`): `brotli` when the stored payload is Brotli-compressed (quality 2) before
+  encryption, so the stored object is `encrypt(compress(plain))` for encrypted repos. The chunk ID and content hash
+  are always computed over the plaintext. A chunk is stored raw when compression saves less than ~3%, when the
+  source file has an already-compressed extension (jpg, png, mp4, zip, docx, ...; PDF is tried), or when
+  `chunkDiffing.compression` is `off`. An object already stored under the same ID is reused with whatever codec it
+  has (recognised by its stored size), never overwritten with a different codec. v2 manifests never carry a codec.
 
 ## Backup Commit Protocol
 

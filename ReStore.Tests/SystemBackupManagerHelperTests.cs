@@ -9,8 +9,10 @@ using System.Reflection;
 
 namespace ReStore.Tests;
 
+[Collection("GlobalState")]
 public class SystemBackupManagerHelperTests : IDisposable
 {
+    private readonly string _previousRoot = AppPaths.Root;
     private readonly string _testRoot;
     private readonly TestLogger _logger;
     private readonly Mock<IConfigManager> _configMock;
@@ -20,6 +22,7 @@ public class SystemBackupManagerHelperTests : IDisposable
     {
         _testRoot = Path.Combine(Path.GetTempPath(), "ReStoreSystemBackupManagerHelperTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_testRoot);
+        AppPaths.OverrideRoot(_testRoot);
 
         _logger = new TestLogger();
         _configMock = new Mock<IConfigManager>();
@@ -38,6 +41,7 @@ public class SystemBackupManagerHelperTests : IDisposable
 
     public void Dispose()
     {
+        AppPaths.OverrideRoot(_previousRoot);
         if (Directory.Exists(_testRoot))
         {
             try { Directory.Delete(_testRoot, true); } catch { }
@@ -51,6 +55,9 @@ public class SystemBackupManagerHelperTests : IDisposable
     [InlineData("all", "system_backups/programs/p.zip", "programs")]
     [InlineData("all", "system_backups/environment/e.zip", "environment")]
     [InlineData("all", "system_backups/settings/s.zip", "settings")]
+    [InlineData("system_devtools", "system_backups/anything.zip", "devtools")]
+    [InlineData("all", "system_backups/devtools/d.zip", "devtools")]
+    [InlineData("devtools", "x", "devtools")]
     [InlineData("programs", "x", "programs")]
     public void ResolveRestoreComponent_ShouldNormalizeExpectedValues(string backupType, string backupPath, string expected)
     {
@@ -86,6 +93,7 @@ public class SystemBackupManagerHelperTests : IDisposable
         InvokePrivate<string>(_manager, "GetStorageTypeForComponent", "programs").Should().Be("program-storage");
         InvokePrivate<string>(_manager, "GetStorageTypeForComponent", "environment").Should().Be("environment-storage");
         InvokePrivate<string>(_manager, "GetStorageTypeForComponent", "settings").Should().Be("settings-storage");
+        InvokePrivate<string>(_manager, "GetStorageTypeForComponent", "devtools").Should().Be("default-system-storage");
         InvokePrivate<string>(_manager, "GetStorageTypeForComponent", "unknown").Should().Be("global-storage");
     }
 
@@ -229,7 +237,7 @@ public class SystemBackupManagerHelperTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(extractDir, "restore_programs.ps1"), "# script");
         await File.WriteAllTextAsync(Path.Combine(extractDir, "installed_programs.json"), "{}");
 
-        await InvokePrivateAsync(_manager, "RestoreProgramsAsync", extractDir);
+        await InvokePrivateAsync(_manager, "RestoreProgramsAsync", extractDir, extractDir, new SystemRestoreOptions(), new SystemRestoreResult("programs"), CancellationToken.None);
 
         _logger.Messages.Should().Contain(m => m.Contains("Programs restore script found"));
         _logger.Messages.Should().Contain(m => m.Contains("Programs backup data available"));
@@ -243,11 +251,11 @@ public class SystemBackupManagerHelperTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(extractDir, "restore_windows_settings.ps1"), "# script");
         await File.WriteAllTextAsync(Path.Combine(extractDir, "settings_manifest.json"), "{}");
 
-        await InvokePrivateAsync(_manager, "RestoreWindowsSettingsAsync", extractDir);
+        await InvokePrivateAsync(_manager, "RestoreWindowsSettingsAsync", extractDir, extractDir, new SystemRestoreOptions(), new SystemRestoreResult("settings"), CancellationToken.None);
 
         _logger.Messages.Should().Contain(m => m.Contains("Windows settings restore script available"));
         _logger.Messages.Should().Contain(m => m.Contains("Settings manifest available"));
-        _logger.Messages.Should().Contain(m => m.Contains("IMPORTANT: Review the script before running"));
+        _logger.Messages.Should().Contain(m => m.Contains("IMPORTANT: ReStore does not run this script"));
     }
 
     [Fact]
@@ -271,7 +279,7 @@ public class SystemBackupManagerHelperTests : IDisposable
         var tempDir = Path.Combine(_testRoot, "restore-unencrypted");
         Directory.CreateDirectory(tempDir);
 
-        var extractDir = await InvokePrivateAsync<string>(_manager, "DownloadAndExtractRestoreBackupAsync", storage, "system_backups/environment/plain.zip", tempDir);
+        var extractDir = await InvokePrivateAsync<string>(_manager, "DownloadAndExtractRestoreBackupAsync", storage, "system_backups/environment/plain.zip", tempDir, CancellationToken.None);
 
         File.Exists(Path.Combine(extractDir, "data.txt")).Should().BeTrue();
         (await File.ReadAllTextAsync(Path.Combine(extractDir, "data.txt"))).Should().Be("payload");
@@ -289,7 +297,7 @@ public class SystemBackupManagerHelperTests : IDisposable
         var tempDir = Path.Combine(_testRoot, "restore-encrypted");
         Directory.CreateDirectory(tempDir);
 
-        var extractDir = await InvokePrivateAsync<string>(manager, "DownloadAndExtractRestoreBackupAsync", storage, encryptedPath, tempDir);
+        var extractDir = await InvokePrivateAsync<string>(manager, "DownloadAndExtractRestoreBackupAsync", storage, encryptedPath, tempDir, CancellationToken.None);
 
         File.Exists(Path.Combine(extractDir, "data.txt")).Should().BeTrue();
         (await File.ReadAllTextAsync(Path.Combine(extractDir, "data.txt"))).Should().Be("payload");
@@ -300,7 +308,7 @@ public class SystemBackupManagerHelperTests : IDisposable
     {
         var (storage, encryptedPath, zipPath) = await CreateEncryptedRestoreBackupAsync("CorrectPassword123!");
 
-        var action = () => InvokePrivateAsync(_manager, "DownloadAndDecryptBackupAsync", storage, encryptedPath, zipPath, Path.Combine(_testRoot, "extract-no-provider"));
+        var action = () => InvokePrivateAsync(_manager, "DownloadAndDecryptBackupAsync", storage, encryptedPath, zipPath, Path.Combine(_testRoot, "extract-no-provider"), CancellationToken.None);
 
         await action.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*no password provider available*");
@@ -315,7 +323,7 @@ public class SystemBackupManagerHelperTests : IDisposable
 
         var manager = new SystemBackupManager(_logger, _configMock.Object, new Mock<SystemState>(_logger).Object, passwordProvider.Object);
 
-        var action = () => InvokePrivateAsync(manager, "DownloadAndDecryptBackupAsync", storage, encryptedPath, zipPath, Path.Combine(_testRoot, "extract-empty-password"));
+        var action = () => InvokePrivateAsync(manager, "DownloadAndDecryptBackupAsync", storage, encryptedPath, zipPath, Path.Combine(_testRoot, "extract-empty-password"), CancellationToken.None);
 
         await action.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Password required to decrypt backup*");
@@ -330,7 +338,7 @@ public class SystemBackupManagerHelperTests : IDisposable
 
         var manager = new SystemBackupManager(_logger, _configMock.Object, new Mock<SystemState>(_logger).Object, passwordProvider.Object);
 
-        var action = () => InvokePrivateAsync(manager, "DownloadAndDecryptBackupAsync", storage, encryptedPath, zipPath, Path.Combine(_testRoot, "extract-wrong-password"));
+        var action = () => InvokePrivateAsync(manager, "DownloadAndDecryptBackupAsync", storage, encryptedPath, zipPath, Path.Combine(_testRoot, "extract-wrong-password"), CancellationToken.None);
 
         await action.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Failed to decrypt backup*");
@@ -370,7 +378,7 @@ public class SystemBackupManagerHelperTests : IDisposable
             var scriptPath = Path.Combine(extractDir, "restore_environment_variables.ps1");
             await File.WriteAllTextAsync(scriptPath, "# restore script");
 
-            await InvokePrivateAsync(_manager, "RestoreEnvironmentVariablesAsync", extractDir);
+            await InvokePrivateAsync(_manager, "RestoreEnvironmentVariablesAsync", extractDir, extractDir, new SystemRestoreOptions(), new SystemRestoreResult("environment"), CancellationToken.None);
 
             Environment.GetEnvironmentVariable(variableName, target).Should().Be("restored-value");
             _logger.Messages.Should().Contain(message => message.Contains("Environment variables restore script available"));
@@ -410,7 +418,7 @@ public class SystemBackupManagerHelperTests : IDisposable
         await action.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*no password provider is available*");
 
-        storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -441,7 +449,7 @@ public class SystemBackupManagerHelperTests : IDisposable
         await action.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*no password provider is available*");
 
-        storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private async Task<(LocalStorage Storage, string EncryptedPath, string ZipPath)> CreateEncryptedRestoreBackupAsync(string password)

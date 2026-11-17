@@ -1,0 +1,3 @@
+[*.cs]
+# Core is a library: never capture the caller's SynchronizationContext (UI thread).
+dotnet_diagnostic.CA2007.severity = warning

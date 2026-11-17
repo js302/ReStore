@@ -36,7 +36,6 @@ Open `%USERPROFILE%\ReStore\config.json`:
 {
   "storageSources": {
     "gcp": {
-      "path": "backups",
       "options": {
         "bucketName": "your-bucket-name",
         "credentialPath": "C:\\Users\\YourName\\ReStore\\gcp-key.json"
@@ -48,6 +47,11 @@ Open `%USERPROFILE%\ReStore\config.json`:
 
 **Configuration Parameters:**
 
-- **path**: Prefix for objects (default: `"backups"`)
 - **bucketName**: The name of your GCS bucket
 - **credentialPath**: Absolute path to the service account JSON key file
+
+## Optional: `prefix` option
+
+Add `"prefix": "my-laptop"` to this source's `options` to keep the repository under a sub-folder of the bucket. It is applied to every path (uploads, downloads, listing, sharing) and is empty by default, so existing repositories are unaffected. It must not start with `/` or contain `..`. Changing it later points ReStore at a different (empty) repository; it does not move existing data.
+
+Remote sources do not need a top-level `"path"`. If one is present it is ignored (ReStore logs a warning); use `prefix` instead.

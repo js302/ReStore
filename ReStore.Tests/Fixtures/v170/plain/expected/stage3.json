@@ -1,0 +1,30 @@
+{
+  "added/new.bin": {
+    "size": 9000,
+    "sha256": "27adae9855774d86adcbf2bce035baae465e019aef23c848e64a6e8b54f1c413"
+  },
+  "big.bin": {
+    "size": 40973,
+    "sha256": "d80052a63ccb2660849c27e554eb80dc8d1dc15d65913e77a4cbd7c1c4b8ada5"
+  },
+  "docs/notes/deep/nested/unicode-\u00e9.txt": {
+    "size": 5200,
+    "sha256": "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d"
+  },
+  "docs/readme.txt": {
+    "size": 33,
+    "sha256": "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41"
+  },
+  "empty.txt": {
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "empty2.txt": {
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "renamed.txt": {
+    "size": 740,
+    "sha256": "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034"
+  }
+}

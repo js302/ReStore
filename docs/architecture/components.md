@@ -23,7 +23,7 @@
 │  ┌──────────────────────────┴───────────────────────────┐                   │
 │  │                    GUI Services                      │                   │
 │  ├──────────────────────────────────────────────────────┤                   │
-│  │ • WatcherService (Singleton Bridge)                  │                   │
+│  │ • ProtectionService (Watcher + Scheduler Bridge)     │                   │
 │  │ • SystemTrayManager (Tray Icon)                      │                   │
 │  │ • AppSettings (GUI Settings)                         │                   │
 │  │ • ThemeSettings (Theme Management)                   │                   │
@@ -85,7 +85,7 @@
 │  │ • SnapshotManifest ← Manifest Model + Root Hash Contract       │         │
 │  │ • RestorePreview ← Conflict Policy + Pre-Restore Report        │         │
 │  │ • OperationProgress ← Backup/Restore/Verify Progress Records   │         │
-│  │ • DiffManager ← Standalone Binary Diff Prototype               │         │
+│  │ • RepositoryCoordinator ← One Mutation at a Time               │         │
 │  └────────────────────────────────────────────────────────────────┘         │
 │                                                                             │
 │  ┌────────────────────────────────────────────────────────────────┐         │
@@ -116,7 +116,7 @@
 │  │   ├── dropbox/DropboxStorage ← Dropbox                         │         │
 │  │   ├── backblaze/B2Storage ← Backblaze B2                       │         │
 │  │   ├── sftp/SftpStorage ← SFTP                                  │         │
-│  │   └── github/GitHubStorage ← GitHub Releases                   │         │
+│  │   └── github/GitHubStorage ← GitHub repo contents                   │         │
 │  └────────────────────────────────────────────────────────────────┘         │
 │                                                                             │
 │  ┌────────────────────────────────────────────────────────────────┐         │
@@ -127,8 +127,6 @@
 │  │   - BackupEnvironmentVariablesAsync() ← Env Variables Backup   │         │
 │  │   - BackupWindowsSettingsAsync() ← Registry Settings Backup    │         │
 │  │   - RestoreSystemAsync() ← System Restore with Decryption      │         │
-│  │ • BackupConfigurationManager ← Backup Config                   │         │
-│  │ • FileDiffSyncManager ← File-Level Change Selection            │         │
 │  │ • ProgramRestoreManager ← Program Restore                      │         │
 │  │ • RetentionManager ← Backup Pruning & Retention Policies       │         │
 │  │ • ChunkingService ← Content-Defined Chunking                   │         │
@@ -190,11 +188,11 @@ public interface IStorage : IDisposable
 
 ## GUI-Core Bridge
 
-The `WatcherService` singleton bridges the GUI and Core library:
+The `ProtectionService` singleton (`App.Protection`) bridges the GUI and Core library:
 
-- GUI creates `FileWatcher` instances and registers them with `WatcherService`
-- Starting the watcher also starts a `BackupScheduler` so the configured `backupInterval` is honoured; stopping it disposes both
-- Enables shared watcher state across GUI pages
+- It owns the `FileWatcher` and `BackupScheduler` through the Core `ProtectionController`, so the configured `backupInterval` is honoured; stopping protection disposes both
+- It restarts only when the watch directories, intervals, storage or encryption settings change, and starts automatically at launch when `protection.autoStart` is on
+- Shares one watcher across all GUI pages
 - **Pattern**: Use singleton for cross-page state, not for services tied to view lifecycle
 
 ## Service Layer
@@ -204,7 +202,7 @@ The `WatcherService` singleton bridges the GUI and Core library:
 | Service                  | Responsibility                           |
 | ------------------------ | ---------------------------------------- |
 | `AppServices`            | Shared `ConfigManager`/`SystemState`/`Logger` instances |
-| `WatcherService`         | File watcher lifecycle management        |
+| `ProtectionService`      | File watcher and scheduler lifecycle     |
 | `SystemTrayManager`      | System tray icon and notifications       |
 | `BackupNotificationService` | Routes scheduler outcomes to tray balloons |
 | `NotificationSuppressionProbe` | Detects Focus Assist / Do not disturb |

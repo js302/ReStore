@@ -1,0 +1,192 @@
+{
+  "LastBackupTime": "2026-11-17T08:01:48.5487602Z",
+  "BackupHistory": {
+    "/tmp/restore-fixture-gen.un596P/src-encrypted": [
+      {
+        "Path": "snapshots/src-encrypted_324dc9925075977c/snapshot_20261117080145_af03adc26c5149708b133b54aee11c1d.manifest.json",
+        "Timestamp": "2026-11-17T08:01:45.6810215Z",
+        "IsDiff": false,
+        "StorageType": "local",
+        "SizeBytes": 47654,
+        "ArtifactType": 1,
+        "SnapshotId": "snapshot_20261117080145_af03adc26c5149708b133b54aee11c1d",
+        "ManifestPath": "snapshots/src-encrypted_324dc9925075977c/snapshot_20261117080145_af03adc26c5149708b133b54aee11c1d.manifest.json",
+        "ChunkIds": [
+          "e7aabda6e62ee13de974e0cfc87ef220cb4690f5c1f10b21a01ba895ecfbe2d6",
+          "ec6ed079802228f2149c6816756b8adbc18bab71ce56f73770277be74033edd5",
+          "37cc957a1c016d00d578b38beb2a629a0972516788a200c9683306560631a7ed",
+          "1a535aa7d10ed08adea82923291e50d29b85b46add9704585f4892f47e682831",
+          "11eef345c919d252a59b8ea4825e37bf9ce1b84d26875cc1cad268901070f017",
+          "0195860555efa828bc4cbf0d7c2bf748252c112bab371a44ef8c10426e28d7e3",
+          "45e2642c474e26c935a86fbbdfa008ebf8c1103f1f7b7c392d2225169bb788ee",
+          "bb4cb130995fb88be634914ade0c01eb203f465a59408bcacf0a3d9718416d9d",
+          "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d",
+          "1c8eb85217cc5b8ddd7e3c488a20efce3b958d59199f3b51b503c57c7b7c3828",
+          "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034"
+        ],
+        "RootHash": "6661b885c04e281b4363b53eb7547acb7dd0205addca3d3488c93bb56f81b8df",
+        "Encrypted": true,
+        "ChunkStorageNamespace": "enc_5de1eb4f8ad2d7eddea58ca4"
+      },
+      {
+        "Path": "snapshots/src-encrypted_324dc9925075977c/snapshot_20261117080147_3a9ca3be45df4af192e90867acdd6c38.manifest.json",
+        "Timestamp": "2026-11-17T08:01:47.0839538Z",
+        "IsDiff": false,
+        "StorageType": "local",
+        "SizeBytes": 56673,
+        "ArtifactType": 1,
+        "SnapshotId": "snapshot_20261117080147_3a9ca3be45df4af192e90867acdd6c38",
+        "ManifestPath": "snapshots/src-encrypted_324dc9925075977c/snapshot_20261117080147_3a9ca3be45df4af192e90867acdd6c38.manifest.json",
+        "ChunkIds": [
+          "9db9ec009a2e559b593f96e1f18f9249bf9a968bc3b82737712a638b8588683f",
+          "25f249c408454f45e199a4fb1da2ba4570bbf67287267100fd36dbd1c7c90290",
+          "dbed66d8e5d5bebfd6ab4b8138011f9141be281e38f8e74478252e4df18b1079",
+          "e7aabda6e62ee13de974e0cfc87ef220cb4690f5c1f10b21a01ba895ecfbe2d6",
+          "ec6ed079802228f2149c6816756b8adbc18bab71ce56f73770277be74033edd5",
+          "37cc957a1c016d00d578b38beb2a629a0972516788a200c9683306560631a7ed",
+          "1a535aa7d10ed08adea82923291e50d29b85b46add9704585f4892f47e682831",
+          "11eef345c919d252a59b8ea4825e37bf9ce1b84d26875cc1cad268901070f017",
+          "0195860555efa828bc4cbf0d7c2bf748252c112bab371a44ef8c10426e28d7e3",
+          "45e2642c474e26c935a86fbbdfa008ebf8c1103f1f7b7c392d2225169bb788ee",
+          "bb4cb130995fb88be634914ade0c01eb203f465a59408bcacf0a3d9718416d9d",
+          "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d",
+          "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41",
+          "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034"
+        ],
+        "RootHash": "2f5d8bb8a1daa5efd14acc8d527d40c8bf2fb2f7f260477d38a6487faec27d3d",
+        "Encrypted": true,
+        "ChunkStorageNamespace": "enc_5de1eb4f8ad2d7eddea58ca4"
+      },
+      {
+        "Path": "snapshots/src-encrypted_324dc9925075977c/snapshot_20261117080148_819fde8b6a6848e9af49287e22481f7f.manifest.json",
+        "Timestamp": "2026-11-17T08:01:48.5454611Z",
+        "IsDiff": false,
+        "StorageType": "local",
+        "SizeBytes": 55946,
+        "ArtifactType": 1,
+        "SnapshotId": "snapshot_20261117080148_819fde8b6a6848e9af49287e22481f7f",
+        "ManifestPath": "snapshots/src-encrypted_324dc9925075977c/snapshot_20261117080148_819fde8b6a6848e9af49287e22481f7f.manifest.json",
+        "ChunkIds": [
+          "9db9ec009a2e559b593f96e1f18f9249bf9a968bc3b82737712a638b8588683f",
+          "25f249c408454f45e199a4fb1da2ba4570bbf67287267100fd36dbd1c7c90290",
+          "dbed66d8e5d5bebfd6ab4b8138011f9141be281e38f8e74478252e4df18b1079",
+          "e7aabda6e62ee13de974e0cfc87ef220cb4690f5c1f10b21a01ba895ecfbe2d6",
+          "ec6ed079802228f2149c6816756b8adbc18bab71ce56f73770277be74033edd5",
+          "37cc957a1c016d00d578b38beb2a629a0972516788a200c9683306560631a7ed",
+          "3b15b3c955356438fe9d616b75865d6ae57805fb6a1bc771a6432f0f220296b2",
+          "11eef345c919d252a59b8ea4825e37bf9ce1b84d26875cc1cad268901070f017",
+          "0195860555efa828bc4cbf0d7c2bf748252c112bab371a44ef8c10426e28d7e3",
+          "f1d99a5d5146c154bea2d46b6902aeac0f8e811a1a25dc83665924cc041f6bd9",
+          "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d",
+          "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41",
+          "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034"
+        ],
+        "RootHash": "9978191ad5e3511653ce0dc8bb483bd025a32227b496de8dadf70cfb7d0431f8",
+        "Encrypted": true,
+        "ChunkStorageNamespace": "enc_5de1eb4f8ad2d7eddea58ca4"
+      }
+    ]
+  },
+  "FileMetadata": {
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/empty2.txt": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/empty2.txt",
+      "Size": 0,
+      "LastModified": "2026-11-17T08:01:48.3085681Z",
+      "Hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/renamed.txt": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/renamed.txt",
+      "Size": 740,
+      "LastModified": "2026-11-17T08:01:45.4485007Z",
+      "Hash": "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034"
+    },
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/big.bin": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/big.bin",
+      "Size": 40973,
+      "LastModified": "2026-11-17T08:01:48.3085681Z",
+      "Hash": "d80052a63ccb2660849c27e554eb80dc8d1dc15d65913e77a4cbd7c1c4b8ada5"
+    },
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/empty.txt": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/empty.txt",
+      "Size": 0,
+      "LastModified": "2026-11-17T08:01:45.4485007Z",
+      "Hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/docs/readme.txt": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/docs/readme.txt",
+      "Size": 33,
+      "LastModified": "2026-11-17T08:01:46.908535Z",
+      "Hash": "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41"
+    },
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/docs/notes/deep/nested/unicode-\u00E9.txt": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/docs/notes/deep/nested/unicode-\u00E9.txt",
+      "Size": 5200,
+      "LastModified": "2026-11-17T08:01:45.4485007Z",
+      "Hash": "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d"
+    },
+    "/tmp/restore-fixture-gen.un596P/src-encrypted/added/new.bin": {
+      "FilePath": "/tmp/restore-fixture-gen.un596P/src-encrypted/added/new.bin",
+      "Size": 9000,
+      "LastModified": "2026-11-17T08:01:46.908535Z",
+      "Hash": "27adae9855774d86adcbf2bce035baae465e019aef23c848e64a6e8b54f1c413"
+    }
+  },
+  "ChunkReferenceCounts": {
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|e7aabda6e62ee13de974e0cfc87ef220cb4690f5c1f10b21a01ba895ecfbe2d6": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|ec6ed079802228f2149c6816756b8adbc18bab71ce56f73770277be74033edd5": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|37cc957a1c016d00d578b38beb2a629a0972516788a200c9683306560631a7ed": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|1a535aa7d10ed08adea82923291e50d29b85b46add9704585f4892f47e682831": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|11eef345c919d252a59b8ea4825e37bf9ce1b84d26875cc1cad268901070f017": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|0195860555efa828bc4cbf0d7c2bf748252c112bab371a44ef8c10426e28d7e3": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|45e2642c474e26c935a86fbbdfa008ebf8c1103f1f7b7c392d2225169bb788ee": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|bb4cb130995fb88be634914ade0c01eb203f465a59408bcacf0a3d9718416d9d": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|1c8eb85217cc5b8ddd7e3c488a20efce3b958d59199f3b51b503c57c7b7c3828": 1,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034": 3,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|9db9ec009a2e559b593f96e1f18f9249bf9a968bc3b82737712a638b8588683f": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|25f249c408454f45e199a4fb1da2ba4570bbf67287267100fd36dbd1c7c90290": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|dbed66d8e5d5bebfd6ab4b8138011f9141be281e38f8e74478252e4df18b1079": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41": 2,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|3b15b3c955356438fe9d616b75865d6ae57805fb6a1bc771a6432f0f220296b2": 1,
+    "local|enc_5de1eb4f8ad2d7eddea58ca4|f1d99a5d5146c154bea2d46b6902aeac0f8e811a1a25dc83665924cc041f6bd9": 1
+  },
+  "Telemetry": {
+    "Backup": {
+      "SnapshotCount": 3,
+      "FileCount": 20,
+      "ChunkReferences": 38,
+      "UniqueChunks": 38,
+      "UploadedChunks": 17,
+      "UniqueReusedChunks": 21,
+      "StorageHitChunks": 6,
+      "CandidateChunks": 23,
+      "LastUpdatedUtc": "2026-11-17T08:01:48.5448073Z"
+    },
+    "Restore": {
+      "AttemptCount": 0,
+      "SuccessCount": 0,
+      "ValidationFailureCount": 0,
+      "FilesExpected": 0,
+      "FilesRestored": 0,
+      "ChunkReferencesExpected": 0,
+      "ChunkReferencesProcessed": 0,
+      "ChunkDownloads": 0,
+      "ChunkCacheHits": 0,
+      "FailureCategoryCounts": {},
+      "LastUpdatedUtc": "0001-01-01T00:00:00"
+    },
+    "Verification": {
+      "RunCount": 0,
+      "SuccessCount": 0,
+      "ValidationFailureCount": 0,
+      "FileCount": 0,
+      "ChunkReferences": 0,
+      "UniqueChunks": 0,
+      "DownloadedChunks": 0,
+      "MissingChunks": 0,
+      "InvalidChunks": 0,
+      "InvalidFiles": 0,
+      "LastUpdatedUtc": "0001-01-01T00:00:00"
+    }
+  }
+}

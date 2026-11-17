@@ -1,0 +1,64 @@
+<Window x:Class="ReStore.Views.Windows.RestorePreviewWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="Review System Restore" Height="560" Width="900" WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="CanResize" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" Background="{DynamicResource ApplicationBackgroundBrush}" UseLayoutRounding="True">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="32" CornerRadius="8" GlassFrameThickness="0" ResizeBorderThickness="6"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Border BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="32"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Background="{DynamicResource ApplicationBackgroundBrush}" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <TextBlock Text="Review System Restore" VerticalAlignment="Center" Margin="16,0" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </Grid>
+
+            <Border Grid.Row="1" Margin="24,16,24,0" Padding="16" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8">
+                <StackPanel>
+                    <TextBlock x:Name="SummaryText" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="CountText" FontSize="13" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="Only checked rows are applied. The current state of exactly those items is saved as an undo point first. Rows marked 'needs admin' need administrator rights and are reported as failed otherwise."
+                               FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <DataGrid Grid.Row="2" x:Name="PreviewGrid" Margin="24,12,24,0" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                      HeadersVisibility="Column" SelectionMode="Single" GridLinesVisibility="Horizontal" AutomationProperties.Name="Restore preview">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Restore" Width="70">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSelect}" HorizontalAlignment="Center" AutomationProperties.Name="Restore this item"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Change" Binding="{Binding ChangeLabel}" IsReadOnly="True" Width="90"/>
+                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" IsReadOnly="True" Width="70"/>
+                    <DataGridTextColumn Header="Item" Binding="{Binding Name}" IsReadOnly="True" Width="220"/>
+                    <DataGridTextColumn Header="Current / Backup" Binding="{Binding ValueSummary}" IsReadOnly="True" Width="*"/>
+                    <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" IsReadOnly="True" Width="150"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Row="3" Padding="24,16" Margin="0,12,0,0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <Button x:Name="SelectAllBtn" Content="Select all" Margin="0,0,8,0" Click="SelectAllBtn_Click"/>
+                        <Button x:Name="SelectNoneBtn" Content="Select none" Click="SelectNoneBtn_Click"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="CancelBtn" Content="Cancel" Margin="0,0,8,0" IsCancel="True" Click="CancelBtn_Click"/>
+                        <Button x:Name="RestoreBtn" Content="Restore selected" IsDefault="True" Click="RestoreBtn_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

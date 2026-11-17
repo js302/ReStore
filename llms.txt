@@ -1,0 +1,18 @@
+# ReStore
+
+> ReStore is an open-source backup and restore tool for Windows: it saves folders as deduplicated, optionally AES-256-GCM encrypted point-in-time snapshots to local disk or cloud storage (S3, Google Drive, Dropbox, Azure, GCP, GitHub, SFTP, Backblaze B2), and also backs up installed programs, environment variables and Windows settings. It has a WPF GUI and a full command-line interface, `restore`, that is built for scripts and AI agents: every command supports `--json` and `--non-interactive`, exit codes are stable (4 means a person must act, 5 means busy), and `restore doctor --json` explains what is wrong with a setup. Install the portable CLI without admin rights with `irm https://github.com/js302/ReStore/releases/latest/download/install.ps1 | iex`, then run `restore agent-guide`.
+
+## Docs
+
+- [Guide for AI agents](https://github.com/js302/ReStore/blob/main/docs/agents.md): rules, exit codes and step-by-step recipes for operating ReStore on a user's behalf (also printed by `restore agent-guide`)
+- [CLI usage](https://github.com/js302/ReStore/blob/main/docs/usage/cli.md): every command, option, JSON output and exit code (also `restore commands --json`)
+- [Configuration](https://github.com/js302/ReStore/blob/main/docs/configuration.md): config.json settings, retention and exclusions (schema: `restore config schema`)
+- [Telemetry](https://github.com/js302/ReStore/blob/main/docs/telemetry.md): what anonymous usage statistics and opt-in crash reports contain, and how to turn them off
+- [Updates](https://github.com/js302/ReStore/blob/main/docs/updates.md): how update checks work and how to install updates
+- [Installation](https://github.com/js302/ReStore/blob/main/docs/installation.md): MSIX installer, portable CLI (no admin) and building from source
+
+## Optional
+
+- [Storage providers](https://github.com/js302/ReStore/blob/main/docs/storage/README.md): setup for every storage backend
+- [Encryption](https://github.com/js302/ReStore/blob/main/docs/encryption.md): password protection and key handling
+- [Security](https://github.com/js302/ReStore/blob/main/docs/security.md): security notes and best practices

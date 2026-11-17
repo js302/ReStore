@@ -9,16 +9,21 @@
 
   <ItemGroup>
     <PackageReference Include="Bogus" Version="35.6.5" />
-    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="coverlet.collector" Version="10.1.1" />
     <PackageReference Include="FluentAssertions" Version="8.8.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="FsCheck.Xunit" Version="3.6.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +35,13 @@
          drags in WPF, while this project is plain net10.0. NestedScrollGesture is deliberately
          WPF-free so its scroll arithmetic can be tested here. -->
     <Compile Include="..\ReStore\Behaviors\NestedScrollGesture.cs" Link="Behaviors\NestedScrollGesture.cs" />
+    <Compile Include="..\ReStore\Services\BatchOperationSummary.cs" Link="Services\BatchOperationSummary.cs" />
+    <Compile Include="..\ReStore\Services\WindowPlacement.cs" Link="Services\WindowPlacement.cs" />
+    <Compile Include="..\ReStore\Services\CrashReporting.cs" Link="Services\CrashReporting.cs" />
+    <Compile Include="..\ReStore\Services\NumberInput.cs" Link="Services\NumberInput.cs" />
+    <Compile Include="..\ReStore\Services\SingleInstance.cs" Link="Services\SingleInstance.cs" />
+    <Compile Include="..\ReStore\Services\PackagedPathVirtualization.cs" Link="Services\PackagedPathVirtualization.cs" />
+    <Compile Include="..\ReStore\Services\ScheduleEditorModel.cs" Link="Services\ScheduleEditorModel.cs" />
   </ItemGroup>
 
 </Project>

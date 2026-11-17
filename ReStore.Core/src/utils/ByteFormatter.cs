@@ -27,6 +27,6 @@ public static class ByteFormatter
             magnitude /= 1024;
         }
 
-        return $"{(isNegative ? "-" : string.Empty)}{magnitude:0.##} {Units[order]}";
+        return $"{(isNegative ? "-" : string.Empty)}{magnitude.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} {Units[order]}";
     }
 }

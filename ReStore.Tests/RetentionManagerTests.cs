@@ -20,28 +20,42 @@ public class RetentionManagerTests
             return Task.CompletedTask;
         }
 
-        public Task UploadAsync(string localPath, string remotePath)
+        public Task UploadAsync(string localPath, string remotePath, CancellationToken ct = default)
         {
             _existingPaths.Add(remotePath);
             return Task.CompletedTask;
         }
 
-        public Task DownloadAsync(string remotePath, string localPath)
+        public Task DownloadAsync(string remotePath, string localPath, CancellationToken ct = default)
         {
             throw new NotImplementedException();
         }
 
-        public Task<bool> ExistsAsync(string remotePath)
+        public Task<bool> ExistsAsync(string remotePath, CancellationToken ct = default)
         {
             return Task.FromResult(_existingPaths.Contains(remotePath));
         }
 
-        public Task DeleteAsync(string remotePath)
+        public Task DeleteAsync(string remotePath, CancellationToken ct = default)
         {
             DeletedPaths.Add(remotePath);
             _existingPaths.Remove(remotePath);
             return Task.CompletedTask;
         }
+
+        public Task UploadAsync(Stream content, string remotePath, CancellationToken ct = default)
+        {
+            _existingPaths.Add(remotePath);
+            return Task.CompletedTask;
+        }
+
+        public Task<long?> GetSizeAsync(string remotePath, CancellationToken ct = default) => throw new NotImplementedException();
+
+        public IAsyncEnumerable<StorageEntry> ListAsync(string prefix, CancellationToken ct = default) => throw new NotImplementedException();
+
+        public bool SupportsListing => false;
+
+        public int MaxConcurrency => 1;
 
         public bool SupportsSharing => false;
 
@@ -180,7 +194,7 @@ public class RetentionManagerTests
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(storage);
 
         var state = new SystemState(logger);
-        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}.json"));
+        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}", "state.json"));
         state.BackupHistory[group] = new List<BackupInfo> { newest, old1, old2 };
 
         var manager = new RetentionManager(logger, configMock.Object, state);
@@ -237,7 +251,7 @@ public class RetentionManagerTests
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(storage);
 
         var state = new SystemState(logger);
-        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}.json"));
+        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}", "state.json"));
         state.BackupHistory[group] = new List<BackupInfo> { newest, old1 };
 
         var manager = new RetentionManager(logger, configMock.Object, state);
@@ -302,7 +316,7 @@ public class RetentionManagerTests
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(storage);
 
         var state = new SystemState(logger);
-        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}.json"));
+        state.SetStateFilePath(Path.Combine(Path.GetTempPath(), $"ReStoreTests_state_{Guid.NewGuid():N}", "state.json"));
         state.BackupHistory[group] = new List<BackupInfo> { newest, old };
         state.RegisterChunkReferences("local", newest.ChunkIds);
         state.RegisterChunkReferences("local", old.ChunkIds);

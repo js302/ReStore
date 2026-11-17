@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Runtime.Versioning;
 
@@ -27,52 +26,9 @@ public class WindowsSettingsManager(ILogger logger)
     private readonly Dictionary<string, List<RegistryKeyInfo>> _settingsCategories = InitializeSettingsCategories();
 
     private static Dictionary<string, List<RegistryKeyInfo>> InitializeSettingsCategories()
-    {
-        return new Dictionary<string, List<RegistryKeyInfo>>
-        {
-            ["Personalization"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Control Panel\Desktop", Category = "Personalization", RequiresAdmin = false },
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes", Category = "Personalization", RequiresAdmin = false },
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Category = "Personalization", RequiresAdmin = false },
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM", Category = "Personalization", RequiresAdmin = false }
-            },
-            ["Explorer"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", Category = "Explorer", RequiresAdmin = false },
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState", Category = "Explorer", RequiresAdmin = false }
-            },
-            ["Regional"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Control Panel\International", Category = "Regional", RequiresAdmin = false }
-            },
-            ["Taskbar"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3", Category = "Taskbar", RequiresAdmin = false },
-                new() { Path = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Search", Category = "Taskbar", RequiresAdmin = false }
-            },
-            ["Mouse"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Control Panel\Mouse", Category = "Mouse", RequiresAdmin = false },
-                new() { Path = @"HKEY_CURRENT_USER\Control Panel\Cursors", Category = "Mouse", RequiresAdmin = false }
-            },
-            ["Keyboard"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Control Panel\Keyboard", Category = "Keyboard", RequiresAdmin = false }
-            },
-            ["Accessibility"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_CURRENT_USER\Control Panel\Accessibility", Category = "Accessibility", RequiresAdmin = false }
-            },
-            ["System"] = new List<RegistryKeyInfo>
-            {
-                new() { Path = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation", Category = "System", RequiresAdmin = true },
-                new() { Path = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Power", Category = "System", RequiresAdmin = true }
-            }
-        };
-    }
+        => WindowsSettingsDefinitions.CreateCategories();
 
-    public async Task<WindowsSettingsExport> ExportWindowsSettingsAsync(string outputDirectory, List<string>? categories = null)
+    public async Task<WindowsSettingsExport> ExportWindowsSettingsAsync(string outputDirectory, List<string>? categories = null, CancellationToken cancellationToken = default)
     {
         _logger.Log("Exporting Windows settings...", LogLevel.Info);
         
@@ -89,6 +45,8 @@ public class WindowsSettingsManager(ILogger logger)
 
         foreach (var category in categoriesToExport)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!_settingsCategories.ContainsKey(category))
             {
                 _logger.Log($"Unknown category: {category}", LogLevel.Warning);
@@ -104,7 +62,7 @@ public class WindowsSettingsManager(ILogger logger)
                     var fileName = $"{category}_{Path.GetFileName(keyInfo.Path)}.reg";
                     var outputPath = Path.Combine(outputDirectory, fileName);
                     
-                    var success = await ExportRegistryKeyAsync(keyInfo.Path, outputPath);
+                    var success = await ExportRegistryKeyAsync(keyInfo.Path, outputPath, cancellationToken).ConfigureAwait(false);
                     
                     if (success)
                     {
@@ -115,7 +73,7 @@ public class WindowsSettingsManager(ILogger logger)
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.Log($"Error exporting {keyInfo.Path}: {ex.Message}", LogLevel.Warning);
                 }
@@ -123,51 +81,42 @@ public class WindowsSettingsManager(ILogger logger)
         }
 
         var manifestPath = Path.Combine(outputDirectory, "settings_manifest.json");
-        await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true })).ConfigureAwait(false);
 
         _logger.Log($"Exported {export.ExportedCategories.Count} categories with {export.ExportedFiles.Count} registry keys", LogLevel.Info);
         
         return export;
     }
 
-    private async Task<bool> ExportRegistryKeyAsync(string registryPath, string outputPath)
+    private async Task<bool> ExportRegistryKeyAsync(string registryPath, string outputPath, CancellationToken cancellationToken)
     {
         try
         {
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = "reg.exe",
-                Arguments = $"export \"{registryPath}\" \"{outputPath}\" /y",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var result = await ProcessRunner.RunAsync(
+                "reg.exe",
+                ["export", registryPath, outputPath, "/y"],
+                TimeSpan.FromMinutes(1),
+                cancellationToken).ConfigureAwait(false);
 
-            using var process = Process.Start(processStartInfo);
-            if (process != null)
+            if (result.TimedOut)
             {
-                var output = await process.StandardOutput.ReadToEndAsync();
-                var error = await process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
-
-                if (process.ExitCode == 0)
-                {
-                    _logger.Log($"Exported registry key: {registryPath}", LogLevel.Debug);
-                    return true;
-                }
-                else
-                {
-                    _logger.Log($"Failed to export {registryPath}: {error}", LogLevel.Warning);
-                    return false;
-                }
+                _logger.Log($"Timed out exporting {registryPath}", LogLevel.Warning);
+                return false;
             }
+
+            if (result.ExitCode == 0)
+            {
+                _logger.Log($"Exported registry key: {registryPath}", LogLevel.Debug);
+                return true;
+            }
+
+            _logger.Log($"Failed to export {registryPath}: {result.StandardError}", LogLevel.Warning);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.Log($"Error running reg export for {registryPath}: {ex.Message}", LogLevel.Warning);
         }
-        
+
         return false;
     }
 
@@ -178,7 +127,7 @@ public class WindowsSettingsManager(ILogger logger)
             var scriptContent = new List<string>
             {
                 "# ReStore Windows Settings Restore Script",
-                "# Generated on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                "# Generated on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
                 "",
                 "Write-Host 'ReStore Windows Settings Restore' -ForegroundColor Green",
                 "Write-Host '===================================' -ForegroundColor Green",
@@ -319,7 +268,7 @@ public class WindowsSettingsManager(ILogger logger)
                 "Write-Host 'NOTE: Some changes may require logging off or restarting Windows to take effect.' -ForegroundColor Yellow"
             ]);
 
-            await File.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent));
+            await ScriptFile.WriteAllTextAsync(outputPath, string.Join(Environment.NewLine, scriptContent)).ConfigureAwait(false);
             
             _logger.Log($"Created restore script at {outputPath}", LogLevel.Info);
             return outputPath;

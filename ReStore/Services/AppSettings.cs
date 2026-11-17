@@ -1,21 +1,43 @@
 using System.IO;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ReStore.Services
 {
     public class AppSettings
     {
-        private const string SETTINGS_FILE = "appsettings.json";
-        private static readonly string SettingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "ReStore",
-            SETTINGS_FILE);
+        private static string SettingsPath => ReStore.Core.src.utils.AppPaths.AppSettingsFile;
 
+        /// <summary>
+        /// Legacy. The default storage now lives only in config.json (<c>globalStorageType</c>). This is read
+        /// from old appsettings files so it can be dropped by <see cref="ConsumeLegacyDefaultStorage"/>;
+        /// nothing writes it and it is never serialized again.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? DefaultStorage { get; set; }
+
+        /// <summary>Clears the legacy value; true when there was one (the file should then be re-saved without it).</summary>
+        public bool ConsumeLegacyDefaultStorage()
+        {
+            var had = DefaultStorage != null;
+            DefaultStorage = null;
+            return had;
+        }
+
         public bool ShowOnlyConfiguredProviders { get; set; }
         public bool MinimizeToTray { get; set; } = false;
+
+        /// <summary>
+        /// Show Windows toasts (with action buttons) instead of tray balloons. Effective only when packaged: toasts need
+        /// the MSIX identity, so unpackaged runs always use balloons.
+        /// </summary>
+        public bool UseToastNotifications { get; set; } = true;
+
         public bool ContextMenuEnabled { get; set; } = false;
+
+        /// <summary>Last main-window size/position/maximized state; null until the window has been closed once.</summary>
+        public WindowPlacementSettings? MainWindowPlacement { get; set; }
 
         public static AppSettings Load()
         {

@@ -62,7 +62,7 @@ public class ShareServiceTests : IDisposable
 
         link.Should().Be("https://example.com/share");
         _configMock.Verify(c => c.CreateStorageAsync("local"), Times.Once);
-        _storageMock.Verify(s => s.UploadAsync(localFile, It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/share-me.txt"))), Times.Once);
+        _storageMock.Verify(s => s.UploadAsync(localFile, It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/share-me.txt")), It.IsAny<CancellationToken>()), Times.Once);
         _storageMock.Verify(s => s.GenerateShareLinkAsync(It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/share-me.txt")), TimeSpan.FromHours(2)), Times.Once);
         _storageMock.Verify(s => s.Dispose(), Times.Once);
     }
@@ -82,8 +82,8 @@ public class ShareServiceTests : IDisposable
         var action = () => service.ShareFileAsync(localFile, "s3", TimeSpan.FromMinutes(30));
 
         await Assert.ThrowsAsync<InvalidOperationException>(action);
-        _storageMock.Verify(s => s.UploadAsync(localFile, It.IsAny<string>()), Times.Once);
-        _storageMock.Verify(s => s.DeleteAsync(It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/cleanup.txt"))), Times.Once);
+        _storageMock.Verify(s => s.UploadAsync(localFile, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _storageMock.Verify(s => s.DeleteAsync(It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/cleanup.txt")), It.IsAny<CancellationToken>()), Times.Once);
         _storageMock.Verify(s => s.Dispose(), Times.Once);
     }
 
@@ -98,14 +98,14 @@ public class ShareServiceTests : IDisposable
 
         _storageMock.Setup(s => s.GenerateShareLinkAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()))
             .ThrowsAsync(new InvalidOperationException("link generation failed"));
-        _storageMock.Setup(s => s.DeleteAsync(It.IsAny<string>()))
+        _storageMock.Setup(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("delete failed"));
 
         var action = () => service.ShareFileAsync(localFile, "azure", TimeSpan.FromMinutes(15));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(action);
         exception.Message.Should().Be("link generation failed");
-        _storageMock.Verify(s => s.DeleteAsync(It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/cleanup-fails.txt"))), Times.Once);
+        _storageMock.Verify(s => s.DeleteAsync(It.Is<string>(p => p.StartsWith("shared/") && p.EndsWith("/cleanup-fails.txt")), It.IsAny<CancellationToken>()), Times.Once);
         _storageMock.Verify(s => s.Dispose(), Times.Once);
     }
 
@@ -123,6 +123,6 @@ public class ShareServiceTests : IDisposable
         await action.Should().ThrowAsync<NotSupportedException>()
             .WithMessage("*does not support file sharing*");
 
-        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

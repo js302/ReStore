@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
 using ReStore.Core.src.utils;
@@ -11,7 +12,9 @@ public class GcpStorage(ILogger logger) : StorageBase(logger)
     private string _bucketName = string.Empty;
     private bool _disposed = false;
 
-    public override async Task InitializeAsync(Dictionary<string, string> options)
+    public override int MaxConcurrency => 8;
+
+    protected override async Task InitializeCoreAsync(Dictionary<string, string> options)
     {
         ValidateOptions(options);
 
@@ -25,17 +28,20 @@ public class GcpStorage(ILogger logger) : StorageBase(logger)
                 #pragma warning disable CS0618 // Type or member is obsolete
                 _credential = GoogleCredential.FromStream(stream);
                 #pragma warning restore CS0618 // Type or member is obsolete
-                _storageClient = await StorageClient.CreateAsync(_credential);
+                _storageClient = await StorageClient.CreateAsync(_credential).ConfigureAwait(false);
             }
             else 
             {
                 // Fallback to default credentials
-                _storageClient = await StorageClient.CreateAsync();
+                // EmulatorOrProduction only changes behaviour when STORAGE_EMULATOR_HOST is set (used by the
+                // conformance tests against fake-gcs-server); otherwise this is the normal default-credential client.
+                _storageClient = await new StorageClientBuilder { EmulatorDetection = Google.Api.Gax.EmulatorDetection.EmulatorOrProduction }
+                    .BuildAsync().ConfigureAwait(false);
             }
 
             try 
             {
-                await _storageClient.GetBucketAsync(_bucketName);
+                await _storageClient.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 Logger.Log($"Connected to GCP Bucket: {_bucketName}", LogLevel.Info);
             }
             catch (Exception ex)
@@ -60,51 +66,96 @@ public class GcpStorage(ILogger logger) : StorageBase(logger)
         }
     }
 
-    public override async Task UploadAsync(string localPath, string remotePath)
+    protected override async Task UploadCoreAsync(string localPath, string remotePath, CancellationToken ct)
     {
         using var fileStream = File.OpenRead(localPath);
-        await _storageClient!.UploadObjectAsync(_bucketName, remotePath, null, fileStream);
+        await _storageClient!.UploadObjectAsync(_bucketName, remotePath, null, fileStream, cancellationToken: ct).ConfigureAwait(false);
     }
 
-    public override async Task DownloadAsync(string remotePath, string localPath)
+    public override async Task UploadAsync(Stream content, string remotePath, CancellationToken ct = default)
     {
-        // Ensure local directory exists
-        var dir = Path.GetDirectoryName(localPath);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
-
-        using var fileStream = File.Create(localPath);
-        await _storageClient!.DownloadObjectAsync(_bucketName, remotePath, fileStream);
+        // The Google upload client rewinds seekable streams, so hand it a view that starts at the caller's position.
+        var source = content.CanSeek && content.Position != 0 ? new OffsetReadStream(content) : content;
+        await _storageClient!.UploadObjectAsync(_bucketName, Qualify(remotePath), null, source, cancellationToken: ct).ConfigureAwait(false);
     }
 
-    public override async Task<bool> ExistsAsync(string remotePath)
+    protected override async Task DownloadCoreAsync(string remotePath, string localPath, CancellationToken ct)
     {
         try
         {
-            await _storageClient!.GetObjectAsync(_bucketName, remotePath);
+            await DownloadAtomicAsync(localPath, async partPath =>
+            {
+                using var fileStream = File.Create(partPath);
+                await _storageClient!.DownloadObjectAsync(_bucketName, remotePath, fileStream, cancellationToken: ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw new StorageNotFoundException($"Object not found in bucket '{_bucketName}': {remotePath}", ex) { RemotePath = remotePath };
+        }
+    }
+
+    protected override async Task<bool> ExistsCoreAsync(string remotePath, CancellationToken ct)
+    {
+        try
+        {
+            await _storageClient!.GetObjectAsync(_bucketName, remotePath, cancellationToken: ct).ConfigureAwait(false);
             return true;
         }
-        catch (Google.GoogleApiException ex) when (ex.Error.Code == 404)
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return false;
         }
     }
 
-    public override async Task DeleteAsync(string remotePath)
+    protected override async Task<long?> GetSizeCoreAsync(string remotePath, CancellationToken ct)
     {
         try
         {
-            await _storageClient!.DeleteObjectAsync(_bucketName, remotePath);
+            var obj = await _storageClient!.GetObjectAsync(_bucketName, remotePath, cancellationToken: ct).ConfigureAwait(false);
+            return (long?)obj.Size ?? 0;
         }
-        catch (Google.GoogleApiException ex) when (ex.Error.Code == 404)
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    protected override async IAsyncEnumerable<StorageEntry> ListCoreAsync(string prefix, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var obj in _storageClient!.ListObjectsAsync(_bucketName, prefix).WithCancellation(ct).ConfigureAwait(false))
+        {
+            yield return new StorageEntry(obj.Name, (long?)obj.Size ?? 0, UpdatedUtc(obj));
+        }
+    }
+
+    // The timestamp is parsed lazily from the raw string; some GCS-compatible servers emit fractional-second
+    // widths the client cannot parse. A bad timestamp must not fail the whole listing, so treat it as unknown.
+    private static DateTime? UpdatedUtc(Google.Apis.Storage.v1.Data.Object obj)
+    {
+        try
+        {
+            return obj.UpdatedDateTimeOffset?.UtcDateTime;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    protected override async Task DeleteCoreAsync(string remotePath, CancellationToken ct)
+    {
+        try
+        {
+            await _storageClient!.DeleteObjectAsync(_bucketName, remotePath, cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
         {
             // Ignore if already deleted
         }
     }
 
-    public override async Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
+    protected override async Task<string> GenerateShareLinkCoreAsync(string remotePath, TimeSpan expiration)
     {
         if (_credential == null)
         {
@@ -112,7 +163,7 @@ public class GcpStorage(ILogger logger) : StorageBase(logger)
         }
 
         var signer = UrlSigner.FromCredential(_credential);
-        return await signer.SignAsync(_bucketName, remotePath, expiration, HttpMethod.Get);
+        return await signer.SignAsync(_bucketName, remotePath, expiration, HttpMethod.Get).ConfigureAwait(false);
     }
 
     public override bool SupportsSharing => true;

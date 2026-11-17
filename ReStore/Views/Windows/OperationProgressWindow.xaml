@@ -73,7 +73,7 @@
                         <TextBlock Grid.Row="0" Text="Activity Log" FontWeight="SemiBold" Margin="0,0,0,12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                            <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <TextBox AutomationProperties.Name="Operation log" x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                         </ScrollViewer>
                     </Grid>
                 </Border>

@@ -1,3 +1,4 @@
+using ReStore.Services;
 using System.Windows;
 using ReStore.Core.src.sharing;
 using ReStore.Core.src.utils;
@@ -41,6 +42,11 @@ public partial class ShareWindow : FluentWindow
     }
 
     private async void Share_Click(object sender, RoutedEventArgs e)
+    {
+        await ErrorReporter.GuardAsync("Share", () => Share_ClickCoreAsync(sender, e));
+    }
+
+    private async Task Share_ClickCoreAsync(object sender, RoutedEventArgs e)
     {
         if (StorageProviderCombo.SelectedValue is not string storageType) return;
 

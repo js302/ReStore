@@ -18,10 +18,9 @@ Open `%USERPROFILE%\ReStore\config.json`:
 {
   "storageSources": {
     "b2": {
-      "path": "backups",
       "options": {
-        "accessKeyId": "your_key_id",
-        "secretAccessKey": "your_application_key",
+        "keyId": "your_key_id",
+        "applicationKey": "your_application_key",
         "serviceUrl": "https://s3.us-west-000.backblazeb2.com",
         "bucketName": "your-bucket-name"
       }
@@ -32,8 +31,15 @@ Open `%USERPROFILE%\ReStore\config.json`:
 
 **Configuration Parameters:**
 
-- **path**: Prefix for files
-- **accessKeyId**: Your Key ID
-- **secretAccessKey**: Your Application Key
+- **keyId**: Your Key ID (the B2 `keyID`)
+- **applicationKey**: Your Application Key
 - **serviceUrl**: The S3 Endpoint URL (must start with `https://`)
 - **bucketName**: Your bucket name
+
+Earlier versions of this page listed `accessKeyId` / `secretAccessKey`; ReStore never read those names, so use `keyId` / `applicationKey`.
+
+## Optional: `prefix` option
+
+Add `"prefix": "my-laptop"` to this source's `options` to keep the repository under a sub-folder of the bucket. It is applied to every path (uploads, downloads, listing, sharing) and is empty by default, so existing repositories are unaffected. It must not start with `/` or contain `..`. Changing it later points ReStore at a different (empty) repository; it does not move existing data.
+
+Remote sources do not need a top-level `"path"`. If one is present it is ignored (ReStore logs a warning); use `prefix` instead.

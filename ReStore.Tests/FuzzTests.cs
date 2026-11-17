@@ -5,6 +5,7 @@ using ReStore.Core.src.utils;
 using ReStore.Core.src.storage.local;
 using ReStore.Core.src.monitoring;
 using Bogus;
+using Xunit.Abstractions;
 
 namespace ReStore.Tests;
 
@@ -15,10 +16,12 @@ public class FuzzTests : IDisposable
     private readonly string _backupDir;
     private readonly string _stateDir;
     private readonly Mock<ILogger> _loggerMock;
-    private readonly Faker _faker;
+    private readonly ITestOutputHelper _output;
+    private Faker _faker = new();
 
-    public FuzzTests()
+    public FuzzTests(ITestOutputHelper output)
     {
+        _output = output;
         _testRoot = Path.Combine(Path.GetTempPath(), "ReStoreFuzz_" + Guid.NewGuid());
         _sourceDir = Path.Combine(_testRoot, "Source");
         _backupDir = Path.Combine(_testRoot, "Backups");
@@ -29,7 +32,22 @@ public class FuzzTests : IDisposable
         Directory.CreateDirectory(_stateDir);
 
         _loggerMock = new Mock<ILogger>();
-        _faker = new Faker();
+    }
+
+    /// <summary>
+    /// Fixed seeds keep the normal run deterministic and replayable: a failure names its seed (also printed for every run), and
+    /// setting <c>RESTORE_FUZZ_SEED</c> replays exactly that seed.
+    /// </summary>
+    public static IEnumerable<object[]> Seeds()
+    {
+        if (int.TryParse(Environment.GetEnvironmentVariable("RESTORE_FUZZ_SEED"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var replay))
+        {
+            yield return [replay];
+            yield break;
+        }
+
+        yield return [20260101];
+        yield return [7];
     }
 
     public void Dispose()
@@ -40,9 +58,13 @@ public class FuzzTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task Backup_ShouldHandleChaoticFileStructures()
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public async Task Backup_ShouldHandleChaoticFileStructures(int seed)
     {
+        _output.WriteLine($"FuzzTests seed: {seed} (replay with RESTORE_FUZZ_SEED={seed})");
+        Randomizer.Seed = new Random(seed);
+        _faker = new Faker { Random = new Randomizer(seed) };
         int fileCount = 50;
         var generatedFiles = new List<string>();
 

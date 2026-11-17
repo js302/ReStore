@@ -1,4 +1,3 @@
-using System.Reflection;
 
 namespace ReStore.Core.src.utils;
 
@@ -11,13 +10,10 @@ public sealed class ConfigSetupResult
 
 public static class ConfigInitializer
 {
-    private static readonly string USER_CONFIG_DIR = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        "ReStore");
-
-    private static readonly string USER_STATE_DIR = Path.Combine(USER_CONFIG_DIR, "state");
-    private static readonly string USER_CONFIG_PATH = Path.Combine(USER_CONFIG_DIR, "config.json");
-    private static readonly string USER_EXAMPLE_CONFIG_PATH = Path.Combine(USER_CONFIG_DIR, "config.example.json");
+    private static string USER_CONFIG_DIR => AppPaths.ConfigDirectory;
+    private static string USER_STATE_DIR => AppPaths.StateDirectory;
+    private static string USER_CONFIG_PATH => AppPaths.ConfigFile;
+    private static string USER_EXAMPLE_CONFIG_PATH => AppPaths.ExampleConfigFile;
 
     public static ConfigSetupResult EnsureConfigurationSetup(ILogger? logger = null)
     {
@@ -81,8 +77,11 @@ public static class ConfigInitializer
 
     internal static string? ResolveApplicationExampleConfigPath(string? assemblyLocation = null)
     {
-        assemblyLocation ??= Assembly.GetExecutingAssembly().Location;
-        var assemblyDirectory = Path.GetDirectoryName(assemblyLocation);
+        // AppContext.BaseDirectory is the application folder for normal and single-file (portable CLI) builds alike;
+        // Assembly.Location is empty in a single-file app.
+        var assemblyDirectory = string.IsNullOrEmpty(assemblyLocation)
+            ? AppContext.BaseDirectory
+            : Path.GetDirectoryName(assemblyLocation);
 
         if (string.IsNullOrEmpty(assemblyDirectory))
         {

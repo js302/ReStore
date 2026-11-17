@@ -17,6 +17,17 @@
             <SolidColorBrush x:Key="MainWindowBackgroundBrush" Color="#2D2D30"/>
             <SolidColorBrush x:Key="SeparatorBrush" Color="#3E3E42"/>
 
+            <!-- Keyboard focus ring for custom-templated controls; uses the theme text colour so it is visible in light and dark. -->
+            <Style x:Key="AppFocusVisualStyle">
+                <Setter Property="Control.Template">
+                    <Setter.Value>
+                        <ControlTemplate>
+                            <Rectangle Margin="2" Stroke="{DynamicResource TextFillColorPrimaryBrush}" StrokeThickness="2" RadiusX="4" RadiusY="4" IsHitTestVisible="False"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- Animation Durations -->
             <Duration x:Key="FastAnimation">0:0:0.15</Duration>
             <Duration x:Key="MediumAnimation">0:0:0.25</Duration>

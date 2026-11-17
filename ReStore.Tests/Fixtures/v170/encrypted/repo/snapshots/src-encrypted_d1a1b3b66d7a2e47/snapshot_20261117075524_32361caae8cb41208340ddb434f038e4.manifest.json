@@ -1,0 +1,158 @@
+{
+  "Version": 2,
+  "SnapshotId": "snapshot_20261117075524_32361caae8cb41208340ddb434f038e4",
+  "Group": "/tmp/restore-fixture-gen.m1Xry9/src-encrypted",
+  "CreatedUtc": "2026-11-17T07:55:24.4118453Z",
+  "BackupMode": "ChunkSnapshot",
+  "EncryptionEnabled": true,
+  "EncryptionSalt": "XAHvKr30DjIGkq3dxPryyg==",
+  "KeyDerivationIterations": 10000,
+  "ChunkStorageNamespace": "enc_5de1eb4f8ad2d7eddea58ca4",
+  "Profile": {
+    "MinChunkSizeBytes": 2048,
+    "TargetChunkSizeBytes": 4096,
+    "MaxChunkSizeBytes": 8192,
+    "RollingHashWindowSize": 64
+  },
+  "Files": [
+    {
+      "RelativePath": "added/new.bin",
+      "SizeBytes": 9000,
+      "LastModifiedUtc": "2026-11-17T07:55:22.7919835Z",
+      "ContentHash": "27adae9855774d86adcbf2bce035baae465e019aef23c848e64a6e8b54f1c413",
+      "Chunks": [
+        {
+          "ChunkId": "0c08ec4c554083d69403baf8a79f8b063666605157a2a3a6f23b255551d1e857",
+          "ContentHash": "0c08ec4c554083d69403baf8a79f8b063666605157a2a3a6f23b255551d1e857",
+          "PlainSizeBytes": 5016,
+          "StoredSizeBytes": 5032
+        },
+        {
+          "ChunkId": "22f20b575ec4400fdb154de575407b3a8c5e04f12bc2dc9f6df309b010d445c2",
+          "ContentHash": "22f20b575ec4400fdb154de575407b3a8c5e04f12bc2dc9f6df309b010d445c2",
+          "PlainSizeBytes": 2391,
+          "StoredSizeBytes": 2407
+        },
+        {
+          "ChunkId": "fd56c36983d3feb2a8413a4d711d3c8429d2065679a0a1967d821fee4cb6c615",
+          "ContentHash": "fd56c36983d3feb2a8413a4d711d3c8429d2065679a0a1967d821fee4cb6c615",
+          "PlainSizeBytes": 1593,
+          "StoredSizeBytes": 1609
+        }
+      ]
+    },
+    {
+      "RelativePath": "big.bin",
+      "SizeBytes": 40973,
+      "LastModifiedUtc": "2026-11-17T07:55:24.2758742Z",
+      "ContentHash": "d80052a63ccb2660849c27e554eb80dc8d1dc15d65913e77a4cbd7c1c4b8ada5",
+      "Chunks": [
+        {
+          "ChunkId": "e7aabda6e62ee13de974e0cfc87ef220cb4690f5c1f10b21a01ba895ecfbe2d6",
+          "ContentHash": "e7aabda6e62ee13de974e0cfc87ef220cb4690f5c1f10b21a01ba895ecfbe2d6",
+          "PlainSizeBytes": 8192,
+          "StoredSizeBytes": 8208
+        },
+        {
+          "ChunkId": "4e3a6fa3413a0a3e64e0ea188a2e909c98db92f61806ccc2734254451082c798",
+          "ContentHash": "4e3a6fa3413a0a3e64e0ea188a2e909c98db92f61806ccc2734254451082c798",
+          "PlainSizeBytes": 3650,
+          "StoredSizeBytes": 3666
+        },
+        {
+          "ChunkId": "e607271ddb9800f19a6f0270857ce6d25785699ee1d8db3652b8eb1efd17ad61",
+          "ContentHash": "e607271ddb9800f19a6f0270857ce6d25785699ee1d8db3652b8eb1efd17ad61",
+          "PlainSizeBytes": 5117,
+          "StoredSizeBytes": 5133
+        },
+        {
+          "ChunkId": "a0c1b5d431db4bdb57ed17978579379d6bd3ae8cfc3cd96adb494c3b8c0d747f",
+          "ContentHash": "a0c1b5d431db4bdb57ed17978579379d6bd3ae8cfc3cd96adb494c3b8c0d747f",
+          "PlainSizeBytes": 5192,
+          "StoredSizeBytes": 5208
+        },
+        {
+          "ChunkId": "0f53b84fbb9570e5fd32755471631deaaef46753d049fe4773dda965a84df9bd",
+          "ContentHash": "0f53b84fbb9570e5fd32755471631deaaef46753d049fe4773dda965a84df9bd",
+          "PlainSizeBytes": 4214,
+          "StoredSizeBytes": 4230
+        },
+        {
+          "ChunkId": "366bd5e620bb703c08cc590d0fc688a19486a538af23bee6bcbbbb8841856933",
+          "ContentHash": "366bd5e620bb703c08cc590d0fc688a19486a538af23bee6bcbbbb8841856933",
+          "PlainSizeBytes": 6261,
+          "StoredSizeBytes": 6277
+        },
+        {
+          "ChunkId": "193f8f7d3f84bb2a59875e722f23f0eb037d6b5d5ac914a92dd3cb2a6d80fd32",
+          "ContentHash": "193f8f7d3f84bb2a59875e722f23f0eb037d6b5d5ac914a92dd3cb2a6d80fd32",
+          "PlainSizeBytes": 8192,
+          "StoredSizeBytes": 8208
+        },
+        {
+          "ChunkId": "80159a9a3798d6ff69485a01179df26038948363e3fcda8907e2f8c3dacd28ae",
+          "ContentHash": "80159a9a3798d6ff69485a01179df26038948363e3fcda8907e2f8c3dacd28ae",
+          "PlainSizeBytes": 155,
+          "StoredSizeBytes": 171
+        }
+      ]
+    },
+    {
+      "RelativePath": "docs/notes/deep/nested/unicode-\u00E9.txt",
+      "SizeBytes": 5200,
+      "LastModifiedUtc": "2026-11-17T07:55:21.4320891Z",
+      "ContentHash": "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d",
+      "Chunks": [
+        {
+          "ChunkId": "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d",
+          "ContentHash": "6013c11806ac3a66db96817e3cebc88486399d2a519f51a7ff4655b6143bf54d",
+          "PlainSizeBytes": 5200,
+          "StoredSizeBytes": 5216
+        }
+      ]
+    },
+    {
+      "RelativePath": "docs/readme.txt",
+      "SizeBytes": 33,
+      "LastModifiedUtc": "2026-11-17T07:55:22.7919835Z",
+      "ContentHash": "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41",
+      "Chunks": [
+        {
+          "ChunkId": "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41",
+          "ContentHash": "98635e27bd51dcb50f2e7dc6f3ea5b3999e9020d2a2f471b3683b8dd8faa4d41",
+          "PlainSizeBytes": 33,
+          "StoredSizeBytes": 49
+        }
+      ]
+    },
+    {
+      "RelativePath": "empty.txt",
+      "SizeBytes": 0,
+      "LastModifiedUtc": "2026-11-17T07:55:21.4320891Z",
+      "ContentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Chunks": []
+    },
+    {
+      "RelativePath": "empty2.txt",
+      "SizeBytes": 0,
+      "LastModifiedUtc": "2026-11-17T07:55:24.2758742Z",
+      "ContentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Chunks": []
+    },
+    {
+      "RelativePath": "renamed.txt",
+      "SizeBytes": 740,
+      "LastModifiedUtc": "2026-11-17T07:55:21.4320891Z",
+      "ContentHash": "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034",
+      "Chunks": [
+        {
+          "ChunkId": "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034",
+          "ContentHash": "f4e955366a019c64b83d662e3e7dc6d4f4f65b5b2e4d2f426f1b75b5083d5034",
+          "PlainSizeBytes": 740,
+          "StoredSizeBytes": 756
+        }
+      ]
+    }
+  ],
+  "RootHash": "24721e68f274a7d1242225cc15c2efca825fc6a724410731ecd32a8e714b72f9"
+}

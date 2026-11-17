@@ -6,7 +6,9 @@ using ReStore.Views;
 using ReStore.Views.Pages;
 using ReStore.Services;
 using ReStore.Interop;
+using ReStore.Core.src.monitoring;
 using ReStore.Core.src.utils;
+using CoreTelemetry = ReStore.Core.src.telemetry.Telemetry;
 
 namespace ReStore
 {
@@ -15,21 +17,71 @@ namespace ReStore
         private SystemTrayManager? _trayManager;
         private static Mutex? _instanceMutex;
         private static bool _ownsMutex;
-        private const string MUTEX_NAME = "ReStore_SingleInstance_Mutex";
-        private const string PIPE_NAME = "ReStore_CommandPipe";
+        private static readonly string PIPE_NAME = SingleInstanceNames.PipeName(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value,
+            Process.GetCurrentProcess().SessionId);
+        private static readonly TimeSpan PipeReadTimeout = TimeSpan.FromSeconds(5);
         private Thread? _pipeServerThread;
         private bool _isRunning = true;
 
+        // Commands from a second launch can arrive while this instance is still starting; they wait here until
+        // the main window exists instead of being dropped.
+        private readonly StartupCommandQueue _commandQueue = new();
+        private SystemThemeFollower? _themeFollower;
+        private ReStore.Core.src.telemetry.TelemetryFlushTimer? _telemetryFlushTimer;
+
+        private static readonly TimeSpan ExitStopTimeout = TimeSpan.FromSeconds(8);
+        private static readonly TimeSpan SessionEndStopTimeout = TimeSpan.FromSeconds(3);
+        private bool _protectionShutDown;
+        private bool _sessionEnding;
+
+        /// <summary>True once Windows is logging off or shutting down; prompts that wait for the user must be skipped.</summary>
+        internal static bool IsSessionEnding { get; private set; }
+
         public static GuiPasswordProvider? GlobalPasswordProvider { get; private set; }
+
+        /// <summary>App-wide owner of the watcher and scheduler; null only if configuration failed to load at startup.</summary>
+        public static ProtectionService? Protection { get; private set; }
+
+        /// <summary>Registered before anything else so startup failures are logged and reported too.</summary>
+        private void RegisterGlobalExceptionHandlers()
+        {
+            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            {
+                ErrorReporter.ReportUnhandled(
+                    args.IsTerminating ? "Fatal unhandled exception" : "Unhandled exception",
+                    args.ExceptionObject as Exception);
+            };
+            DispatcherUnhandledException += (_, args) =>
+            {
+                ErrorReporter.ReportUnhandled("Unhandled UI exception", args.Exception);
+                args.Handled = true;
+            };
+            TaskScheduler.UnobservedTaskException += (_, args) =>
+            {
+                // Background noise rather than a user-facing failure: log and write the crash file, no dialog.
+                ErrorReporter.ReportUnhandled("Unobserved task exception", args.Exception, showDialog: false);
+                args.SetObserved();
+            };
+        }
 
         protected override async void OnStartup(StartupEventArgs e)
         {
-            _instanceMutex = new Mutex(true, MUTEX_NAME, out bool createdNew);
+            RegisterGlobalExceptionHandlers();
+            CoreTelemetry.SetSurface("gui");
+
+            _instanceMutex = new Mutex(true, SingleInstanceNames.MutexName, out bool createdNew);
             _ownsMutex = createdNew;
+
+            var activatedByStartupTask = StartupTaskService.WasActivatedByStartupTask();
 
             if (!createdNew)
             {
-                if (e.Args.Length > 0)
+                if (activatedByStartupTask || (e.Args.Length == 1 && StartupMode.IsStartupArgument(e.Args[0])))
+                {
+                    // A second login-launch must not pop the first instance's window open.
+                }
+                else if (e.Args.Length > 0)
                 {
                     SendCommandToExistingInstance(e.Args);
                 }
@@ -42,6 +94,14 @@ namespace ReStore
             }
 
             base.OnStartup(e);
+
+            // Listen before the slow startup work so a second launch during it is queued, not lost.
+            _pipeServerThread = new Thread(ListenForCommands)
+            {
+                IsBackground = true,
+                Name = "ReStore command pipe"
+            };
+            _pipeServerThread.Start();
 
             var configSetupResult = ConfigInitializer.EnsureConfigurationSetup(AppServices.Logger);
             ConfigMigrationResult? configMigrationResult = null;
@@ -71,34 +131,54 @@ namespace ReStore
 
             GlobalPasswordProvider = new GuiPasswordProvider();
 
-            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            try
             {
-                var ex = args.ExceptionObject as Exception;
-                Trace.WriteLine($"UnhandledException: {ex}");
-                MessageBox.Show(ex?.ToString() ?? "Unknown error", "ReStore Error");
-            };
-            DispatcherUnhandledException += (_, args) =>
+                Protection = new ProtectionService(
+                    await AppServices.GetConfigManagerAsync(),
+                    await AppServices.GetSystemStateAsync(),
+                    GlobalPasswordProvider,
+                    AppServices.Logger);
+            }
+            catch (Exception ex)
             {
-                Trace.WriteLine($"DispatcherUnhandledException: {args.Exception}");
-                MessageBox.Show(args.Exception.ToString(), "ReStore Error");
-                args.Handled = true;
-            };
+                // The config failure was already reported above; the app stays usable for fixing it in Settings.
+                Trace.WriteLine($"Protection service unavailable: {ex}");
+            }
 
             var theme = ThemeSettings.Load();
             theme.Apply();
+            _themeFollower = new SystemThemeFollower(Dispatcher);
 
             var mainWindow = new MainWindow();
             MainWindow = mainWindow;
 
             var settings = AppSettings.Load();
+
+            if (PackageInfo.IsPackaged)
+            {
+                // A verb left by an older unpackaged/MSIX build points at a path that cannot work; remove it (idempotent).
+                var (cleaned, cleanError) = FileContextMenuService.UnregisterContextMenu();
+                if (!cleaned)
+                {
+                    AppServices.Logger.Log($"Could not remove stale Explorer context menu entry: {cleanError}", LogLevel.Warning);
+                }
+            }
+
+            var startup = StartupMode.Decide(PackageInfo.IsPackaged, e.Args, settings.MinimizeToTray, activatedByStartupTask);
             mainWindow.UpdateTrayManager(settings.MinimizeToTray);
             _trayManager = mainWindow.TrayManager;
 
-            mainWindow.SourceInitialized += (_, __) =>
+            // Anonymous usage statistics (docs/telemetry.md): one event per launch, then a flush every 30 minutes and at exit.
+            CoreTelemetry.Track(ReStore.Core.src.telemetry.TelemetrySchema.AppStart, new Dictionary<string, object?>
             {
-                WindowEffects.ApplySystemBackdrop(mainWindow);
-                WindowEffects.FixMaximizedBounds(mainWindow);
-            };
+                ["startMode"] = activatedByStartupTask || (e.Args.Length == 1 && StartupMode.IsStartupArgument(e.Args[0]))
+                    ? "startup"
+                    : startup.WindowMode == StartupWindowMode.HiddenInTray ? "tray" : "normal"
+            });
+            _telemetryFlushTimer = new ReStore.Core.src.telemetry.TelemetryFlushTimer();
+
+            // A crash report from an earlier run is waiting for the user's decision.
+            CrashPromptService.ShowSoon();
 
             if (e.Args.Length > 0 && e.Args[0] == "--share" && e.Args.Length > 1)
             {
@@ -111,23 +191,67 @@ namespace ReStore
                     HandleCommandLineArgs(e.Args, mainWindow);
                 }
 
-                mainWindow.Show();
+                if (startup.WindowMode == StartupWindowMode.MinimizedToTaskbar)
+                {
+                    mainWindow.WindowState = WindowState.Minimized;
+                }
+
+                if (startup.WindowMode != StartupWindowMode.HiddenInTray)
+                {
+                    mainWindow.Show();
+                }
 
                 if (!string.IsNullOrWhiteSpace(lifecycleMessage))
                 {
-                    MessageBox.Show(
+                    void ShowLifecycleMessage() => MessageBox.Show(
                         lifecycleMessage,
                         "ReStore Configuration",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
+
+                    if (startup.WindowMode == StartupWindowMode.Normal)
+                    {
+                        ShowLifecycleMessage();
+                    }
+                    else
+                    {
+                        // A login launch is not the moment for a modal nobody is watching for; show it the
+                        // first time the user actually opens the window.
+                        ShowWhenFirstOpened(mainWindow, ShowLifecycleMessage);
+                    }
                 }
             }
 
-            _pipeServerThread = new Thread(ListenForCommands)
+            AppUpdateManager.Instance.Start();
+
+            // Edits of config.json made outside the app (the CLI) are picked up instead of being overwritten by the next save.
+            _ = AppServices.StartWatchingConfigAsync().ContinueWith(
+                t => Trace.WriteLine($"Watching config.json failed: {t.Exception}"), TaskContinuationOptions.OnlyOnFaulted);
+
+            // Replays anything a second launch sent while we were starting, then handles later commands directly.
+            _commandQueue.MarkReady(command => _ = Dispatcher.BeginInvoke(() =>
             {
-                IsBackground = true
-            };
-            _pipeServerThread.Start();
+                if (MainWindow is MainWindow mw)
+                {
+                    HandleCommand(command, mw);
+                }
+            }));
+
+            if (Protection is { } protection)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await protection.RestorePauseAsync();
+                        await protection.AutoStartAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"Protection auto-start failed: {ex}");
+                    }
+                });
+            }
         }
 
         private void ListenForCommands()
@@ -136,19 +260,19 @@ namespace ReStore
             {
                 try
                 {
-                    using var pipeServer = new NamedPipeServerStream(PIPE_NAME, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly);
+                    using var pipeServer = new NamedPipeServerStream(PIPE_NAME, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
                     pipeServer.WaitForConnection();
 
+                    // A client that connects and never writes must not wedge the only listener.
+                    using var timeout = new CancellationTokenSource(PipeReadTimeout);
                     using var reader = new StreamReader(pipeServer);
-                    var command = reader.ReadToEnd();
+                    var command = reader.ReadToEndAsync(timeout.Token).GetAwaiter().GetResult();
 
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (MainWindow is MainWindow mw)
-                        {
-                            HandleCommand(command, mw);
-                        }
-                    });
+                    _commandQueue.Submit(command);
+                }
+                catch (OperationCanceledException)
+                {
+                    Trace.WriteLine("Pipe client sent no complete command before the read timeout; dropped.");
                 }
                 catch (Exception ex)
                 {
@@ -183,7 +307,7 @@ namespace ReStore
             try
             {
                 using var pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.Out);
-                pipeClient.Connect(1000);
+                pipeClient.Connect(3000);
 
                 using var writer = new StreamWriter(pipeClient);
                 writer.Write(command);
@@ -202,6 +326,22 @@ namespace ReStore
 
         private void HandleCommand(string command, MainWindow mainWindow)
         {
+            if (ToastActivationArgs.IsToastArgument(command))
+            {
+                // A toast click/button (protocol activation). Unknown or malformed URIs are ignored, never run.
+                if (ToastActivationArgs.TryParse(command, out var activation))
+                {
+                    ToastActivationHandler.Handle(activation);
+                }
+                else
+                {
+                    mainWindow.Show();
+                    mainWindow.Activate();
+                }
+
+                return;
+            }
+
             if (command.StartsWith("--share "))
             {
                 var path = command.Substring(8).Trim('"');
@@ -215,11 +355,11 @@ namespace ReStore
 
             if (command == "/startWatcher")
             {
-                ExecuteWatcherAction(mainWindow, true);
+                _ = Protection?.StartAsync();
             }
             else if (command == "/stopWatcher")
             {
-                ExecuteWatcherAction(mainWindow, false);
+                _ = Protection?.StopAsync();
             }
         }
 
@@ -253,43 +393,102 @@ namespace ReStore
             }
         }
 
-        private static void ExecuteWatcherAction(MainWindow mainWindow, bool start)
-        {
-            mainWindow.Dispatcher.InvokeAsync(async () =>
-            {
-                var frame = mainWindow.FindName("ContentFrame") as System.Windows.Controls.Frame;
-
-                if (frame?.Content is not DashboardPage)
-                {
-                    var dashboard = new DashboardPage();
-                    frame?.Navigate(dashboard);
-
-                    // Wait for the page to load before executing action
-                    dashboard.Loaded += async (s, e) =>
-                    {
-                        if (start) await dashboard.StartWatcherAsync();
-                        else dashboard.StopWatcher();
-                    };
-                }
-                else if (frame?.Content is DashboardPage dashboard)
-                {
-                    if (start) await dashboard.StartWatcherAsync();
-                    else dashboard.StopWatcher();
-                }
-            });
-        }
-
         private void HandleCommandLineArgs(string[] args, MainWindow mainWindow)
         {
             foreach (var arg in args)
             {
+                if (StartupMode.IsStartupArgument(arg))
+                {
+                    continue;
+                }
+
                 HandleCommand(arg, mainWindow);
+            }
+        }
+
+        private static void ShowWhenFirstOpened(Window window, Action action)
+        {
+            var done = false;
+
+            void Check()
+            {
+                if (done || !window.IsVisible || window.WindowState == WindowState.Minimized)
+                {
+                    return;
+                }
+
+                done = true;
+                window.IsVisibleChanged -= OnVisibleChanged;
+                window.StateChanged -= OnStateChanged;
+                _ = window.Dispatcher.BeginInvoke(action);
+            }
+
+            void OnVisibleChanged(object? sender, DependencyPropertyChangedEventArgs args) => Check();
+            void OnStateChanged(object? sender, EventArgs args) => Check();
+
+            window.IsVisibleChanged += OnVisibleChanged;
+            window.StateChanged += OnStateChanged;
+        }
+
+        protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+        {
+            // Do not stop protection here: a handler can still cancel the session end, and protection
+            // would then stay off. When the session really ends WPF shuts the app down, so OnExit stops
+            // protection; this only records that the shorter deadline applies.
+            // Set before calling base: when the session end is not cancelled the base may shut the app down
+            // synchronously, and MainWindow.OnClosing must already know not to show a prompt.
+            _sessionEnding = true;
+            IsSessionEnding = true;
+            base.OnSessionEnding(e);
+            if (e.Cancel)
+            {
+                _sessionEnding = false;
+                IsSessionEnding = false;
+            }
+        }
+
+        /// <summary>
+        /// Stops the watcher and scheduler (cancelling in-flight backups) and saves state. Runs on a pool
+        /// thread so a worker that needs the UI thread cannot deadlock the wait; bounded by the timeout.
+        /// </summary>
+        private void ShutDownProtection(TimeSpan timeout)
+        {
+            if (_protectionShutDown || Protection is not { } protection)
+            {
+                return;
+            }
+
+            _protectionShutDown = true;
+
+            try
+            {
+                Task.Run(() => protection.ShutdownAsync(timeout)).Wait(timeout + TimeSpan.FromSeconds(2));
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Protection shutdown failed: {ex}");
             }
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
             _isRunning = false;
+            _themeFollower?.Dispose();
+            _telemetryFlushTimer?.Dispose();
+            AppServices.StopWatchingConfig();
+
+            try
+            {
+                // Only does anything once a collection endpoint exists; bounded so exit is never held up.
+                Task.Run(() => CoreTelemetry.FlushAsync(TimeSpan.FromSeconds(2))).Wait(TimeSpan.FromSeconds(3));
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Telemetry flush at exit failed: {ex}");
+            }
+
+            ShutDownProtection(_sessionEnding ? SessionEndStopTimeout : ExitStopTimeout);
+            Protection?.DisposeNotifications();
 
             if (MainWindow is MainWindow mw)
             {
@@ -320,7 +519,7 @@ namespace ReStore
                 var localBackupDirectoryExists =
                     configManager.StorageSources.TryGetValue("local", out var localConfig)
                     && !string.IsNullOrWhiteSpace(localConfig.Path)
-                    && Directory.Exists(Environment.ExpandEnvironmentVariables(localConfig.Path));
+                    && Directory.Exists(ReStore.Core.src.utils.ConfigManager.ExpandConfiguredPath(localConfig.Path));
 
                 return FirstRunDetector.NeedsSetup(
                     configManager.StorageSources,

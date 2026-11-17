@@ -35,6 +35,33 @@ public static class ModernDialogService
         return Application.Current.Dispatcher.Invoke(() => ShowInternal(messageBoxText, caption, button, icon));
     }
 
+    /// <summary>Friendly error dialog with a "Copy details" button that copies the technical report.</summary>
+    public static void ShowError(string message, string caption, string details)
+    {
+        if (Application.Current?.Dispatcher is not { } dispatcher)
+        {
+            System.Windows.MessageBox.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        void Show()
+        {
+            try
+            {
+                new ModernDialogWindow(message, caption, MessageBoxButton.OK, MessageBoxImage.Error, details)
+                {
+                    Owner = ResolveOwnerWindow()
+                }.ShowDialog();
+            }
+            catch
+            {
+                System.Windows.MessageBox.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        if (dispatcher.CheckAccess()) Show(); else dispatcher.Invoke(Show);
+    }
+
     private static MessageBoxResult ShowInternal(string messageBoxText, string caption, MessageBoxButton button, MessageBoxImage icon)
     {
         try

@@ -4,6 +4,7 @@ using ReStore.Core.src.utils;
 
 namespace ReStore.Tests;
 
+[Collection("GlobalState")]
 public class FirstRunDetectorTests
 {
     private static Dictionary<string, StorageConfig> TemplateStorageSources()

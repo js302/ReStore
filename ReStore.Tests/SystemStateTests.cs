@@ -28,7 +28,7 @@ public class SystemStateTests : IDisposable
     }
 
     [Fact]
-    public async Task AddOrUpdateFileMetadataAsync_ShouldCalculateHash_WhenFileExists()
+    public async Task SeedFileMetadataAsync_ShouldCalculateHash_WhenFileExists()
     {
         var state = new SystemState(_loggerMock.Object);
         state.SetStateFilePath(_stateFile);
@@ -36,10 +36,10 @@ public class SystemStateTests : IDisposable
         var filePath = Path.Combine(_testDir, "test.txt");
         await File.WriteAllTextAsync(filePath, "content");
 
-        await state.AddOrUpdateFileMetadataAsync(filePath);
+        await state.SeedFileMetadataAsync(_testDir, "local", filePath);
 
-        state.FileMetadata.Should().ContainKey(filePath);
-        state.FileMetadata[filePath].Hash.Should().NotBeNullOrEmpty();
+        state.HasMetadata(_testDir, filePath).Should().BeTrue();
+        state.MetadataFor(_testDir, filePath).Hash.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
@@ -51,11 +51,11 @@ public class SystemStateTests : IDisposable
         var filePath = Path.Combine(_testDir, "test.txt");
         await File.WriteAllTextAsync(filePath, "content1");
 
-        await state.AddOrUpdateFileMetadataAsync(filePath);
+        await state.SeedFileMetadataAsync(_testDir, "local", filePath);
 
         await File.WriteAllTextAsync(filePath, "content2");
 
-        var changedFiles = state.GetChangedFiles(new List<string> { filePath }, BackupType.Incremental);
+        var changedFiles = state.GetChangedFiles(new List<string> { filePath }, BackupType.Incremental, _testDir, "local");
 
         changedFiles.Should().Contain(filePath);
     }
@@ -70,13 +70,13 @@ public class SystemStateTests : IDisposable
 
         var filePath = Path.Combine(_testDir, "same-size.txt");
         await File.WriteAllTextAsync(filePath, "content1");
-        await state.AddOrUpdateFileMetadataAsync(filePath);
+        await state.SeedFileMetadataAsync(_testDir, "local", filePath);
 
-        var storedTimestamp = state.FileMetadata[filePath].LastModified;
+        var storedTimestamp = state.MetadataFor(_testDir, filePath).LastModified;
         await File.WriteAllTextAsync(filePath, "content2");
         File.SetLastWriteTimeUtc(filePath, storedTimestamp);
 
-        var changedFiles = state.GetChangedFiles([filePath], backupType);
+        var changedFiles = state.GetChangedFiles([filePath], backupType, _testDir, "local");
 
         changedFiles.Should().Contain(filePath);
     }
@@ -89,7 +89,7 @@ public class SystemStateTests : IDisposable
 
         var filePath = Path.Combine(_testDir, "test.txt");
         await File.WriteAllTextAsync(filePath, "content");
-        await state.AddOrUpdateFileMetadataAsync(filePath);
+        await state.SeedFileMetadataAsync(_testDir, "local", filePath);
         state.AddBackup(_testDir, "remote/path", false);
 
         await state.SaveStateAsync();
@@ -98,9 +98,9 @@ public class SystemStateTests : IDisposable
         newState.SetStateFilePath(_stateFile);
         await newState.LoadStateAsync();
 
-        newState.FileMetadata.Should().ContainKey(filePath);
+        newState.HasMetadata(_testDir, filePath).Should().BeTrue();
         newState.BackupHistory.Should().ContainKey(_testDir);
-        newState.FileMetadata[filePath].Hash.Should().Be(state.FileMetadata[filePath].Hash);
+        newState.MetadataFor(_testDir, filePath).Hash.Should().Be(state.MetadataFor(_testDir, filePath).Hash);
     }
 
     [Fact]
@@ -188,42 +188,35 @@ public class SystemStateTests : IDisposable
             {
                 ["group"] = [new BackupInfo { Path = "backups/file.zip" }]
             },
-            FileMetadata = new Dictionary<string, FileMetadata>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["file"] = new FileMetadata { FilePath = "file", Hash = "hash" }
-            }
         };
+        state.SetFileMetadata(_testDir, "local", Path.Combine(_testDir, "file"), new FileMetadata { FilePath = "file", Hash = "hash" });
         state.SetStateFilePath(_stateFile);
 
         await state.LoadStateAsync();
 
         state.LastBackupTime.Should().Be(DateTime.MinValue);
         state.BackupHistory.Should().BeEmpty();
-        state.FileMetadata.Should().BeEmpty();
+        state.GetFileMetadata(_testDir, "local").Should().BeEmpty();
     }
 
     [Fact]
-    public void GetTrackedFilesInDirectory_ShouldIncludeNestedFilesOnly()
+    public void GetTrackedFiles_ShouldIncludeNestedFilesOfThatGroupAndStorageOnly()
     {
         var trackedFile = Path.Combine(_testDir, "root.txt");
         var nestedFile = Path.Combine(_testDir, "Nested", "nested.txt");
-        var otherFile = Path.Combine(_testDir, "..", "outside.txt");
+        var otherStorageFile = Path.Combine(_testDir, "other-storage.txt");
+        var otherGroup = Path.Combine(Path.GetTempPath(), "other-group-" + Guid.NewGuid());
+        var otherGroupFile = Path.Combine(otherGroup, "x.txt");
 
-        var state = new SystemState(_loggerMock.Object)
-        {
-            FileMetadata = new Dictionary<string, FileMetadata>(StringComparer.OrdinalIgnoreCase)
-            {
-                [trackedFile] = new FileMetadata { FilePath = trackedFile, Hash = "a" },
-                [nestedFile] = new FileMetadata { FilePath = nestedFile, Hash = "b" },
-                [otherFile] = new FileMetadata { FilePath = otherFile, Hash = "c" }
-            }
-        };
+        var state = new SystemState(_loggerMock.Object);
+        state.SetFileMetadata(_testDir, "local", trackedFile, new FileMetadata { Hash = "a" });
+        state.SetFileMetadata(_testDir, "local", nestedFile, new FileMetadata { Hash = "b" });
+        state.SetFileMetadata(_testDir, "s3", otherStorageFile, new FileMetadata { Hash = "c" });
+        state.SetFileMetadata(otherGroup, "local", otherGroupFile, new FileMetadata { Hash = "d" });
 
-        var trackedFiles = state.GetTrackedFilesInDirectory(_testDir);
+        var trackedFiles = state.GetTrackedFiles(_testDir, "local");
 
-        trackedFiles.Should().Contain(trackedFile);
-        trackedFiles.Should().Contain(nestedFile);
-        trackedFiles.Should().NotContain(otherFile);
+        trackedFiles.Should().BeEquivalentTo([trackedFile, nestedFile]);
     }
 
     [Fact]
@@ -232,7 +225,7 @@ public class SystemStateTests : IDisposable
         var state = new SystemState(_loggerMock.Object);
         var files = new List<string> { "a.txt", "b.txt" };
 
-        var changedFiles = state.GetChangedFiles(files, BackupType.Full);
+        var changedFiles = state.GetChangedFiles(files, BackupType.Full, _testDir, "local");
 
         changedFiles.Should().Equal(files);
     }
@@ -245,15 +238,15 @@ public class SystemStateTests : IDisposable
         await File.WriteAllTextAsync(filePath, "abc");
 
         var fileInfo = new FileInfo(filePath);
-        state.FileMetadata[filePath] = new FileMetadata
+        state.SetFileMetadata(_testDir, "local", filePath, new FileMetadata
         {
             FilePath = filePath,
             Size = fileInfo.Length,
             LastModified = fileInfo.LastWriteTimeUtc.AddMinutes(-5),
             Hash = string.Empty
-        };
+        });
 
-        var changedFiles = state.GetChangedFiles([filePath], BackupType.Incremental);
+        var changedFiles = state.GetChangedFiles([filePath], BackupType.Incremental, _testDir, "local");
 
         changedFiles.Should().Contain(filePath);
     }
@@ -271,23 +264,23 @@ public class SystemStateTests : IDisposable
         var fileAInfo = new FileInfo(fileA);
         var fileBInfo = new FileInfo(fileB);
 
-        state.FileMetadata[fileA] = new FileMetadata
+        state.SetFileMetadata(_testDir, "local", fileA, new FileMetadata
         {
             FilePath = fileA,
             Size = fileAInfo.Length,
             LastModified = fileAInfo.LastWriteTimeUtc,
             Hash = await FileHasher.ComputeHashAsync(fileA)
-        };
-        state.FileMetadata[fileB] = new FileMetadata
+        });
+        state.SetFileMetadata(_testDir, "local", fileB, new FileMetadata
         {
             FilePath = fileB,
             Size = fileBInfo.Length,
             LastModified = fileBInfo.LastWriteTimeUtc.AddMinutes(-5),
             Hash = "outdated-hash"
-        };
+        });
 
-        var changedFilesForGroupA = state.GetChangedFiles([fileA], BackupType.ChunkSnapshot, "group-a");
-        var changedFilesForGroupB = state.GetChangedFiles([fileB], BackupType.ChunkSnapshot, "group-b");
+        var changedFilesForGroupA = state.GetChangedFiles([fileA], BackupType.ChunkSnapshot, _testDir, "local");
+        var changedFilesForGroupB = state.GetChangedFiles([fileB], BackupType.ChunkSnapshot, _testDir, "local");
 
         changedFilesForGroupA.Should().BeEmpty();
         changedFilesForGroupB.Should().Contain(fileB);
@@ -399,15 +392,5 @@ public class SystemStateTests : IDisposable
         reloadedState.Telemetry.Verification.SuccessCount.Should().Be(0);
         reloadedState.Telemetry.Verification.ValidationFailureCount.Should().Be(2);
         reloadedState.Telemetry.Verification.InvalidFiles.Should().Be(1);
-    }
-
-    [Fact]
-    public void HasFileChanged_ShouldReturnFalse_WhenStoredHashMatchesCurrentHash()
-    {
-        var state = new SystemState(_loggerMock.Object);
-        var filePath = Path.Combine(_testDir, "same-hash.txt");
-        state.FileMetadata[filePath] = new FileMetadata { FilePath = filePath, Hash = "hash-1" };
-
-        state.HasFileChanged(filePath, "hash-1").Should().BeFalse();
     }
 }

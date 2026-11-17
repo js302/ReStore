@@ -49,7 +49,6 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the S3 section:
 {
   "storageSources": {
     "s3": {
-      "path": "./backups",
       "options": {
         "accessKeyId": "your_access_key_id",
         "secretAccessKey": "your_secret_access_key",
@@ -63,7 +62,6 @@ Open `%USERPROFILE%\ReStore\config.json` and configure the S3 section:
 
 **Configuration Parameters:**
 
-- **path**: Relative path prefix for organizing backups in the bucket (default: `"./backups"`)
 - **accessKeyId**: The Access Key ID from Step 4
 - **secretAccessKey**: The Secret Access Key from Step 4
 - **region**: The AWS region where your bucket is located (e.g., `us-east-1`, `eu-west-1`, `ap-southeast-2`)
@@ -86,7 +84,8 @@ For better security, create a custom policy that only grants access to your spec
         "s3:PutObject",
         "s3:GetObject",
         "s3:DeleteObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
       ],
       "Resource": [
         "arn:aws:s3:::restore-backups-yourname",
@@ -96,6 +95,8 @@ For better security, create a custom policy that only grants access to your spec
   ]
 }
 ```
+
+`s3:GetBucketLocation` is required: ReStore calls it at start-up to verify the bucket and region.
 
 3. Replace `restore-backups-yourname` with your bucket name
 4. Name the policy (e.g., `ReStoreBackupPolicy`)
@@ -115,3 +116,34 @@ For better security, create a custom policy that only grants access to your spec
 - **No file size limit**: Individual objects can be up to 5 TB
 - **Cost Example**: 100 GB of backups ≈ $2.30/month
 - Consider using **S3 Glacier** for long-term archival at ~$0.004 per GB/month (much cheaper but slower retrieval)
+
+## Optional: `prefix` option
+
+Add `"prefix": "my-laptop"` to this source's `options` to keep the repository under a sub-folder of the bucket. It is applied to every path (uploads, downloads, listing, sharing) and is empty by default, so existing repositories are unaffected. It must not start with `/` or contain `..`. Changing it later points ReStore at a different (empty) repository; it does not move existing data.
+
+Remote sources do not need a top-level `"path"`. If one is present it is ignored (ReStore logs a warning); use `prefix` instead.
+
+## Optional: `serviceUrl` option (S3-compatible services)
+
+The `s3` provider also talks to services that speak the S3 API: MinIO, Wasabi, Cloudflare R2, Ceph, DigitalOcean Spaces and similar. Set `serviceUrl` to the service's endpoint. ReStore then sends every request to that endpoint with **path-style addressing** (`https://endpoint/bucket/key`, which these services expect) and signs it with the `region` you give. Leave `serviceUrl` out for Amazon S3 itself; nothing changes for existing configurations.
+
+```json
+{
+  "storageSources": {
+    "s3": {
+      "options": {
+        "accessKeyId": "your_access_key_id",
+        "secretAccessKey": "your_secret_access_key",
+        "region": "us-east-1",
+        "bucketName": "your_bucket_name",
+        "serviceUrl": "http://localhost:9000"
+      }
+    }
+  }
+}
+```
+
+- **serviceUrl**: an absolute `http://` or `https://` URL. Use `https://` for anything that is not on your own machine.
+- **region**: use the region the service documents (MinIO and most self-hosted servers accept `us-east-1`; Cloudflare R2 uses `auto`). With a `serviceUrl` the AWS region name check is skipped.
+- The bucket must already exist and the key must be allowed to list, read, write and delete in it, as for Amazon S3.
+- From the command line: `restore config set-storage s3 --option accessKeyId=... --option secretAccessKey=... --option region=us-east-1 --option bucketName=backups --option serviceUrl=http://localhost:9000` (or `restore init --storage s3 ... --option serviceUrl=...`). `restore probe --storage s3` checks that the endpoint works.

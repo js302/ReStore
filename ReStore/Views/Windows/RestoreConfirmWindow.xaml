@@ -25,7 +25,8 @@
                 <StackPanel>
                     <TextBlock x:Name="SummaryText" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <TextBlock x:Name="TargetText" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock x:Name="ConflictWarningText" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="#EF4444" Visibility="Collapsed"/>
+                    <TextBlock x:Name="ConflictWarningText" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Visibility="Collapsed"/>
+                    <TextBlock x:Name="VirtualizationWarningText" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{DynamicResource SystemFillColorCautionBrush}" Visibility="Collapsed"/>
                 </StackPanel>
             </Border>
 
@@ -63,7 +64,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <CheckBox AutomationProperties.Name="Include this item in the restore" Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                             <TextBlock Grid.Column="1" Text="{Binding RelativePath}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                             <TextBlock Grid.Column="2" Text="{Binding SizeLabel}" FontSize="11" VerticalAlignment="Center" Margin="10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                             <Border Grid.Column="3" Background="{Binding ConflictColor}" CornerRadius="3" Padding="6,2" VerticalAlignment="Center" Visibility="{Binding ConflictVisibility}">

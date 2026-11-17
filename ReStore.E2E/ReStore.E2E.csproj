@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Real-process end-to-end tests: every test runs the CLI as a child process (the published single-file restore.exe on
+       Windows, `dotnet ReStore.Core.dll` elsewhere) under its own RESTORE_HOME. Everything is traited Category=E2E and is
+       excluded from the default test steps (see .github/workflows/ci.yml). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Built first so that `dotnet ReStore.Core.dll` exists next to the test output; not referenced as an assembly. -->
+    <ProjectReference Include="..\ReStore.Core\ReStore.Core.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

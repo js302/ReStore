@@ -18,6 +18,11 @@ public class FileWatcherTests : IDisposable
     private readonly SystemState _state;
     private readonly SizeAnalyzer _sizeAnalyzer;
 
+    // Own coordinator: the watcher backs off when the repository is busy, so sharing the process-wide
+    // singleton would make these tests depend on whatever else runs in parallel.
+    private readonly RepositoryCoordinator _coordinator = new(
+        Path.Combine(TestEnvironment.RootDirectory, "lock_" + Guid.NewGuid().ToString("N") + ".lock"));
+
     public FileWatcherTests()
     {
         _testRoot = Path.Combine(Path.GetTempPath(), "ReStoreFileWatcherTests_" + Guid.NewGuid());
@@ -60,7 +65,7 @@ public class FileWatcherTests : IDisposable
             new WatchDirectoryConfig { Path = missing, StorageType = null }
         ]);
 
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         _logger.Messages.Should().Contain(m => m.Contains("Directory not found, cannot watch"));
@@ -69,7 +74,7 @@ public class FileWatcherTests : IDisposable
     [Fact]
     public async Task StartAsync_ShouldLogWatchingDirectory_WhenDirectoryExists()
     {
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         _logger.Messages.Should().Contain(m => m.Contains($"Watching directory: {_watchDir}"));
@@ -78,7 +83,7 @@ public class FileWatcherTests : IDisposable
     [Fact]
     public async Task OnChanged_ShouldTrackFile_WhenNotExcluded()
     {
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var method = typeof(FileWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -97,7 +102,7 @@ public class FileWatcherTests : IDisposable
     {
         _configMock.SetupGet(c => c.ExcludedPatterns).Returns(["*.tmp"]);
 
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var method = typeof(FileWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -112,7 +117,7 @@ public class FileWatcherTests : IDisposable
     [Fact]
     public async Task OnRenamed_ShouldTrackNewFilePath_WhenNotExcluded()
     {
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var method = typeof(FileWatcher).GetMethod("OnRenamed", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -133,10 +138,10 @@ public class FileWatcherTests : IDisposable
         var oldPath = Path.Combine(_watchDir, "old-name.txt");
         var newPath = Path.Combine(_watchDir, "new-name.txt");
         await File.WriteAllTextAsync(oldPath, "content");
-        await _state.AddOrUpdateFileMetadataAsync(oldPath);
+        await _state.SeedFileMetadataAsync(_watchDir, "local", oldPath);
         File.Move(oldPath, newPath);
 
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var renamedMethod = typeof(FileWatcher).GetMethod("OnRenamed", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -146,8 +151,33 @@ public class FileWatcherTests : IDisposable
         var task = (Task)processMethod!.Invoke(watcher, [])!;
         await task;
 
-        _state.FileMetadata.Should().NotContainKey(oldPath);
-        _state.FileMetadata.Should().ContainKey(newPath);
+        _state.HasMetadata(_watchDir, oldPath).Should().BeFalse();
+        _state.HasMetadata(_watchDir, newPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcessBackupTimerAsync_ShouldRequeueChanges_WhenRepositoryIsBusy()
+    {
+        var file = Path.Combine(_watchDir, "busy.txt");
+        await File.WriteAllTextAsync(file, "content");
+
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
+        watcher.BusyRetryDelay = TimeSpan.FromHours(1);
+        await watcher.StartAsync();
+
+        var onChanged = typeof(FileWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic);
+        onChanged!.Invoke(watcher, [this, new FileSystemEventArgs(WatcherChangeTypes.Changed, _watchDir, "busy.txt")]);
+
+        var process = typeof(FileWatcher).GetMethod("ProcessBackupTimerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        await using (await _coordinator.AcquireMutationAsync("another operation"))
+        {
+            await (Task)process!.Invoke(watcher, [])!;
+            GetChangedFiles(watcher).Should().ContainKey(file, "the change is put back, not dropped, when the repository is busy");
+        }
+
+        await (Task)process!.Invoke(watcher, [])!;
+        GetChangedFiles(watcher).Should().BeEmpty("once the repository is free the change is backed up");
     }
 
     [Fact]
@@ -162,7 +192,7 @@ public class FileWatcherTests : IDisposable
             new WatchDirectoryConfig { Path = child, StorageType = null }
         ]);
 
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var method = typeof(FileWatcher).GetMethod("FindWatchedRoot", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -175,7 +205,7 @@ public class FileWatcherTests : IDisposable
     [Fact]
     public async Task FindWatchedRoot_ShouldReturnNull_WhenPathNotUnderWatchedRoots()
     {
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var method = typeof(FileWatcher).GetMethod("FindWatchedRoot", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -188,7 +218,7 @@ public class FileWatcherTests : IDisposable
     [Fact]
     public async Task OnError_ShouldLogWatcherException()
     {
-        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        using var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var method = typeof(FileWatcher).GetMethod("OnError", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -204,7 +234,7 @@ public class FileWatcherTests : IDisposable
     [Fact]
     public async Task Dispose_ShouldBeIdempotent()
     {
-        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         watcher.Dispose();
@@ -214,9 +244,66 @@ public class FileWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task StopAsync_WaitsForTheInFlightBackup_ThenKeepsUnbackedChangesForCarryOver()
+    {
+        var release = new TaskCompletionSource();
+        var entered = new TaskCompletionSource();
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).Returns(async () =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            return new Mock<IStorage>().Object;
+        });
+
+        await File.WriteAllTextAsync(Path.Combine(_watchDir, "a.txt"), "content");
+        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
+        await watcher.StartAsync();
+
+        var onChanged = typeof(FileWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic);
+        onChanged!.Invoke(watcher, [this, new FileSystemEventArgs(WatcherChangeTypes.Changed, _watchDir, "a.txt")]);
+        var process = typeof(FileWatcher).GetMethod("ProcessBackupTimerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        var sweep = (Task)process!.Invoke(watcher, [])!;
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var stop = watcher.StopAsync();
+        await Task.Delay(200);
+        stop.IsCompleted.Should().BeFalse("stop must wait for the in-flight backup to unwind");
+
+        release.SetResult();
+        await stop.WaitAsync(TimeSpan.FromSeconds(10));
+        await sweep;
+
+        // A change that arrives after stop began is ignored, and what was queued can be handed on.
+        var pending = watcher.TakePendingChanges();
+        pending.Should().NotBeNull();
+        watcher.Dispose();
+    }
+
+    [Fact]
+    public async Task PendingChanges_CanBeCarriedToAnotherWatcher()
+    {
+        var file = Path.Combine(_watchDir, "carry.txt");
+        var old = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
+        await old.StartAsync();
+        var onChanged = typeof(FileWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic);
+        onChanged!.Invoke(old, [this, new FileSystemEventArgs(WatcherChangeTypes.Changed, _watchDir, "carry.txt")]);
+
+        await old.StopAsync();
+        var pending = old.TakePendingChanges();
+        old.Dispose();
+        pending.Should().ContainKey(file);
+
+        using var next = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
+        await next.StartAsync();
+        next.AdoptPendingChanges(pending);
+
+        GetChangedFiles(next).Should().ContainKey(file);
+    }
+
+    [Fact]
     public async Task OnChanged_ShouldDoNothing_AfterDispose()
     {
-        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
         watcher.Dispose();
 
@@ -236,7 +323,7 @@ public class FileWatcherTests : IDisposable
 
         await File.WriteAllTextAsync(Path.Combine(_watchDir, "a.txt"), "content");
 
-        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         var changedMethod = typeof(FileWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -252,13 +339,13 @@ public class FileWatcherTests : IDisposable
         var act = async () => await task;
         await act.Should().NotThrowAsync("shutdown cancellation is expected, not an error");
 
-        storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Dispose_ShouldNotThrow_WhenCalledWhileSweepHoldsTheLock()
     {
-        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer);
+        var watcher = new FileWatcher(_configMock.Object, _logger, _state, _sizeAnalyzer, coordinator: _coordinator);
         await watcher.StartAsync();
 
         // The execution lock is deliberately not disposed, because an in-flight sweep still

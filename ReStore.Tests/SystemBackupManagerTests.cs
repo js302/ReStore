@@ -42,7 +42,7 @@ public class SystemBackupManagerTests
             .ReturnsAsync(storageMock.Object);
 
         storageMock
-            .Setup(s => s.DownloadAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Setup(s => s.DownloadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new FileNotFoundException("Stop after storage selection"));
 
         var manager = new SystemBackupManager(

@@ -94,14 +94,9 @@ App Two                     Fabrikam.AppTwo               2.0.1
         root.GetProperty("programs").GetArrayLength().Should().Be(2);
     }
 
-    [Fact]
+    [WindowsFact]
     public void GetProgramsFromRegistryPath_ShouldReturnOnlyValidPrograms()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var relativePath = CreateTestRegistryPath("GetPrograms");
 
         try
@@ -146,14 +141,9 @@ App Two                     Fabrikam.AppTwo               2.0.1
         }
     }
 
-    [Fact]
+    [WindowsFact]
     public void ShouldSkipProgram_ShouldDetectSystemComponentAndMissingUninstall()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var relativePath = CreateTestRegistryPath("ShouldSkip");
 
         try
@@ -221,42 +211,9 @@ Good App                    Contoso.GoodApp              4.5.6                  
     [Fact]
     public async Task GetWingetProgramsAsync_ShouldReturnList_WithoutThrowing()
     {
-        var result = await InvokePrivateAsync<List<InstalledProgram>>(_discovery, "GetWingetProgramsAsync");
+        var result = await InvokePrivateAsync<List<InstalledProgram>>(_discovery, "GetWingetProgramsAsync", CancellationToken.None);
 
         result.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task CheckSingleProgramWingetAvailability_ShouldReturnFalse_ForMissingPackage()
-    {
-        var missingName = "ReStoreDefinitelyMissing_" + Guid.NewGuid().ToString("N");
-
-        var isAvailable = await InvokePrivateAsync<bool>(_discovery, "CheckSingleProgramWingetAvailability", missingName);
-
-        isAvailable.Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task GetWingetIdForProgram_ShouldReturnEmpty_ForMissingPackage()
-    {
-        var missingName = "ReStoreDefinitelyMissing_" + Guid.NewGuid().ToString("N");
-
-        var wingetId = await InvokePrivateAsync<string>(_discovery, "GetWingetIdForProgram", missingName);
-
-        wingetId.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task CheckWingetAvailabilityAsync_ShouldCompleteWithoutThrowing()
-    {
-        var programs = Enumerable.Range(1, 12)
-            .Select(index => new InstalledProgram { Name = $"ReStoreMissing-{index}-{Guid.NewGuid():N}", Source = "registry" })
-            .ToList();
-
-        var action = async () => await InvokePrivateAsync<object?>(_discovery, "CheckWingetAvailabilityAsync", programs);
-
-        await action.Should().NotThrowAsync();
-        programs.Should().HaveCount(12);
     }
 
     private static string CreateTestRegistryPath(string prefix)

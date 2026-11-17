@@ -18,14 +18,14 @@ public class SizeAnalyzer
             throw new DirectoryNotFoundException($"Directory not found: {path}");
         }
 
-        long size = await CalculateDirectorySizeAsync(path);
+        long size = await CalculateDirectorySizeAsync(path).ConfigureAwait(false);
         return (size, size > SizeThreshold);
     }
 
     private static async Task<long> CalculateDirectorySizeAsync(string path)
     {
         var info = new DirectoryInfo(path);
-        return await Task.Run(() => CalculateSize(info));
+        return await Task.Run(() => CalculateSize(info)).ConfigureAwait(false);
     }
 
     private static long CalculateSize(DirectoryInfo directory)

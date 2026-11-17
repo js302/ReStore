@@ -1,17 +1,21 @@
+using System.Runtime.CompilerServices;
 using ReStore.Core.src.utils;
 
 namespace ReStore.Core.src.storage.local;
 
-public class LocalStorage : StorageBase
+public class LocalStorage : StorageBase, ICreateIfAbsentStorage
 {
     private string _basePath = string.Empty;
     private bool _disposed = false;
+
+    protected override bool WarnsAboutLegacyPathOption => false;
+    public override int MaxConcurrency => 4;
 
     public LocalStorage(ILogger logger) : base(logger)
     {
     }
 
-    public override Task InitializeAsync(Dictionary<string, string> options)
+    protected override Task InitializeCoreAsync(Dictionary<string, string> options)
     {
         if (!options.TryGetValue("path", out var pathValue) || string.IsNullOrWhiteSpace(pathValue))
         {
@@ -33,7 +37,32 @@ public class LocalStorage : StorageBase
         return Task.CompletedTask;
     }
 
-    public override async Task UploadAsync(string localPath, string remotePath)
+    /// <summary>Creates the object only if absent: written to a temp name, then moved without overwrite (atomic on one volume).</summary>
+    public async Task<bool> TryCreateAsync(string localPath, string remotePath, CancellationToken ct = default)
+    {
+        var targetPath = ResolveStoragePath(Qualify(remotePath));
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        var tempPath = $"{targetPath}.tmp-{Guid.NewGuid():N}";
+        return await Task.Run(() =>
+        {
+            try
+            {
+                File.Copy(localPath, tempPath, overwrite: true);
+                File.Move(tempPath, targetPath, overwrite: false);
+                return true;
+            }
+            catch (IOException) when (File.Exists(targetPath))
+            {
+                return false;
+            }
+            finally
+            {
+                try { File.Delete(tempPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+        }, ct).ConfigureAwait(false);
+    }
+
+    protected override async Task UploadCoreAsync(string localPath, string remotePath, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath))
         {
@@ -45,6 +74,7 @@ public class LocalStorage : StorageBase
             throw new ArgumentException("Remote path cannot be null or empty", nameof(remotePath));
         }
 
+        ct.ThrowIfCancellationRequested();
         var targetPath = ResolveStoragePath(remotePath);
         var targetDirectory = Path.GetDirectoryName(targetPath);
 
@@ -53,10 +83,30 @@ public class LocalStorage : StorageBase
             Directory.CreateDirectory(targetDirectory);
         }
 
+        // Write to a temp name and move into place so readers never see a partial file.
+        var tempPath = $"{targetPath}.tmp-{Guid.NewGuid():N}";
         try
         {
-            await Task.Run(() => File.Copy(localPath, targetPath, overwrite: true));
-            Logger.Log($"Successfully uploaded {Path.GetFileName(localPath)} to local storage", LogLevel.Info);
+            await Task.Run(() =>
+            {
+                try
+                {
+                    ct.ThrowIfCancellationRequested();
+                    File.Copy(localPath, tempPath, overwrite: true);
+                    ct.ThrowIfCancellationRequested();
+                    File.Move(tempPath, targetPath, overwrite: true);
+                }
+                catch
+                {
+                    try { File.Delete(tempPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                    throw;
+                }
+            }, ct).ConfigureAwait(false);
+            Logger.Log($"Successfully uploaded {Path.GetFileName(localPath)} to local storage", LogLevel.Debug);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -65,7 +115,50 @@ public class LocalStorage : StorageBase
         }
     }
 
-    public override async Task DownloadAsync(string remotePath, string localPath)
+    /// <summary>Streams straight into a temp name next to the target, then moves it into place (no intermediate temp file).</summary>
+    public override async Task UploadAsync(Stream content, string remotePath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (string.IsNullOrWhiteSpace(remotePath))
+        {
+            throw new ArgumentException("Remote path cannot be null or empty", nameof(remotePath));
+        }
+
+        ct.ThrowIfCancellationRequested();
+        var targetPath = ResolveStoragePath(Qualify(remotePath));
+        var targetDirectory = Path.GetDirectoryName(targetPath);
+        if (targetDirectory != null)
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
+
+        var tempPath = $"{targetPath}.tmp-{Guid.NewGuid():N}";
+        try
+        {
+            var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            await using (file.ConfigureAwait(false))
+            {
+                await content.CopyToAsync(file, 81920, ct).ConfigureAwait(false);
+            }
+
+            ct.ThrowIfCancellationRequested();
+            File.Move(tempPath, targetPath, overwrite: true);
+            Logger.Log($"Successfully uploaded stream to {remotePath} in local storage", LogLevel.Debug);
+        }
+        catch (OperationCanceledException)
+        {
+            try { File.Delete(tempPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            throw;
+        }
+        catch (Exception ex)
+        {
+            try { File.Delete(tempPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            Logger.Log($"Failed to upload {remotePath}: {ex.Message}", LogLevel.Error);
+            throw new InvalidOperationException($"Failed to upload {remotePath} to local storage", ex);
+        }
+    }
+
+    protected override async Task DownloadCoreAsync(string remotePath, string localPath, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(remotePath))
         {
@@ -77,23 +170,26 @@ public class LocalStorage : StorageBase
             throw new ArgumentException("Local path cannot be null or empty", nameof(localPath));
         }
 
+        ct.ThrowIfCancellationRequested();
         var sourcePath = ResolveStoragePath(remotePath);
 
         if (!File.Exists(sourcePath))
         {
-            throw new FileNotFoundException($"File not found in local storage: {remotePath}");
-        }
-
-        var localDirectory = Path.GetDirectoryName(localPath);
-        if (localDirectory != null)
-        {
-            Directory.CreateDirectory(localDirectory);
+            throw new StorageNotFoundException($"File not found in local storage: {remotePath}") { RemotePath = remotePath };
         }
 
         try
         {
-            await Task.Run(() => File.Copy(sourcePath, localPath, overwrite: true));
-            Logger.Log($"Successfully downloaded {Path.GetFileName(remotePath)} from local storage", LogLevel.Info);
+            await DownloadAtomicAsync(localPath, partPath => Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                File.Copy(sourcePath, partPath, overwrite: true);
+            }, ct)).ConfigureAwait(false);
+            Logger.Log($"Successfully downloaded {Path.GetFileName(remotePath)} from local storage", LogLevel.Debug);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -102,8 +198,9 @@ public class LocalStorage : StorageBase
         }
     }
 
-    public override Task<bool> ExistsAsync(string remotePath)
+    protected override Task<bool> ExistsCoreAsync(string remotePath, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(remotePath))
         {
             return Task.FromResult(false);
@@ -113,8 +210,61 @@ public class LocalStorage : StorageBase
         return Task.FromResult(File.Exists(fullPath));
     }
 
-    public override Task DeleteAsync(string remotePath)
+    protected override Task<long?> GetSizeCoreAsync(string remotePath, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(remotePath))
+        {
+            return Task.FromResult<long?>(null);
+        }
+
+        var info = new FileInfo(ResolveStoragePath(remotePath));
+        return Task.FromResult<long?>(info.Exists ? info.Length : null);
+    }
+
+    protected override async IAsyncEnumerable<StorageEntry> ListCoreAsync(string prefix, [EnumeratorCancellation] CancellationToken ct)
+    {
+        var normalized = (prefix ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        var slash = normalized.LastIndexOf('/');
+        var directoryPart = slash >= 0 ? normalized[..slash] : string.Empty;
+        var searchRoot = directoryPart.Length == 0 ? _basePath : ResolveStoragePath(directoryPart);
+        if (!Directory.Exists(searchRoot))
+        {
+            yield break;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(searchRoot, "*", SearchOption.AllDirectories))
+        {
+            ct.ThrowIfCancellationRequested();
+            var logical = Path.GetRelativePath(_basePath, file).Replace(Path.DirectorySeparatorChar, '/');
+            if (!logical.StartsWith(normalized, StringComparison.Ordinal) || TempNamePattern.IsMatch(logical))
+            {
+                continue;
+            }
+
+            FileInfo info;
+            try
+            {
+                info = new FileInfo(file);
+                if (!info.Exists) continue;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            yield return new StorageEntry(logical, info.Length, info.LastWriteTimeUtc);
+        }
+
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex TempNamePattern =
+        new(@"\.tmp-[0-9a-f]{32}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    protected override Task DeleteCoreAsync(string remotePath, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(remotePath))
         {
             throw new ArgumentException("Remote path cannot be null or empty", nameof(remotePath));
@@ -131,7 +281,7 @@ public class LocalStorage : StorageBase
         try
         {
             File.Delete(fullPath);
-            Logger.Log($"Successfully deleted {remotePath} from local storage", LogLevel.Info);
+            Logger.Log($"Successfully deleted {remotePath} from local storage", LogLevel.Debug);
         }
         catch (Exception ex)
         {
@@ -144,6 +294,12 @@ public class LocalStorage : StorageBase
 
     private string ResolveStoragePath(string remotePath)
     {
+        // Without a root every path would resolve against the process's working directory.
+        if (string.IsNullOrEmpty(_basePath))
+        {
+            throw new InvalidOperationException("Local storage is not initialized: call InitializeAsync with a 'path' first.");
+        }
+
         var normalizedPath = remotePath
             .Replace('\\', Path.DirectorySeparatorChar)
             .Replace('/', Path.DirectorySeparatorChar);

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Media;
 using ReStore.Core.src.core;
 using ReStore.Core.src.utils;
+using ReStore.Services;
 
 namespace ReStore.Views.Windows
 {
@@ -14,7 +15,7 @@ namespace ReStore.Views.Windows
     /// </summary>
     public partial class RestoreConfirmWindow : Window
     {
-        private static readonly Brush DiffersBrush = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+        private static readonly Brush DiffersBrush = new SolidColorBrush(Color.FromRgb(185, 28, 28));
         private static readonly Brush IdenticalBrush = new SolidColorBrush(Color.FromRgb(107, 114, 128));
 
         private readonly ObservableCollection<PreviewRow> _rows = [];
@@ -39,9 +40,15 @@ namespace ReStore.Views.Windows
             else if (preview.IdenticalFileCount > 0)
             {
                 ConflictWarningText.Visibility = Visibility.Visible;
-                ConflictWarningText.Foreground = IdenticalBrush;
+                ConflictWarningText.Foreground = (Brush)FindResource("TextFillColorSecondaryBrush");
                 ConflictWarningText.Text =
                     $"{preview.IdenticalFileCount} file(s) already exist and are identical to the backup copy.";
+            }
+
+            if (PackagedPathVirtualization.IsAffected(preview.TargetDirectory, ReStore.Interop.PackageInfo.IsPackaged))
+            {
+                VirtualizationWarningText.Text = PackagedPathVirtualization.Warning;
+                VirtualizationWarningText.Visibility = Visibility.Visible;
             }
 
             foreach (var entry in preview.Entries)

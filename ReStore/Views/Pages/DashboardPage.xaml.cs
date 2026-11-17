@@ -23,6 +23,12 @@ namespace ReStore.Views.Pages
         public bool IsDiff { get; set; }
         public bool CanRestore => IsSnapshotArtifactPath(Path);
         public string TypeLabel => CanRestore ? "Snapshot" : IsDiff ? "Differential" : "Full";
+        public string TimeLabel => DisplayTime.Format(Timestamp);
+        public string TimeTooltip => DisplayTime.Tooltip(Timestamp);
+
+        public bool SameAs(BackupHistoryItem other) =>
+            Path == other.Path && Timestamp == other.Timestamp && Directory == other.Directory
+            && StorageType == other.StorageType && IsDiff == other.IsDiff;
 
         private static bool IsSnapshotArtifactPath(string? path)
         {
@@ -37,12 +43,20 @@ namespace ReStore.Views.Pages
         }
     }
 
+    /// <summary>Looks up a WPF-UI theme brush, falling back to a fixed colour when no theme resources are loaded.</summary>
+    internal static class ThemeBrushes
+    {
+        public static Brush Get(string key, Color fallback) =>
+            Application.Current?.TryFindResource(key) as Brush ?? new SolidColorBrush(fallback);
+    }
+
     /// <summary>One watched directory's backup freshness, for the health panel.</summary>
     public class DirectoryHealthItem
     {
-        private static readonly Brush FreshBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
-        private static readonly Brush AgeingBrush = new SolidColorBrush(Color.FromRgb(245, 158, 11));
-        private static readonly Brush StaleBrush = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+        // Theme brushes keep the age text readable in both light and dark; resolved on access so a theme switch is picked up.
+        private static Brush FreshBrush => ThemeBrushes.Get("SystemFillColorSuccessBrush", Color.FromRgb(15, 123, 15));
+        private static Brush AgeingBrush => ThemeBrushes.Get("SystemFillColorCautionBrush", Color.FromRgb(157, 93, 0));
+        private static Brush StaleBrush => ThemeBrushes.Get("SystemFillColorCriticalBrush", Color.FromRgb(196, 43, 28));
 
         public string DirectoryName { get; set; } = "";
         public string FullPath { get; set; } = "";
@@ -51,6 +65,12 @@ namespace ReStore.Views.Pages
         public DateTime? LastBackupUtc { get; set; }
 
         public bool CanRestore => !string.IsNullOrWhiteSpace(RestorePath);
+
+        /// <summary>Same on-screen content; lets the list update only the rows that changed.</summary>
+        public bool SameAs(DirectoryHealthItem other) =>
+            FullPath == other.FullPath && RestorePath == other.RestorePath && StorageType == other.StorageType
+            && LastBackupUtc == other.LastBackupUtc && AgeLabel == other.AgeLabel
+            && ReferenceEquals(StalenessColor, other.StalenessColor);
 
         public string AgeLabel
         {
@@ -86,6 +106,27 @@ namespace ReStore.Views.Pages
         }
     }
 
+    /// <summary>One line of the Dashboard's backup-run list.</summary>
+    public class RunReportItem
+    {
+        public RunReportItem(BackupRunReport report)
+        {
+            Report = report;
+            TimeLabel = DisplayTime.Format(report.TimestampUtc);
+            TimeTooltip = DisplayTime.Tooltip(report.TimestampUtc);
+            Folder = System.IO.Path.GetFileName(report.Group.TrimEnd('\\', '/')) is { Length: > 0 } name ? name : report.Group;
+            Detail = $"{report.Summary} - {TimeSpan.FromMilliseconds(report.DurationMs):mm\\:ss}, {ByteFormatter.Format(report.BytesUploaded)} uploaded";
+        }
+
+        public BackupRunReport Report { get; }
+        public string TimeLabel { get; }
+        public string TimeTooltip { get; }
+        public string Folder { get; }
+        public string Detail { get; }
+
+        public bool SameAs(RunReportItem other) => Report.TimestampUtc == other.Report.TimestampUtc && Report.Group == other.Report.Group;
+    }
+
     public partial class DashboardPage : Page, ILogger
     {
         // The activity pane is a tail view, not an archive; Logger keeps the full log on disk.
@@ -95,32 +136,74 @@ namespace ReStore.Views.Pages
         private readonly Logger _fileLogger = AppServices.Logger;
         private ConfigManager _configManager = null!;
         private SystemState? _state;
-        private FileWatcher? _watcher;
-        private BackupScheduler? _scheduler;
         private readonly StringBuilder _logBuffer = new();
         private readonly ObservableCollection<BackupHistoryItem> _backupHistory = new();
         private readonly ObservableCollection<DirectoryHealthItem> _directoryHealth = new();
         private readonly ObservableCollection<string> _needsAttention = new();
-        private readonly BackupNotificationService _notifications = new(AppServices.Logger);
+        private readonly ObservableCollection<string> _staleGroups = new();
+        private readonly ObservableCollection<RunReportItem> _runReports = new();
+        private bool _healthRefreshing;
         private System.Windows.Threading.DispatcherTimer? _statsTimer;
+        private readonly FailureStreak _statsFailures = new(3);
         private bool _initialized;
+        private RepositoryBusyBinding? _busyBinding;
 
         public DashboardPage()
         {
             InitializeComponent();
 
             ValidateBtn.Click += (_, __) => ValidateConfig();
-            StartWatcherBtn.Click += async (_, __) => await StartWatcherAsync();
-            StopWatcherBtn.Click += (_, __) => StopWatcher();
-            ManualBackupBtn.Click += async (_, __) => await ManualBackupAsync();
-            RestoreBtn.Click += async (_, __) => await RestoreBackupAsync();
-            SystemBackupBtn.Click += async (_, __) => await SystemBackupAsync();
-            RefreshHistoryBtn.Click += async (_, __) => await RefreshBackupHistoryAsync();
+            StartWatcherBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Starting the watcher", async () => { if (Protection != null) await Protection.StartAsync(); });
+            StopWatcherBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Stopping the watcher", async () => { if (Protection != null) await Protection.StopAsync(); });
+
+            // The page is cached for the app's lifetime, so subscribe once.
+            if (Protection != null)
+            {
+                Protection.StateChanged += OnProtectionStateChanged;
+                Protection.LogEmitted += OnProtectionLogEmitted;
+                Protection.BackupCycleCompleted += OnScheduledBackupCompleted;
+            }
+            AppUpdateManager.Instance.Changed += () => _ = Dispatcher.BeginInvoke(ApplyUpdateBanner);
+            UpdateNowBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Updating ReStore", () => AppUpdateManager.Instance.UpdateNowAsync());
+            UpdateNotesBtn.Click += (_, __) =>
+            {
+                try
+                {
+                    AppUpdateManager.Instance.OpenReleaseNotes();
+                }
+                catch (Exception ex)
+                {
+                    ErrorReporter.Report("Opening the release notes", ex);
+                }
+            };
+            UpdateSkipBtn.Click += (_, __) => AppUpdateManager.Instance.Skip();
+            UpdateCloseBtn.Click += (_, __) => AppUpdateManager.Instance.Dismiss();
+            BackupNowBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Backing up now", async () => { if (Protection != null) await Protection.BackupNowAsync(); });
+            PauseBtn.Click += (_, __) =>
+            {
+                if (PauseBtn.ContextMenu is { } menu)
+                {
+                    menu.PlacementTarget = PauseBtn;
+                    menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                    menu.IsOpen = true;
+                }
+            };
+            PauseHourItem.Click += async (_, __) => await ErrorReporter.GuardAsync("Pausing protection", async () => { if (Protection != null) await Protection.PauseFor(ProtectionPause.OneHour); });
+            PauseTomorrowItem.Click += async (_, __) => await ErrorReporter.GuardAsync("Pausing protection", async () => { if (Protection != null) await Protection.PauseUntilTomorrowAsync(); });
+            PauseIndefiniteItem.Click += async (_, __) => await ErrorReporter.GuardAsync("Pausing protection", async () => { if (Protection != null) await Protection.PauseUntilResumedAsync(); });
+            ResumeBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Resuming protection", async () => { if (Protection != null) await Protection.ResumeAsync(); });
+            ManualBackupBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Manual backup", () => ManualBackupAsync());
+            RestoreBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Restore backup", () => RestoreBackupAsync());
+            TestRestoreBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Test restore", () => TestRestoreLatestAsync());
+            SystemBackupBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("System backup", () => SystemBackupAsync());
+            RefreshHistoryBtn.Click += async (_, __) => await ErrorReporter.GuardAsync("Refresh backup history", () => RefreshBackupHistoryAsync());
             ClearLogsBtn.Click += (_, __) => ClearLogs();
 
             BackupHistoryList.ItemsSource = _backupHistory;
             DirectoryHealthList.ItemsSource = _directoryHealth;
             NeedsAttentionList.ItemsSource = _needsAttention;
+            StaleList.ItemsSource = _staleGroups;
+            RunReportList.ItemsSource = _runReports;
 
             if (OperatingSystem.IsWindows())
             {
@@ -129,6 +212,11 @@ namespace ReStore.Views.Pages
         }
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
+        {
+            await ErrorReporter.GuardAsync("Loading the page", () => Page_LoadedCoreAsync(sender, e));
+        }
+
+        private async Task Page_LoadedCoreAsync(object sender, RoutedEventArgs e)
         {
             var storyboard = new System.Windows.Media.Animation.Storyboard();
 
@@ -144,18 +232,80 @@ namespace ReStore.Views.Pages
             storyboard.Children.Add(fadeIn);
             storyboard.Begin(this);
 
+            ApplyProtectionState();
+
             if (!_initialized)
             {
                 _initialized = true;
                 await InitializeAsync();
             }
+            else
+            {
+                // The page is cached across navigation, so show what changed while it was away.
+                UpdateStatistics();
+                await RefreshBackupHistoryAsync();
+            }
 
             StartStatsTimer();
+
+            Wpf.Ui.Appearance.ApplicationThemeManager.Changed -= OnAppThemeChanged;
+            Wpf.Ui.Appearance.ApplicationThemeManager.Changed += OnAppThemeChanged;
+
+            _busyBinding ??= new RepositoryBusyBinding(Dispatcher, ApplyBusyState);
+            ApplyUpdateBanner();
+        }
+
+        // Row and verification colours come from theme brushes resolved when bound, so re-bind on a theme switch.
+        private void OnAppThemeChanged(Wpf.Ui.Appearance.ApplicationTheme currentTheme, Color systemAccent)
+        {
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                UpdateDirectoryHealth();
+                UpdateStatistics();
+                ApplyProtectionChip();
+            });
+        }
+
+        /// <summary>Shows the "ReStore X is available" bar for the pending update (Update now is MSIX-only).</summary>
+        private void ApplyUpdateBanner()
+        {
+            var manager = AppUpdateManager.Instance;
+            var pending = manager.PendingForBanner;
+            if (pending == null && !manager.IsInstalling)
+            {
+                UpdateBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            UpdateBanner.Visibility = Visibility.Visible;
+            UpdateBannerTitle.Text = $"ReStore {pending?.Latest} is available";
+            UpdateBannerDetail.Text = manager.IsInstalling
+                ? manager.InstallStatus ?? "Installing the update..."
+                : pending is { Critical: true }
+                    ? "This update is marked critical."
+                    : manager.CanInstall ? $"You have {pending?.Current}." : "Download it from the release page; this copy cannot update itself.";
+            UpdateNowBtn.Visibility = manager.CanInstall ? Visibility.Visible : Visibility.Collapsed;
+            UpdateNowBtn.IsEnabled = !manager.IsInstalling;
+            UpdateSkipBtn.IsEnabled = !manager.IsInstalling;
+            UpdateCloseBtn.IsEnabled = !manager.IsInstalling;
         }
 
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
+            Wpf.Ui.Appearance.ApplicationThemeManager.Changed -= OnAppThemeChanged;
             _statsTimer?.Stop();
+            _busyBinding?.Dispose();
+            _busyBinding = null;
+        }
+
+        /// <summary>Buttons that start a mutating operation are unavailable while another one runs.</summary>
+        private void ApplyBusyState(bool busy, string? reason)
+        {
+            var tip = busy ? $"{RepositoryBusyBinding.BusyMessage} {reason}".Trim() : null;
+            ManualBackupBtn.IsEnabled = !busy;
+            ManualBackupBtn.ToolTip = tip;
+            SystemBackupBtn.IsEnabled = !busy;
+            SystemBackupBtn.ToolTip = tip;
         }
 
         private async Task InitializeAsync()
@@ -171,6 +321,7 @@ namespace ReStore.Views.Pages
                 await RefreshBackupHistoryAsync();
 
                 await OfferFirstRunSetupIfNeededAsync();
+                ShowTelemetryNoticeIfNeeded();
             }
             catch (Exception ex)
             {
@@ -215,6 +366,12 @@ namespace ReStore.Views.Pages
             StatusText.Text = "Setup complete";
             UpdateStatistics();
 
+            // The wizard just saved watch directories and storage; start protecting them (honours a user stop).
+            if (Protection != null)
+            {
+                await Protection.ApplyConfigChangeAsync();
+            }
+
             foreach (var folder in wizard.FoldersToBackUpNow)
             {
                 await RunFirstBackupAsync(folder);
@@ -222,6 +379,49 @@ namespace ReStore.Views.Pages
 
             await RefreshBackupHistoryAsync();
             UpdateStatistics();
+        }
+
+        /// <summary>The one-time telemetry notice for users who did not go through the wizard page (existing users, skipped setup).</summary>
+        private void ShowTelemetryNoticeIfNeeded()
+        {
+            TelemetryNoticeBanner.Visibility = ReStore.Core.src.telemetry.Telemetry.Client.NoticeNeeded ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void TelemetryKeepOnBtn_Click(object sender, RoutedEventArgs e)
+        {
+            ReStore.Core.src.telemetry.Telemetry.Client.MarkNoticeShown("gui-dialog");
+            TelemetryNoticeBanner.Visibility = Visibility.Collapsed;
+        }
+
+        private async void TelemetryTurnOffBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await ErrorReporter.GuardAsync("Turning off usage statistics", async () =>
+            {
+                if (_configManager == null)
+                {
+                    return;
+                }
+
+                var telemetry = ReStore.Core.src.telemetry.Telemetry.Client;
+                _configManager.Telemetry.Enabled = false;
+                await _configManager.SaveAsync();
+                telemetry.InvalidateConfig();
+                telemetry.ClearQueue();
+                telemetry.MarkNoticeShown("gui-dialog");
+                TelemetryNoticeBanner.Visibility = Visibility.Collapsed;
+            });
+        }
+
+        private void TelemetryLearnMoreBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ReStore.Core.src.telemetry.TelemetryClient.DocsUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                // No browser registered.
+            }
         }
 
         private bool NeedsFirstRunSetup()
@@ -252,7 +452,7 @@ namespace ReStore.Views.Pages
 
             try
             {
-                return System.IO.Directory.Exists(Environment.ExpandEnvironmentVariables(localConfig.Path));
+                return System.IO.Directory.Exists(ReStore.Core.src.utils.ConfigManager.ExpandConfiguredPath(localConfig.Path));
             }
             catch (Exception ex)
             {
@@ -264,8 +464,8 @@ namespace ReStore.Views.Pages
         private async Task RunFirstBackupAsync(string folder)
         {
             var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-            passwordProvider.SetEncryptionMode(true);
 
+            string? skippedSummary = null;
             var progressWindow = new OperationProgressWindow(
                 $"Backing up {System.IO.Path.GetFileName(folder)}",
                 _fileLogger);
@@ -273,12 +473,12 @@ namespace ReStore.Views.Pages
             progressWindow.RunModal(Window.GetWindow(this), async token =>
             {
                 var backup = new Backup(progressWindow, _state!, new SizeAnalyzer(), _configManager, passwordProvider);
-                await backup.BackupDirectoryAsync(folder, null, progressWindow.BackupProgress, token);
+                skippedSummary = (await backup.BackupDirectoryAsync(folder, null, progressWindow.BackupProgress, token)).SkippedSummary;
             });
 
             if (progressWindow.Succeeded)
             {
-                Log($"First backup completed: {folder}", LogLevel.Info);
+                Log($"First backup completed: {folder}{(skippedSummary != null ? $" ({skippedSummary})" : string.Empty)}", LogLevel.Info);
             }
             else if (progressWindow.Failure != null)
             {
@@ -288,6 +488,7 @@ namespace ReStore.Views.Pages
 
         private void StartStatsTimer()
         {
+            _statsFailures.RecordSuccess();
             if (_statsTimer != null)
             {
                 _statsTimer.Start();
@@ -298,8 +499,33 @@ namespace ReStore.Views.Pages
             {
                 Interval = TimeSpan.FromSeconds(5)
             };
-            _statsTimer.Tick += (_, __) => UpdateStatistics();
+            _statsTimer.Tick += (_, __) => OnStatsTimerTick();
             _statsTimer.Start();
+        }
+
+        private void OnStatsTimerTick()
+        {
+            // Config is loaded asynchronously; a tick before then (or after a failed load) has nothing to show.
+            if (_configManager == null)
+            {
+                return;
+            }
+
+            try
+            {
+                UpdateStatistics();
+                _statsFailures.RecordSuccess();
+            }
+            catch (Exception ex)
+            {
+                // Log quietly, never a dialog per tick; stop refreshing once it is clearly not recovering.
+                _fileLogger.Log($"Dashboard refresh failed: {ex.Message}", LogLevel.Warning);
+                if (_statsFailures.RecordFailure())
+                {
+                    _statsTimer?.Stop();
+                    _fileLogger.Log("Dashboard auto-refresh stopped after repeated failures; reopen the page to retry.", LogLevel.Error);
+                }
+            }
         }
 
         private void UpdateStatistics()
@@ -320,7 +546,7 @@ namespace ReStore.Views.Pages
                     else if (timeSince.TotalDays < 1)
                         LastBackupText.Text = $"{(int)timeSince.TotalHours}h ago";
                     else
-                        LastBackupText.Text = _state.LastBackupTime.ToLocalTime().ToString("MMM dd, HH:mm");
+                        LastBackupText.Text = DisplayTime.Format(_state.LastBackupTime);
                 }
                 else
                 {
@@ -329,6 +555,7 @@ namespace ReStore.Views.Pages
             }
 
             WatchedDirsText.Text = _configManager.WatchDirectories.Count.ToString();
+            ApplyProtectionChip();
 
             // Read from the already-loaded config rather than re-reading AppSettings from
             // disk; this runs on a 5-second timer.
@@ -379,8 +606,8 @@ namespace ReStore.Views.Pages
                 VerificationDetailText.Text =
                     $"{verification.SuccessCount:N0}/{verification.RunCount:N0} runs, last {FormatAge(verification.LastUpdatedUtc)}";
                 VerificationText.Foreground = verification.SuccessCount == verification.RunCount
-                    ? new SolidColorBrush(Color.FromRgb(16, 185, 129))
-                    : new SolidColorBrush(Color.FromRgb(239, 68, 68));
+                    ? ThemeBrushes.Get("SystemFillColorSuccessBrush", Color.FromRgb(15, 123, 15))
+                    : ThemeBrushes.Get("SystemFillColorCriticalBrush", Color.FromRgb(196, 43, 28));
             }
             else
             {
@@ -408,11 +635,56 @@ namespace ReStore.Views.Pages
             UpdateNeedsAttention();
         }
 
+        /// <summary>
+        /// Rebuilds the folder list, run list and staleness banner off the UI thread (they read the state under its
+        /// lock), then updates the bound collections in place so unchanged rows keep focus and scroll position.
+        /// </summary>
         private void UpdateDirectoryHealth()
         {
-            var items = new List<DirectoryHealthItem>();
+            if (_healthRefreshing)
+            {
+                return;
+            }
 
-            foreach (var watchDirectory in _configManager.WatchDirectories)
+            _healthRefreshing = true;
+            _ = RefreshHealthAsync();
+        }
+
+        private sealed record HealthData(
+            List<DirectoryHealthItem> Folders,
+            List<string> Stale,
+            List<RunReportItem> Runs,
+            BackupRunReport? LastRun);
+
+        private async Task RefreshHealthAsync()
+        {
+            try
+            {
+                var state = _state!;
+                var watchDirectories = _configManager.WatchDirectories.ToList();
+                var globalStorage = _configManager.GlobalStorageType;
+                var interval = _configManager.BackupInterval;
+
+                var data = await Task.Run(() => BuildHealthData(state, watchDirectories, globalStorage, interval));
+                ApplyHealthData(data);
+            }
+            catch (Exception ex)
+            {
+                _fileLogger.Log($"Dashboard health refresh failed: {ex.Message}", LogLevel.Warning);
+            }
+            finally
+            {
+                _healthRefreshing = false;
+            }
+        }
+
+        private static HealthData BuildHealthData(
+            SystemState state, List<WatchDirectoryConfig> watchDirectories, string? globalStorage, TimeSpan interval)
+        {
+            var items = new List<DirectoryHealthItem>();
+            var groups = new List<(string Group, TimeSpan? Interval)>();
+
+            foreach (var watchDirectory in watchDirectories)
             {
                 if (string.IsNullOrWhiteSpace(watchDirectory.Path))
                 {
@@ -422,15 +694,16 @@ namespace ReStore.Views.Pages
                 string group;
                 try
                 {
-                    group = System.IO.Path.GetFullPath(Environment.ExpandEnvironmentVariables(watchDirectory.Path));
+                    group = System.IO.Path.GetFullPath(ReStore.Core.src.utils.ConfigManager.ExpandConfiguredPath(watchDirectory.Path));
                 }
                 catch
                 {
                     group = watchDirectory.Path;
                 }
 
-                var lastBackup = _state!.GetLastBackupTimeForGroup(group);
-                var newestSnapshot = _state.GetLatestSnapshotForGroup(group);
+                groups.Add((group, BackupStaleness.IntervalFor(watchDirectory.Schedule, interval, DateTime.UtcNow)));
+                var lastBackup = state.GetLastBackupTimeForGroup(group);
+                var newestSnapshot = state.GetLatestSnapshotForGroup(group);
 
                 items.Add(new DirectoryHealthItem
                 {
@@ -439,62 +712,84 @@ namespace ReStore.Views.Pages
                         System.IO.Path.AltDirectorySeparatorChar)) is { Length: > 0 } name ? name : group,
                     FullPath = group,
                     RestorePath = newestSnapshot?.Path,
-                    StorageType = newestSnapshot?.StorageType ?? watchDirectory.StorageType ?? _configManager.GlobalStorageType,
+                    StorageType = newestSnapshot?.StorageType ?? watchDirectory.StorageType ?? globalStorage ?? "",
                     LastBackupUtc = lastBackup == DateTime.MinValue ? null : lastBackup
                 });
             }
 
-            _directoryHealth.Clear();
-            foreach (var item in items.OrderBy(item => item.LastBackupUtc ?? DateTime.MinValue))
-            {
-                _directoryHealth.Add(item);
-            }
+            var stale = BackupStaleness.Evaluate(groups, state, DateTime.UtcNow)
+                .Select(s => $"'{s.Group}' - last successful backup {DisplayTime.Format(s.LastSuccessUtc)} ({FormatAge(s.LastSuccessUtc)}).")
+                .ToList();
 
-            var staleCount = items.Count(item =>
+            var runs = state.GetRecentBackupRuns(10);
+            return new HealthData(
+                [.. items.OrderBy(item => item.LastBackupUtc ?? DateTime.MinValue)],
+                stale,
+                [.. runs.Select(r => new RunReportItem(r))],
+                runs.FirstOrDefault());
+        }
+
+        private void ApplyHealthData(HealthData data)
+        {
+            CollectionSync.Apply(_directoryHealth, data.Folders, (a, b) => a.SameAs(b));
+            CollectionSync.Apply(_runReports, data.Runs, (a, b) => a.SameAs(b));
+            CollectionSync.Apply(_staleGroups, data.Stale);
+            StaleBanner.Visibility = data.Stale.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            LastRunText.Text = data.LastRun is { } last
+                ? $"Last run {DisplayTime.Format(last.TimestampUtc)}: {last.Summary}"
+                    + (last.FilesSkipped > 0 ? $" - completed with {last.FilesSkipped} skipped" : string.Empty)
+                : "No backup has run yet";
+            LastRunText.ToolTip = data.LastRun is { } l ? DisplayTime.Tooltip(l.TimestampUtc) : null;
+
+            var staleCount = data.Folders.Count(item =>
                 item.LastBackupUtc == null || DateTime.UtcNow - item.LastBackupUtc.Value > TimeSpan.FromDays(7));
 
             HealthSummaryText.Text = staleCount == 0
-                ? $"{items.Count} watched folder(s), all current"
-                : $"{staleCount} of {items.Count} watched folder(s) need attention";
+                ? $"{data.Folders.Count} watched folder(s), all current"
+                : $"{staleCount} of {data.Folders.Count} watched folder(s) need attention";
+
+            UpdateNeedsAttention();
         }
 
         private void UpdateNeedsAttention()
         {
-            _needsAttention.Clear();
+            var attention = new List<string>();
 
             var telemetry = _state!.Telemetry;
 
             foreach (var (category, count) in telemetry.Restore.FailureCategoryCounts.OrderByDescending(entry => entry.Value))
             {
-                _needsAttention.Add($"Restore failures — {DescribeFailureCategory(category)}: {count:N0}");
+                attention.Add($"Restore failures — {DescribeFailureCategory(category)}: {count:N0}");
             }
 
             var verification = telemetry.Verification;
             if (verification.MissingChunks > 0)
             {
-                _needsAttention.Add($"Verification found {verification.MissingChunks:N0} missing chunk object(s) — affected snapshots may not restore.");
+                attention.Add($"Verification found {verification.MissingChunks:N0} missing chunk object(s) — affected snapshots may not restore.");
             }
 
             if (verification.InvalidChunks > 0)
             {
-                _needsAttention.Add($"Verification found {verification.InvalidChunks:N0} corrupted chunk(s).");
+                attention.Add($"Verification found {verification.InvalidChunks:N0} corrupted chunk(s).");
             }
 
             if (verification.InvalidFiles > 0)
             {
-                _needsAttention.Add($"Verification could not reconstruct {verification.InvalidFiles:N0} file(s).");
+                attention.Add($"Verification could not reconstruct {verification.InvalidFiles:N0} file(s).");
             }
 
             if (!_configManager.Retention.Enabled)
             {
-                _needsAttention.Add("Retention is off — old snapshots are kept forever and storage will grow without bound.");
+                attention.Add("Retention is off — old snapshots are kept forever and storage will grow without bound.");
             }
 
             foreach (var stale in _directoryHealth.Where(item => item.LastBackupUtc == null))
             {
-                _needsAttention.Add($"'{stale.DirectoryName}' has never been backed up.");
+                attention.Add($"'{stale.DirectoryName}' has never been backed up.");
             }
 
+            CollectionSync.Apply(_needsAttention, attention);
             NeedsAttentionPanel.Visibility = _needsAttention.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -525,6 +820,11 @@ namespace ReStore.Views.Pages
 
         private async void HealthRestoreBtn_Click(object sender, RoutedEventArgs e)
         {
+            await ErrorReporter.GuardAsync("Restoring the folder", () => HealthRestoreBtn_ClickCoreAsync(sender, e));
+        }
+
+        private async Task HealthRestoreBtn_ClickCoreAsync(object sender, RoutedEventArgs e)
+        {
             if (sender is not Button button || button.Tag is not DirectoryHealthItem health)
             {
                 return;
@@ -549,10 +849,14 @@ namespace ReStore.Views.Pages
         {
             if (_state == null) return;
 
-            await Task.Run(() =>
+            var state = _state;
+            var globalStorage = _configManager.GlobalStorageType;
+
+            // Off the UI thread, and only the newest entries per group are copied under the state lock.
+            var items = await Task.Run(() =>
             {
-                var items = new List<BackupHistoryItem>();
-                foreach (var kvp in _state.GetBackupHistorySnapshot())
+                var list = new List<BackupHistoryItem>();
+                foreach (var kvp in state.GetRecentBackups(10))
                 {
                     if (IsSystemBackupGroup(kvp.Key))
                     {
@@ -560,7 +864,7 @@ namespace ReStore.Views.Pages
                     }
 
                     var directory = kvp.Key;
-                    foreach (var backup in kvp.Value.OrderByDescending(b => b.Timestamp).Take(10))
+                    foreach (var backup in kvp.Value)
                     {
                         if (backup.ArtifactType != BackupArtifactType.SnapshotManifest
                             && !backup.Path.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase)
@@ -571,29 +875,24 @@ namespace ReStore.Views.Pages
                         }
 
                         var storageType = string.IsNullOrWhiteSpace(backup.StorageType)
-                            ? _configManager.GlobalStorageType
+                            ? globalStorage
                             : backup.StorageType;
 
-                        items.Add(new BackupHistoryItem
+                        list.Add(new BackupHistoryItem
                         {
                             Directory = System.IO.Path.GetFileName(directory),
                             Path = backup.Path,
-                            StorageType = storageType ?? _configManager.GlobalStorageType,
+                            StorageType = storageType ?? globalStorage,
                             Timestamp = backup.Timestamp,
                             IsDiff = backup.IsDiff
                         });
                     }
                 }
 
-                Dispatcher.Invoke(() =>
-                {
-                    _backupHistory.Clear();
-                    foreach (var item in items.OrderByDescending(i => i.Timestamp).Take(20))
-                    {
-                        _backupHistory.Add(item);
-                    }
-                });
+                return list.OrderByDescending(i => i.Timestamp).Take(20).ToList();
             });
+
+            CollectionSync.Apply(_backupHistory, items, (a, b) => a.SameAs(b));
         }
 
         private void ClearLogs()
@@ -606,16 +905,18 @@ namespace ReStore.Views.Pages
         {
             _fileLogger.Log(message, level);
             var line = $"[{DateTime.Now:HH:mm:ss}] [{level}] {message}";
-            Dispatcher.Invoke(() =>
-            {
-                // Append rather than reassigning Text, which would rebuild the whole string
-                // per message, and keep only a bounded tail so a long run cannot grow without
-                // limit.
-                _logBuffer.AppendLine(line);
-                TrimLogBufferIfNeeded();
-                LogBox.AppendText(line + Environment.NewLine);
-                LogBox.ScrollToEnd();
-            });
+            Dispatcher.Invoke(() => AppendToLogPane(line));
+        }
+
+        private void AppendToLogPane(string line)
+        {
+            // Append rather than reassigning Text, which would rebuild the whole string
+            // per message, and keep only a bounded tail so a long run cannot grow without
+            // limit.
+            _logBuffer.AppendLine(line);
+            TrimLogBufferIfNeeded();
+            LogBox.AppendText(line + Environment.NewLine);
+            LogBox.ScrollToEnd();
         }
 
         /// <summary>Keeps the visible log to a bounded tail; the full log is on disk.</summary>
@@ -657,63 +958,25 @@ namespace ReStore.Views.Pages
             }
         }
 
-        public async Task StartWatcherAsync()
+        private ProtectionService? Protection => App.Protection;
+
+        /// <summary>
+        /// Protection events arrive on the watcher/scheduler threads; everything here hops to the UI thread
+        /// with BeginInvoke so a busy UI never blocks a backup.
+        /// </summary>
+        private void OnProtectionStateChanged(object? sender, EventArgs e)
         {
-            try
-            {
-                if (_watcher != null)
-                {
-                    Log("Watcher already running", LogLevel.Warning);
-                    return;
-                }
+            _ = Dispatcher.BeginInvoke(ApplyProtectionState);
+        }
 
-                var result = _configManager.ValidateConfiguration();
-                if (!result.IsValid)
-                {
-                    Log("Cannot start watcher due to config errors", LogLevel.Error);
-                    return;
-                }
-
-                _state ??= await AppServices.GetSystemStateAsync();
-
-                var sizeAnalyzer = new SizeAnalyzer();
-                var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                passwordProvider.SetEncryptionMode(true);
-                _watcher = new FileWatcher(_configManager, this, _state, sizeAnalyzer, passwordProvider);
-                await _watcher.StartAsync();
-
-                WatcherService.Instance.SetWatcher(_watcher);
-
-                // Runs alongside the watcher so the configured backupInterval is honoured
-                // for changes that happened while the app was closed.
-                _scheduler = new BackupScheduler(_configManager, this, _state, sizeAnalyzer, passwordProvider);
-                _scheduler.BackupCycleCompleted += OnScheduledBackupCompleted;
-
-                _notifications.Configure(
-                    Application.Current.MainWindow is Views.MainWindow mainWindow ? mainWindow.TrayManager : null,
-                    _configManager.Notifications);
-
-                _scheduler.BackupCycleFinished += OnScheduledCycleFinished;
-                _scheduler.BackupRecovered += OnScheduledBackupRecovered;
-
-                await _scheduler.StartAsync();
-
-                StatusText.Text = "Watcher running";
-                WatcherStatusText.Text = "Running";
-                UpdateStatusIndicator(true);
-                Log("File watcher started", LogLevel.Info);
-                UpdateStatistics();
-            }
-            catch (Exception ex)
-            {
-                Log($"Failed to start watcher: {ex.Message}", LogLevel.Error);
-                StopWatcher();
-            }
+        private void OnProtectionLogEmitted(string message, LogLevel level)
+        {
+            var line = $"[{DateTime.Now:HH:mm:ss}] [{level}] {message}";
+            _ = Dispatcher.BeginInvoke(() => AppendToLogPane(line));
         }
 
         private void OnScheduledBackupCompleted()
         {
-            // Raised from the scheduler's loop thread; marshal to the UI thread.
             _ = Dispatcher.InvokeAsync(async () =>
             {
                 UpdateStatistics();
@@ -721,42 +984,68 @@ namespace ReStore.Views.Pages
             });
         }
 
-        private void OnScheduledCycleFinished(BackupCycleResult result)
+        private void ApplyProtectionState()
         {
-            _ = Dispatcher.InvokeAsync(() => _notifications.NotifyCycleFinished(result));
-        }
+            var protection = Protection;
+            var state = protection?.State ?? ProtectionState.Stopped;
+            var active = protection?.IsActive ?? false;
 
-        private void OnScheduledBackupRecovered(BackupCycleResult result)
-        {
-            _ = Dispatcher.InvokeAsync(() => _notifications.NotifyRecovered(result));
-        }
-
-        public void StopWatcher()
-        {
-            try
+            (StatusText.Text, WatcherStatusText.Text) = state switch
             {
-                if (_scheduler != null)
-                {
-                    _scheduler.BackupCycleCompleted -= OnScheduledBackupCompleted;
-                    _scheduler.BackupCycleFinished -= OnScheduledCycleFinished;
-                    _scheduler.BackupRecovered -= OnScheduledBackupRecovered;
-                    _scheduler.Dispose();
-                    _scheduler = null;
-                }
+                ProtectionState.Running => ("Watcher running", "Running"),
+                ProtectionState.PausedNeedsPassword => ("Encrypted backups paused - unlock needed", "Needs unlock"),
+                ProtectionState.Error => ($"Watcher error: {protection?.LastError}", "Error"),
+                _ => (protection?.PausedUntilUtc is { } until
+                        ? $"Watcher paused {ProtectionPause.Describe(until)}"
+                        : "Watcher stopped",
+                    "Stopped")
+            };
 
-                _watcher?.Dispose();
-                _watcher = null;
+            UpdateStatusIndicator(state == ProtectionState.Running);
+            ApplyProtectionChip();
+            StartWatcherBtn.IsEnabled = protection != null && !active;
+            StopWatcherBtn.IsEnabled = protection != null && active;
 
-                WatcherService.Instance.SetWatcher(null);
+            var isPaused = protection?.IsPaused ?? false;
+            ResumeBtn.Visibility = isPaused ? Visibility.Visible : Visibility.Collapsed;
+            PauseBtn.Visibility = isPaused ? Visibility.Collapsed : Visibility.Visible;
+            PauseBtn.IsEnabled = protection != null && active;
+            BackupNowBtn.IsEnabled = protection != null && !protection.IsBackingUpNow;
+        }
 
-                StatusText.Text = "Watcher stopped";
-                WatcherStatusText.Text = "Stopped";
-                UpdateStatusIndicator(false);
-                Log("File watcher stopped", LogLevel.Info);
+        /// <summary>Header chip: protection state and, while it is running, when the scheduler next runs.</summary>
+        private void ApplyProtectionChip()
+        {
+            var protection = Protection;
+            var state = protection?.State ?? ProtectionState.Stopped;
+            var paused = protection?.PausedUntilUtc != null && state == ProtectionState.Stopped;
+
+            var (label, hex) = state switch
+            {
+                ProtectionState.Running => ("Running", "#10B981"),
+                ProtectionState.PausedNeedsPassword => ("Needs password", "#F59E0B"),
+                ProtectionState.Error => ("Error", "#EF4444"),
+                _ => (paused ? "Paused" : "Stopped", "#6B7280")
+            };
+
+            var color = (Color)ColorConverter.ConvertFromString(hex);
+            ProtectionChipText.Text = label;
+            ProtectionChipDot.Fill = new SolidColorBrush(color);
+            ProtectionChip.BorderBrush = new SolidColorBrush(color);
+            ProtectionChip.Background = new SolidColorBrush(Color.FromArgb(0x1A, color.R, color.G, color.B));
+            ProtectionChip.ToolTip = state == ProtectionState.Error ? protection?.LastError : null;
+
+            if (protection?.NextRunUtc is { } next && state is ProtectionState.Running or ProtectionState.PausedNeedsPassword)
+            {
+                NextRunText.Text = GlobalStatus.NextRunText(next, protection.NextRunHeldByWindow);
+                NextRunText.ToolTip = DisplayTime.Tooltip(next);
             }
-            catch (Exception ex)
+            else
             {
-                Log($"Error stopping watcher: {ex.Message}", LogLevel.Warning);
+                NextRunText.Text = paused && protection?.PausedUntilUtc is { } until
+                    ? (ProtectionPause.IsIndefinite(until) ? "Paused until you resume" : $"Resumes {DisplayTime.Format(until)}")
+                    : string.Empty;
+                NextRunText.ToolTip = null;
             }
         }
 
@@ -785,8 +1074,8 @@ namespace ReStore.Views.Pages
 
                     var sizeAnalyzer = new SizeAnalyzer();
                     var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(true);
 
+                    string? skippedSummary = null;
                     var progressWindow = new OperationProgressWindow(
                         $"Backing up {System.IO.Path.GetFileName(folderPath)}",
                         _fileLogger);
@@ -794,12 +1083,16 @@ namespace ReStore.Views.Pages
                     progressWindow.RunModal(Window.GetWindow(this), async token =>
                     {
                         var backup = new Backup(progressWindow, _state, sizeAnalyzer, _configManager, passwordProvider);
-                        await backup.BackupDirectoryAsync(folderPath, null, progressWindow.BackupProgress, token);
+                        skippedSummary = (await backup.BackupDirectoryAsync(folderPath, null, progressWindow.BackupProgress, token)).SkippedSummary;
                     });
 
                     if (progressWindow.Succeeded)
                     {
-                        Log($"Manual backup completed: {folderPath}", LogLevel.Info);
+                        Log($"Manual backup completed: {folderPath}{(skippedSummary != null ? $" ({skippedSummary})" : string.Empty)}", LogLevel.Info);
+                        if (skippedSummary != null)
+                        {
+                            MessageBox.Show($"Backup {skippedSummary}. See the log for details.", "Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
                     }
                     else if (progressWindow.WasCancelled)
                     {
@@ -839,7 +1132,33 @@ namespace ReStore.Views.Pages
             await RestoreWithPreviewAsync(latestBackup);
         }
 
+        /// <summary>Restores a few random files of the newest snapshot to a temporary folder, compares them with the backup and deletes them.</summary>
+        private async Task TestRestoreLatestAsync()
+        {
+            var latestBackup = _backupHistory.FirstOrDefault(item => item.CanRestore);
+            if (latestBackup == null)
+            {
+                MessageBox.Show("No snapshot is available to test yet. Run a backup first.", "Test Restore", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            _state ??= await AppServices.GetSystemStateAsync();
+            var storageType = latestBackup.StorageType;
+            await TestRestoreRunner.RunAsync(
+                Window.GetWindow(this),
+                _fileLogger,
+                latestBackup.Directory,
+                latestBackup.Path,
+                () => CreateStorageAsync(storageType),
+                _state);
+        }
+
         private async void RestoreBackupBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await ErrorReporter.GuardAsync("Restoring the backup", () => RestoreBackupBtn_ClickCoreAsync(sender, e));
+        }
+
+        private async Task RestoreBackupBtn_ClickCoreAsync(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.Tag is BackupHistoryItem backup)
             {
@@ -878,7 +1197,6 @@ namespace ReStore.Views.Pages
                 _state ??= await AppServices.GetSystemStateAsync();
 
                 var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                passwordProvider.SetEncryptionMode(false);
 
                 RestorePreview preview;
                 using (var previewStorage = await CreateStorageForHistoryItemAsync(backup))
@@ -894,19 +1212,23 @@ namespace ReStore.Views.Pages
                 }
 
                 var progressWindow = new OperationProgressWindow($"Restoring {backup.Directory}", _fileLogger);
+                // Read the confirm dialog here: the operation below runs on a pool thread.
+                var restoreOptions = new RestoreOptions
+                {
+                    ConflictPolicy = confirm.ConflictPolicy,
+                    RelativePaths = confirm.SelectedRelativePaths
+                };
+                var backupPath = backup.Path;
+                var backupStorageType = backup.StorageType;
                 progressWindow.RunModal(Window.GetWindow(this), async token =>
                 {
-                    using var storage = await CreateStorageForHistoryItemAsync(backup);
+                    using var storage = await CreateStorageAsync(backupStorageType);
                     var restore = new Restore(progressWindow, storage, passwordProvider, _state);
 
                     var outcome = await restore.RestoreFromBackupAsync(
-                        backup.Path,
+                        backupPath,
                         targetPath,
-                        new RestoreOptions
-                        {
-                            ConflictPolicy = confirm.ConflictPolicy,
-                            RelativePaths = confirm.SelectedRelativePaths
-                        },
+                        restoreOptions,
                         progressWindow.RestoreProgress,
                         token);
 
@@ -950,11 +1272,12 @@ namespace ReStore.Views.Pages
 
             try
             {
-                await _state.SaveStateAsync();
+                // Under the repository lease so a stale in-memory copy never overwrites another process's state.
+                await RepositoryCoordinator.Instance.MutateStateAsync(_state, "Saving restore results", () => true);
             }
             catch (Exception saveEx)
             {
-                Log($"Failed to persist restore telemetry: {saveEx.Message}", LogLevel.Warning);
+                Log($"Failed to persist restore telemetry: {saveEx.Message}", LogLevel.Error);
             }
         }
 
@@ -983,14 +1306,18 @@ namespace ReStore.Views.Pages
         {
             return group.Equals("system_programs", StringComparison.OrdinalIgnoreCase)
                 || group.Equals("system_environment", StringComparison.OrdinalIgnoreCase)
-                || group.Equals("system_settings", StringComparison.OrdinalIgnoreCase);
+                || group.Equals("system_settings", StringComparison.OrdinalIgnoreCase)
+                || group.Equals("system_devtools", StringComparison.OrdinalIgnoreCase);
         }
 
-        private async Task<IStorage> CreateStorageForHistoryItemAsync(BackupHistoryItem backup)
+        private Task<IStorage> CreateStorageForHistoryItemAsync(BackupHistoryItem backup) => CreateStorageAsync(backup.StorageType);
+
+        /// <summary>Takes the storage type as a value so pool-thread callers read the item on the UI thread first.</summary>
+        private async Task<IStorage> CreateStorageAsync(string? backupStorageType)
         {
-            var storageType = string.IsNullOrWhiteSpace(backup.StorageType)
+            var storageType = string.IsNullOrWhiteSpace(backupStorageType)
                 ? _configManager.GlobalStorageType
-                : backup.StorageType;
+                : backupStorageType;
 
             return await _configManager.CreateStorageAsync(storageType);
         }
@@ -1023,6 +1350,11 @@ namespace ReStore.Views.Pages
                     components.Add("• Windows settings");
                 }
 
+                if (_configManager.SystemBackup.IncludeDevTools)
+                {
+                    components.Add("• Developer tools settings (terminal, PowerShell profiles, VS Code, git)");
+                }
+
                 if (components.Count == 0)
                 {
                     MessageBox.Show(
@@ -1046,14 +1378,37 @@ namespace ReStore.Views.Pages
                     _state ??= await AppServices.GetSystemStateAsync();
 
                     var passwordProvider = App.GlobalPasswordProvider ?? new Services.GuiPasswordProvider();
-                    passwordProvider.SetEncryptionMode(true);
-                    var systemBackup = new SystemBackupManager(this, _configManager, _state, passwordProvider);
-                    await systemBackup.BackupSystemAsync();
+                    var state = _state;
+                    var configManager = _configManager;
+                    var progressWindow = new OperationProgressWindow("System backup", _fileLogger);
+                    progressWindow.RunModal(Window.GetWindow(this), async token =>
+                    {
+                        progressWindow.StatusProgress.Report("Backing up the system...");
+                        var systemBackup = new SystemBackupManager(progressWindow, configManager, state, passwordProvider);
+                        await systemBackup.BackupSystemAsync(token);
+                    });
 
-                    Log("System backup completed", LogLevel.Info);
+                    if (progressWindow.Succeeded)
+                    {
+                        Log("System backup completed", LogLevel.Info);
+                    }
+                    else if (progressWindow.WasCancelled)
+                    {
+                        Log("System backup cancelled", LogLevel.Warning);
+                    }
+
                     await RefreshBackupHistoryAsync();
                     UpdateStatistics();
-                    MessageBox.Show("System backup completed successfully!", "System Backup", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                    if (progressWindow.Succeeded)
+                    {
+                        MessageBox.Show("System backup completed successfully!", "System Backup", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else if (progressWindow.Failure != null)
+                    {
+                        Log($"System backup failed: {progressWindow.Failure.Message}", LogLevel.Error);
+                        MessageBox.Show($"System backup failed: {progressWindow.Failure.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
             }
             catch (Exception ex)

@@ -1,0 +1,20 @@
+{
+  "FormatVersion": 1,
+  "Encrypted": false,
+  "Index": {
+    "GroupPath": "/tmp/ReStoreV2Fixtures_087cfb44cd3d44d0a4ce2433a198d1af/src-plain",
+    "MachineName": "QCOM-VEArJS7kNT",
+    "InstallId": "f3dfaefa79294215a834c8ce71a7644e",
+    "CreatedUtc": "2026-11-16T09:27:19.8159125Z",
+    "UpdatedUtc": "2026-11-16T09:27:19.8159125Z",
+    "Encrypted": false,
+    "ChunkStorageNamespace": null
+  },
+  "Salt": null,
+  "KeyDerivationIterations": 0,
+  "IV": null,
+  "EncryptedDek": null,
+  "Algorithm": null,
+  "MetadataVersion": 0,
+  "Payload": null
+}

@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 
 namespace ReStore.Core.src.utils;
 
@@ -113,6 +113,36 @@ public static class ConfigSchemaManager
         {
             migrationResult.AddMigration("Added notification configuration defaults.");
         }
+
+        if (EnsureLoggingDefaults(configRoot))
+        {
+            migrationResult.AddMigration("Added logging.level default (Info).");
+        }
+
+        if (EnsureProtectionDefaults(configRoot))
+        {
+            migrationResult.AddMigration("Added protection.autoStart default (true).");
+        }
+
+        if (EnsureTelemetryDefaults(configRoot))
+        {
+            migrationResult.AddMigration("Added telemetry.enabled (true) and telemetry.crashReports (ask) defaults.");
+        }
+
+        if (EnsureUpdatesDefaults(configRoot))
+        {
+            migrationResult.AddMigration("Added updates.checkAutomatically (true) and updates.includePrereleases (false) defaults.");
+        }
+
+        if (EnsureWatcherDefaults(configRoot))
+        {
+            migrationResult.AddMigration("Added watcher.minSnapshotInterval / watcher.maxDebounceWait defaults.");
+        }
+
+        if (EnsureBackupSettingsDefaults(configRoot))
+        {
+            migrationResult.AddMigration("Added backup.deepScanIntervalDays (7) and backup.hydrateCloudFiles (false) defaults.");
+        }
     }
 
     /// <summary>v1 → v2: the only true reshaping is the backupType rename.</summary>
@@ -141,6 +171,7 @@ public static class ConfigSchemaManager
         var chunkDiffing = EnsureObject(configRoot, "chunkDiffing", ref changed);
 
         changed |= EnsureInt(chunkDiffing, "manifestVersion", 2);
+        changed |= EnsureString(chunkDiffing, "compression", "auto");
         changed |= EnsureInt(chunkDiffing, "minChunkSizeKB", 32);
         changed |= EnsureInt(chunkDiffing, "targetChunkSizeKB", 128);
         changed |= EnsureInt(chunkDiffing, "maxChunkSizeKB", 512);
@@ -178,6 +209,12 @@ public static class ConfigSchemaManager
         changed |= EnsureBool(retention, "enabled", false);
         changed |= EnsureInt(retention, "keepLastPerDirectory", 10);
         changed |= EnsureInt(retention, "maxAgeDays", 30);
+        changed |= EnsureInt(retention, "keepHourly", 0);
+        changed |= EnsureInt(retention, "keepDaily", 0);
+        changed |= EnsureInt(retention, "keepWeekly", 0);
+        changed |= EnsureInt(retention, "keepMonthly", 0);
+        changed |= EnsureInt(retention, "keepYearly", 0);
+        changed |= EnsureString(retention, "mode", RetentionModes.Any);
 
         return changed;
     }
@@ -200,6 +237,13 @@ public static class ConfigSchemaManager
     {
         var changed = false;
         var systemBackup = EnsureObject(configRoot, "systemBackup", ref changed);
+
+        // A config that never had the block must not silently opt in to system backup
+        // (it captures environment variables, which can hold secrets).
+        if (changed)
+        {
+            systemBackup["enabled"] = false;
+        }
 
         changed |= EnsureBool(systemBackup, "includeWindowsSettings", true);
 
@@ -229,6 +273,70 @@ public static class ConfigSchemaManager
         changed |= EnsureBool(notifications, "notifyOnVerificationFailure", true);
         changed |= EnsureBool(notifications, "notifyOnRecovery", true);
         changed |= EnsureBool(notifications, "notifyOnEveryBackupSuccess", false);
+
+        return changed;
+    }
+
+    private static bool EnsureLoggingDefaults(JsonObject configRoot)
+    {
+        var changed = false;
+        var logging = EnsureObject(configRoot, "logging", ref changed);
+
+        changed |= EnsureString(logging, "level", "Info");
+
+        return changed;
+    }
+
+    private static bool EnsureProtectionDefaults(JsonObject configRoot)
+    {
+        var changed = false;
+        var protection = EnsureObject(configRoot, "protection", ref changed);
+
+        changed |= EnsureBool(protection, "autoStart", true);
+
+        return changed;
+    }
+
+    private static bool EnsureTelemetryDefaults(JsonObject configRoot)
+    {
+        var changed = false;
+        var telemetry = EnsureObject(configRoot, "telemetry", ref changed);
+
+        changed |= EnsureBool(telemetry, "enabled", true);
+        changed |= EnsureString(telemetry, "crashReports", "ask");
+
+        return changed;
+    }
+
+    private static bool EnsureUpdatesDefaults(JsonObject configRoot)
+    {
+        var changed = false;
+        var updates = EnsureObject(configRoot, "updates", ref changed);
+
+        changed |= EnsureBool(updates, "checkAutomatically", true);
+        changed |= EnsureBool(updates, "includePrereleases", false);
+
+        return changed;
+    }
+
+    private static bool EnsureWatcherDefaults(JsonObject configRoot)
+    {
+        var changed = false;
+        var watcher = EnsureObject(configRoot, "watcher", ref changed);
+
+        changed |= EnsureString(watcher, "minSnapshotInterval", "00:15:00");
+        changed |= EnsureString(watcher, "maxDebounceWait", "00:05:00");
+
+        return changed;
+    }
+
+    private static bool EnsureBackupSettingsDefaults(JsonObject configRoot)
+    {
+        var changed = false;
+        var backup = EnsureObject(configRoot, "backup", ref changed);
+
+        changed |= EnsureInt(backup, "deepScanIntervalDays", 7);
+        changed |= EnsureBool(backup, "hydrateCloudFiles", false);
 
         return changed;
     }
@@ -328,7 +436,7 @@ public static class ConfigSchemaManager
             }
 
             if (jsonValue.TryGetValue<string>(out var stringValue)
-                && int.TryParse(stringValue, out var parsedValue))
+                && int.TryParse(stringValue, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedValue))
             {
                 value = parsedValue;
                 return true;

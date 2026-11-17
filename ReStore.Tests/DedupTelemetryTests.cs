@@ -190,12 +190,14 @@ public class DedupTelemetryTests : IDisposable
         Directory.CreateDirectory(sourceDirectory);
         Directory.CreateDirectory(storageDirectory);
 
-        const int fileCount = 6;
+        // Far more distinct chunks than the upload queue plus the in-flight uploads can hold (LocalStorage: 4 workers + 8 queued),
+        // so while uploads are held back the chunking loop cannot get through every file.
+        const int fileCount = 40;
         for (var index = 0; index < fileCount; index++)
         {
             await File.WriteAllTextAsync(
-                Path.Combine(sourceDirectory, $"file{index}.txt"),
-                new string((char)('a' + index), 200 * 1024));
+                Path.Combine(sourceDirectory, $"file{index:D2}.txt"),
+                new string((char)('A' + index), 200 * 1024));
         }
 
         var inner = new LocalStorage(_logger);
@@ -216,14 +218,18 @@ public class DedupTelemetryTests : IDisposable
         configMock.SetupGet(c => c.Encryption).Returns(new EncryptionConfig { Enabled = false });
         configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(observing);
 
-        // Records how many files had been fully chunked at the moment of the first upload.
+        // Records how many files had been fully chunked at the moment of the first upload. The progress callback runs
+        // synchronously on the chunking thread (no Progress<T> post to the thread pool), and chunk uploads are held at a
+        // gate, so the answer does not depend on how the machine schedules the threads: the chunking loop can only run
+        // ahead of held uploads by the bounded queue, never through all the files.
         var filesChunkedAtFirstUpload = -1;
         var filesChunked = 0;
-        var progress = new Progress<BackupProgress>(report =>
+        var firstUpload = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var progress = new SynchronousProgress(report =>
         {
             if (report.Phase == BackupPhase.Chunking)
             {
-                filesChunked = report.FilesDone;
+                Volatile.Write(ref filesChunked, report.FilesDone);
             }
         });
 
@@ -231,15 +237,23 @@ public class DedupTelemetryTests : IDisposable
         {
             if (filesChunkedAtFirstUpload < 0)
             {
-                filesChunkedAtFirstUpload = filesChunked;
+                filesChunkedAtFirstUpload = Volatile.Read(ref filesChunked);
+                firstUpload.TrySetResult();
             }
         };
+        observing.ChunkGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var state = new SystemState(_logger);
         state.SetStateFilePath(Path.Combine(_testRoot, "interleave-state.json"));
 
         var backup = new Backup(_logger, state, new SizeAnalyzer(), configMock.Object, null);
-        await backup.BackupDirectoryAsync(sourceDirectory, null, progress);
+        var backupTask = backup.BackupDirectoryAsync(sourceDirectory, null, progress);
+
+        // Event-driven: the first chunk upload either arrives (and is counted) or the backup died before it.
+        await Task.WhenAny(firstUpload.Task, backupTask).WaitAsync(TimeSpan.FromMinutes(2));
+        firstUpload.Task.IsCompleted.Should().BeTrue("a chunk must be uploaded while the chunking loop is still running");
+        observing.ChunkGate.TrySetResult();
+        await backupTask;
 
         observing.ChunkUploads.Should().BeGreaterThan(0);
 
@@ -258,7 +272,13 @@ public class DedupTelemetryTests : IDisposable
     }
 
     /// <summary>Records upload order so chunk/manifest interleaving can be asserted.</summary>
-    private sealed class UploadObservingStorage(LocalStorage inner) : ReStore.Core.src.storage.IStorage
+    /// <summary>Calls the callback on the reporting thread, like a plain IProgress implementation (Progress&lt;T&gt; posts to the thread pool).</summary>
+    private sealed class SynchronousProgress(Action<BackupProgress> callback) : IProgress<BackupProgress>
+    {
+        public void Report(BackupProgress value) => callback(value);
+    }
+
+    private sealed class UploadObservingStorage(LocalStorage inner) : DelegatingStorage(inner)
     {
         public List<string> UploadOrder { get; } = [];
 
@@ -268,37 +288,54 @@ public class DedupTelemetryTests : IDisposable
 
         public Action? OnChunkUpload { get; set; }
 
-        public Task InitializeAsync(Dictionary<string, string> options) => inner.InitializeAsync(options);
+        /// <summary>When set, chunk uploads are counted on entry and then held until the gate opens.</summary>
+        public TaskCompletionSource? ChunkGate { get; set; }
 
-        public Task UploadAsync(string localPath, string remotePath)
+        private readonly Lock _gate = new();
+
+        public override async Task UploadAsync(string localPath, string remotePath, CancellationToken ct = default)
         {
-            UploadOrder.Add(remotePath);
-
-            if (remotePath.StartsWith("chunks/", StringComparison.OrdinalIgnoreCase))
-            {
-                ChunkUploads++;
-                OnChunkUpload?.Invoke();
-            }
-            else if (remotePath.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase) && ChunkUploads == 0)
-            {
-                ManifestUploadedBeforeAnyChunk = true;
-            }
-
-            return inner.UploadAsync(localPath, remotePath);
+            await HoldAsync(Observe(remotePath), ct);
+            await Inner.UploadAsync(localPath, remotePath, ct);
         }
 
-        public Task DownloadAsync(string remotePath, string localPath) => inner.DownloadAsync(remotePath, localPath);
+        public override async Task UploadAsync(Stream content, string remotePath, CancellationToken ct = default)
+        {
+            await HoldAsync(Observe(remotePath), ct);
+            await Inner.UploadAsync(content, remotePath, ct);
+        }
 
-        public Task DeleteAsync(string remotePath) => inner.DeleteAsync(remotePath);
+        private async Task HoldAsync(bool isChunk, CancellationToken ct)
+        {
+            if (isChunk && ChunkGate is { } gate)
+            {
+                await gate.Task.WaitAsync(TimeSpan.FromMinutes(2), ct);
+            }
+        }
 
-        public Task<bool> ExistsAsync(string remotePath) => inner.ExistsAsync(remotePath);
+        private bool Observe(string remotePath)
+        {
+            lock (_gate)
+            {
+                UploadOrder.Add(remotePath);
 
-        public Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration)
-            => inner.GenerateShareLinkAsync(remotePath, expiration);
+                if (remotePath.StartsWith("chunks/", StringComparison.OrdinalIgnoreCase))
+                {
+                    ChunkUploads++;
+                    OnChunkUpload?.Invoke();
+                    return true;
+                }
 
-        public bool SupportsSharing => inner.SupportsSharing;
+                if (remotePath.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase) && ChunkUploads == 0)
+                {
+                    ManifestUploadedBeforeAnyChunk = true;
+                }
 
-        public void Dispose() => inner.Dispose();
+                return false;
+            }
+        }
+
+        public override void Dispose() => Inner.Dispose();
     }
 
     private sealed record BackupFixture(

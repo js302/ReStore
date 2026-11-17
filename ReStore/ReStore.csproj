@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net10.0-windows</TargetFramework>
+        <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
         <UseWPF>true</UseWPF>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -22,31 +22,70 @@
         <PublishReadyToRun>false</PublishReadyToRun>
 
         <!-- Optimization Properties -->
-        <Optimize>true</Optimize>
         <ServerGarbageCollection>false</ServerGarbageCollection>
         <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
         <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-        <DebuggerSupport>false</DebuggerSupport>
         <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
-        <EventSourceSupport>false</EventSourceSupport>
 
         <!-- Application Identity -->
         <PackageId>ReStore</PackageId>
-        <Version>1.7.0</Version>
-        <Authors>Jaskaran Singh</Authors>
-        <Company>Jaskaran Singh</Company>
         <Product>ReStore</Product>
         <Description>A backup and restore solution for Windows</Description>
-        <Copyright>Copyright © 2026 Jaskaran Singh</Copyright>
         <PackageProjectUrl>https://github.com/js302/ReStore</PackageProjectUrl>
         <RepositoryUrl>https://github.com/js302/ReStore</RepositoryUrl>
     </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <Optimize>true</Optimize>
+        <DebuggerSupport>false</DebuggerSupport>
+        <EventSourceSupport>false</EventSourceSupport>
+    </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="..\ReStore.Core\ReStore.Core.csproj" AdditionalProperties="RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained)" />
-        <PackageReference Include="WPF-UI" Version="4.0.3" />
-        <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+        <PackageReference Include="WPF-UI" Version="4.3.0" />
+        <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
     </ItemGroup>
     <ItemGroup>
         <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
+
+    <!-- The version lives in Directory.Build.props. The checked-in manifests must agree with it, otherwise the build fails
+         (build-msix.ps1 re-stamps the Identity version at pack time, so these are only the defaults). -->
+    <Target Name="ValidateManifestVersions" BeforeTargets="BeforeBuild">
+        <PropertyGroup>
+            <_ExpectedManifestVersion>$(Version).0</_ExpectedManifestVersion>
+            <_AppxManifestText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\Package.appxmanifest'))</_AppxManifestText>
+            <_AppManifestText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\app.manifest'))</_AppManifestText>
+            <_AppxManifestVersion>$([System.Text.RegularExpressions.Regex]::Match($(_AppxManifestText), '&lt;Identity\b[^&gt;]*\bVersion="([^"]*)"').Groups[1].Value)</_AppxManifestVersion>
+            <_AppManifestVersion>$([System.Text.RegularExpressions.Regex]::Match($(_AppManifestText), '&lt;assemblyIdentity\b[^&gt;]*\bversion="([^"]*)"').Groups[1].Value)</_AppManifestVersion>
+        </PropertyGroup>
+        <Warning Condition="'$(_AppxManifestVersion)' != '$(_ExpectedManifestVersion)'"
+               Text="Package.appxmanifest Identity Version '$(_AppxManifestVersion)' does not match Directory.Build.props Version '$(Version)' (expected '$(_ExpectedManifestVersion)')." />
+        <Warning Condition="'$(_AppManifestVersion)' != '$(_ExpectedManifestVersion)'"
+               Text="app.manifest assemblyIdentity version '$(_AppManifestVersion)' does not match Directory.Build.props Version '$(Version)' (expected '$(_ExpectedManifestVersion)')." />
+    </Target>
+
+    <!-- Hardcodet.NotifyIcon.Wpf declares a framework reference to the whole Microsoft.WindowsDesktop.App, which drags
+         ~30 MB of WinForms assemblies into the self-contained publish. Hardcodet 2.0.1 and this app only use
+         System.Drawing.Common (verified: no System.Windows.Forms reference), so drop the WinForms-only assemblies. -->
+    <Target Name="TrimWinFormsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+        <ItemGroup>
+            <_WinFormsOnlyPublishFile Include="@(ResolvedFileToPublish)"
+                Condition="$([System.String]::Copy('%(Filename)').StartsWith('System.Windows.Forms'))
+                    Or $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualBasic'))
+                    Or '%(Filename)' == 'System.Design'
+                    Or '%(Filename)' == 'System.Drawing.Design'
+                    Or '%(Filename)' == 'WindowsFormsIntegration'
+                    Or '%(Filename)' == 'System.Windows.Controls.Ribbon'" />
+            <ResolvedFileToPublish Remove="@(_WinFormsOnlyPublishFile)" />
+        </ItemGroup>
+    </Target>
+
+    <!-- Fails publish if the filter above did not remove the WinForms assemblies from the output. -->
+    <Target Name="VerifyNoWinFormsInPublish" AfterTargets="Publish">
+        <ItemGroup>
+            <_WinFormsLeftover Include="$(PublishDir)System.Windows.Forms*.dll" />
+            <_WinFormsLeftover Include="$(PublishDir)WindowsFormsIntegration.dll" Condition="Exists('$(PublishDir)WindowsFormsIntegration.dll')" />
+        </ItemGroup>
+        <Error Condition="'@(_WinFormsLeftover)' != ''" Text="WinForms assemblies found in the publish payload: @(_WinFormsLeftover). TrimWinFormsFromPublish should have removed them." />
+    </Target>
 </Project>

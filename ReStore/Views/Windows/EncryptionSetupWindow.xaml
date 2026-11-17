@@ -25,11 +25,11 @@
             <Run FontWeight="Bold" Text="⚠ Important: Store this password securely - it cannot be recovered!"/>
         </TextBlock>
 
-        <ui:PasswordBox x:Name="PasswordInput" Grid.Row="2" PlaceholderText="Enter encryption password (min 8 characters)..." PasswordChanged="Password_Changed" Margin="0,0,0,10"/>
+        <ui:PasswordBox AutomationProperties.Name="Encryption password" x:Name="PasswordInput" Grid.Row="2" PlaceholderText="Enter encryption password (min 8 characters)..." PasswordChanged="Password_Changed" Margin="0,0,0,10"/>
 
-        <ui:PasswordBox x:Name="ConfirmPasswordInput" Grid.Row="3" PlaceholderText="Confirm password..." PasswordChanged="Password_Changed" KeyDown="ConfirmPasswordInput_KeyDown" Margin="0,0,0,10"/>
+        <ui:PasswordBox AutomationProperties.Name="Confirm encryption password" x:Name="ConfirmPasswordInput" Grid.Row="3" PlaceholderText="Confirm password..." PasswordChanged="Password_Changed" KeyDown="ConfirmPasswordInput_KeyDown" Margin="0,0,0,10"/>
 
-        <TextBlock x:Name="ValidationMessage" Grid.Row="4" Foreground="#D32F2F" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
+        <TextBlock x:Name="ValidationMessage" Grid.Row="4" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
 
         <Border Grid.Row="5" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,15">
             <StackPanel>

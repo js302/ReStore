@@ -47,7 +47,7 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <CheckBox AutomationProperties.Name="Include this folder" Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                                     <TextBlock Text="{Binding Path}" FontSize="10" FontFamily="Consolas" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
@@ -66,7 +66,7 @@
                 <Border x:Name="DestinationStep" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16" Visibility="Collapsed">
                     <StackPanel>
                         <TextBlock Text="Storage provider" FontWeight="SemiBold" Margin="0,0,0,6" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        <ComboBox x:Name="ProviderCombo" MinWidth="240" HorizontalAlignment="Left" VerticalContentAlignment="Center" SelectionChanged="ProviderCombo_SelectionChanged"/>
+                        <ComboBox AutomationProperties.Name="Storage provider" x:Name="ProviderCombo" MinWidth="240" HorizontalAlignment="Left" VerticalContentAlignment="Center" SelectionChanged="ProviderCombo_SelectionChanged"/>
 
                         <TextBlock x:Name="ProviderHintText" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
 
@@ -77,7 +77,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="LocalPathBox" Grid.Column="0" Padding="8" VerticalContentAlignment="Center"/>
+                                <TextBox AutomationProperties.Name="Backup folder" x:Name="LocalPathBox" Grid.Column="0" Padding="8" VerticalContentAlignment="Center"/>
                                 <Button x:Name="BrowseLocalBtn" Grid.Column="1" Content="Browse..." Padding="12,6" Margin="8,0,0,0" Click="BrowseLocalBtn_Click"/>
                             </Grid>
                         </StackPanel>
@@ -87,7 +87,7 @@
                                 <DataTemplate>
                                     <StackPanel Margin="0,0,0,10">
                                         <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="Medium" Margin="0,0,0,4" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="8" VerticalContentAlignment="Center"/>
+                                        <TextBox AutomationProperties.Name="{Binding Label}" Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="8" VerticalContentAlignment="Center"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -104,7 +104,7 @@
                 <Border x:Name="ProtectionStep" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16" Visibility="Collapsed">
                     <StackPanel>
                         <CheckBox x:Name="EnableEncryptionCheck" Content="Encrypt my backups with a password" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Click="EnableEncryptionCheck_Click"/>
-                        <Border Background="#1AEF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,12,0,0">
+                        <Border Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}" BorderBrush="{DynamicResource SystemFillColorCriticalBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,12,0,0">
                             <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
                                 Encryption is applied before anything leaves your machine. There is no recovery
                                 path: if you lose the password, every encrypted backup becomes permanently
@@ -115,7 +115,7 @@
 
                         <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,20,0,16"/>
 
-                        <CheckBox x:Name="EnableRetentionCheck" Content="Delete old snapshots automatically" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <CheckBox x:Name="EnableRetentionCheck" IsChecked="True" Content="Delete old snapshots automatically" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                         <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
                             Without this, snapshots are kept forever and your storage use grows without bound.
                             Keeps the 10 most recent per folder and discards anything over 30 days old.
@@ -123,7 +123,24 @@
 
                         <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,20,0,16"/>
 
+                        <TextBlock Text="Skip files you rarely need" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <CheckBox x:Name="PresetOfficeTempCheck" Tag="office-temp" Content="Office lock files (~$*, *.~lock*)" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="PresetSystemCheck" Tag="system" Content="Windows system files (Thumbs.db, desktop.ini, Recycle Bin)" Margin="0,4,0,0"/>
+                        <CheckBox x:Name="PresetCachesCheck" Tag="caches" Content="Caches and temporary folders" Margin="0,4,0,0"/>
+                        <CheckBox x:Name="PresetDevCheck" Tag="dev" Content="Developer folders (node_modules, .git, bin, obj, ...)" Margin="0,4,0,0"/>
+
+                        <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,20,0,16"/>
+
                         <CheckBox x:Name="RunFirstBackupCheck" Content="Run the first backup as soon as I finish" IsChecked="True" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+
+                        <Rectangle Height="1" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,20,0,16"/>
+
+                        <CheckBox x:Name="TelemetryCheck" Content="Share anonymous usage statistics" IsChecked="True" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            Helps improve ReStore: which features are used, whether they succeed and how long they take.
+                            ReStore never collects file names, paths or file contents. You can change this any time in Settings.
+                            <Hyperlink x:Name="TelemetryLearnMoreLink" Click="TelemetryLearnMoreLink_Click">What is collected</Hyperlink>
+                        </TextBlock>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -136,7 +153,10 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" x:Name="SkipBtn" Content="Skip setup" Padding="12,6" Click="SkipBtn_Click"/>
+                    <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal">
+                        <Button x:Name="SkipBtn" Content="Skip setup" Padding="12,6" Click="SkipBtn_Click"/>
+                        <Button x:Name="ConnectExistingBtn" Content="Connect to existing backups..." Padding="12,6" Margin="8,0,0,0" Click="ConnectExistingBtn_Click"/>
+                    </StackPanel>
                     <Button Grid.Column="2" x:Name="BackBtn" Content="Back" Padding="16,6" Margin="0,0,8,0" IsEnabled="False" Click="BackBtn_Click"/>
                     <Button Grid.Column="3" x:Name="NextBtn" Content="Next" Padding="16,6" Click="NextBtn_Click"/>
                 </Grid>

@@ -1,3 +1,4 @@
+using ReStore.Core.src.backup;
 using ReStore.Core.src.utils;
 using ReStore.Core.src.storage;
 using System.Security.Cryptography;
@@ -30,8 +31,12 @@ public sealed class RestoreOptions
     public static RestoreOptions Overwrite { get; } = new() { ConflictPolicy = RestoreConflictPolicy.Overwrite };
 }
 
-public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwordProvider = null, SystemState? systemState = null)
+public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwordProvider = null, SystemState? systemState = null, RepositoryCoordinator? coordinator = null, string? tempRoot = null)
 {
+    // Restores and previews only read the repository; they share it with each other and with backups,
+    // and exclude only chunk deletion (retention / snapshot delete).
+    private readonly RepositoryCoordinator _coordinator = coordinator ?? RepositoryCoordinator.Instance;
+
     private const long MaxChunkCacheBytes = 64L * 1024 * 1024;
 
     private readonly ILogger _logger = logger;
@@ -39,6 +44,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
     private readonly IPasswordProvider? _passwordProvider = passwordProvider;
     private readonly SystemState? _systemState = systemState;
     private readonly EncryptionService _encryptionService = new(logger);
+    private readonly string _tempRoot = tempRoot ?? Path.GetTempPath();
 
     /// <summary>
     /// Restores every file, replacing any that already exist. Kept explicit rather than
@@ -71,7 +77,14 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             throw new ArgumentException("Target directory cannot be null or empty", nameof(targetDirectory));
         }
 
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"restore_snapshot_{Guid.NewGuid():N}");
+        // Any password prompt happens before the lease, not while it blocks other operations.
+        await PasswordPrefetch.WarmForSnapshotAsync(_logger, _storage, _passwordProvider, backupPath, _tempRoot, cancellationToken).ConfigureAwait(false);
+        var readLease = await _coordinator.AcquireReadAsync($"Restoring {backupPath}", cancellationToken).ConfigureAwait(false);
+        await using var readLeaseScope = readLease.ConfigureAwait(false);
+        using var activity = ActivityRecorder.Begin(_systemState, ActivityType.Restore, backupPath, cancellationToken);
+
+        var runStartedUtc = DateTime.UtcNow;
+        var tempDirectory = Path.Combine(_tempRoot, $"restore_snapshot_{Guid.NewGuid():N}");
         SnapshotManifest? loadedManifest = null;
         string resolvedManifestPath = backupPath;
         var restoreTelemetry = new RestoreTelemetry();
@@ -83,7 +96,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
 
             Directory.CreateDirectory(tempDirectory);
 
-            var loaded = await LoadManifestAsync(backupPath, tempDirectory, cancellationToken);
+            var loaded = await LoadManifestAsync(backupPath, tempDirectory, cancellationToken).ConfigureAwait(false);
             var manifest = loaded.Manifest;
             loadedManifest = manifest;
             resolvedManifestPath = loaded.ManifestPath;
@@ -122,15 +135,19 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                     LogLevel.Info);
 
                 LogRestoreTelemetry(resolvedManifestPath, loadedManifest, restoreTelemetry, wasSuccessful: true);
+                activity.Succeeded($"Dry run: {preview.FileCount} file(s) would be restored");
                 return outcome;
             }
 
-            byte[]? encryptionMasterKey = await ResolveEncryptionMasterKeyAsync(manifest);
+            byte[]? encryptionMasterKey = await ResolveEncryptionMasterKeyAsync(manifest).ConfigureAwait(false);
+            var hashScheme = manifest.GetHashScheme();
 
             // Only now that the restore will actually write: a dry run must leave the
             // filesystem exactly as it found it.
             Directory.CreateDirectory(targetDirectory);
+            SweepStalePartialFiles(targetDirectory, runStartedUtc);
 
+            var verifiedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var chunkCache = new ChunkByteCache(MaxChunkCacheBytes);
             var chunkStorageNamespace = SnapshotStoragePaths.NormalizeChunkStorageNamespace(manifest.ChunkStorageNamespace);
             var conflictsByRelativePath = preview.Entries.ToDictionary(
@@ -138,11 +155,26 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                 entry => entry.Conflict,
                 StringComparer.OrdinalIgnoreCase);
 
+            bool IsSkippedByConflict(SnapshotFileManifestEntry file) =>
+                options.ConflictPolicy == RestoreConflictPolicy.Skip
+                && conflictsByRelativePath.GetValueOrDefault(file.RelativePath, RestoreConflictKind.None) != RestoreConflictKind.None;
+
+            // Chunks are downloaded up to MaxConcurrency ahead of the file being written, in exactly the order the
+            // loop below consumes them; decryption and verification stay in that order too (see ChunkPrefetcher).
+            var prefetcher = new ChunkPrefetcher(
+                selectedFiles.Where(file => !IsSkippedByConflict(file)).SelectMany(file => file.Chunks),
+                _storage.MaxConcurrency,
+                (chunk, token) => DownloadStoredChunkAsync(chunk, chunkStorageNamespace, tempDirectory, restoreTelemetry, token),
+                chunkId => chunkCache.TryGetValue(chunkId, out var cached) ? cached : null,
+                () => restoreTelemetry.ChunkCacheHits++,
+                cancellationToken);
+            await using var prefetcherScope = prefetcher.ConfigureAwait(false);
+
             foreach (var file in selectedFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var outputPath = ResolveSafeOutputPath(targetDirectory, file.RelativePath);
+                var outputPath = ResolveSafeOutputPath(targetDirectory, file.RelativePath, verifiedDirectories);
                 var conflict = conflictsByRelativePath.GetValueOrDefault(file.RelativePath, RestoreConflictKind.None);
 
                 if (conflict != RestoreConflictKind.None && options.ConflictPolicy == RestoreConflictPolicy.Skip)
@@ -189,47 +221,49 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                 // Written to a sibling temp file and moved into place on success, so a
                 // cancellation or failure mid-file cannot leave a truncated file where the
                 // user's real one was.
-                var partialPath = outputPath + ".restorepartial";
+                var partialPath = outputPath + FileSelectionService.RestorePartialExtension;
 
                 try
                 {
-                    await using (var outputStream = new FileStream(partialPath, FileMode.Create, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true))
+                    var outputStream = new FileStream(partialPath, FileMode.Create, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true);
+                    await using (outputStream.ConfigureAwait(false))
                     {
                         foreach (var chunk in file.Chunks)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
-                            var chunkBytes = await LoadChunkBytesAsync(
-                                chunk,
-                                chunkStorageNamespace,
-                                manifest.EncryptionEnabled,
-                                encryptionMasterKey,
-                                tempDirectory,
-                                chunkCache,
-                                restoreTelemetry,
-                                cancellationToken);
+                            var fetched = await prefetcher.NextAsync(chunk).ConfigureAwait(false);
+                            var chunkBytes = fetched.IsPlaintext
+                                ? fetched.Bytes
+                                : DecodeChunk(chunk, fetched.Bytes, manifest.EncryptionEnabled, encryptionMasterKey, hashScheme, chunkCache, restoreTelemetry);
 
                             restoreTelemetry.ChunkReferencesProcessed++;
 
-                            await outputStream.WriteAsync(chunkBytes, cancellationToken);
+                            await outputStream.WriteAsync(chunkBytes, cancellationToken).ConfigureAwait(false);
                         }
 
-                        await outputStream.FlushAsync(cancellationToken);
+                        await outputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                     }
 
-                    var fileHash = FileHasher.ComputeHash(partialPath);
+                    var fileHash = hashScheme.IsKeyed ? hashScheme.HashFile(partialPath) : FileHasher.ComputeHash(partialPath);
                     if (!fileHash.Equals(file.ContentHash, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidOperationException(
                             $"Restored file hash mismatch for '{file.RelativePath}'. Expected '{file.ContentHash}', actual '{fileHash}'.");
                     }
 
+                    ClearReadOnly(outputPath);
                     File.Move(partialPath, outputPath, overwrite: true);
                 }
                 catch
                 {
                     TryDeleteTemporaryFile(partialPath);
                     throw;
+                }
+
+                if (manifest.Version >= SnapshotManifest.VersionV3)
+                {
+                    ApplyFileMetadata(outputPath, file);
                 }
 
                 outcome.FilesRestored++;
@@ -245,6 +279,8 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                     RestorePhase.Restoring));
             }
 
+            RestoreEmptyDirectories(manifest, targetDirectory, options.RelativePaths, outcome);
+
             progress?.Report(new RestoreProgress(
                 string.Empty,
                 restoreTelemetry.FileCountCompleted,
@@ -255,6 +291,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
 
             _logger.Log("Restore completed successfully.", LogLevel.Info);
             LogRestoreTelemetry(resolvedManifestPath, loadedManifest, restoreTelemetry, wasSuccessful: true);
+            activity.Succeeded($"{outcome.FilesRestored} file(s) restored to {targetDirectory}");
 
             return outcome;
         }
@@ -272,6 +309,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             LogRestoreTelemetry(resolvedManifestPath, loadedManifest, restoreTelemetry, wasSuccessful: false);
 
             _logger.Log($"Restore failed: required snapshot artifact was not found. {ex.Message}", LogLevel.Error);
+            activity.Failed(ex.Message);
             throw;
         }
         catch (CryptographicException ex)
@@ -283,6 +321,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             LogRestoreTelemetry(resolvedManifestPath, loadedManifest, restoreTelemetry, wasSuccessful: false);
 
             _logger.Log($"Restore failed: snapshot decryption integrity check failed. {ex.Message}", LogLevel.Error);
+            activity.Failed(ex.Message);
             throw;
         }
         catch (Exception ex)
@@ -292,10 +331,12 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             LogRestoreTelemetry(resolvedManifestPath, loadedManifest, restoreTelemetry, wasSuccessful: false);
 
             _logger.Log($"Restore failed: {ex.Message}", LogLevel.Error);
+            activity.Failed(ex.Message);
             throw;
         }
         finally
         {
+            loadedManifest?.Keys?.Dispose();
             if (Directory.Exists(tempDirectory))
             {
                 try
@@ -330,22 +371,30 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             throw new ArgumentException("Target directory cannot be null or empty", nameof(targetDirectory));
         }
 
+        // Any password prompt happens before the lease, not while it blocks other operations.
+        await PasswordPrefetch.WarmForSnapshotAsync(_logger, _storage, _passwordProvider, backupPath, _tempRoot, cancellationToken).ConfigureAwait(false);
+        var readLease = await _coordinator.AcquireReadAsync($"Previewing {backupPath}", cancellationToken).ConfigureAwait(false);
+        await using var readLeaseScope = readLease.ConfigureAwait(false);
+
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"restore_preview_{Guid.NewGuid():N}");
 
         try
         {
             Directory.CreateDirectory(tempDirectory);
 
-            var loaded = await LoadManifestAsync(backupPath, tempDirectory, cancellationToken);
+            var loaded = await LoadManifestAsync(backupPath, tempDirectory, cancellationToken).ConfigureAwait(false);
             var selectedFiles = SelectFiles(loaded.Manifest, relativePaths);
 
-            return BuildPreview(
+            // Conflict detection hashes every existing target file: keep that off the caller's (UI) thread.
+            var preview = await Task.Run(() => BuildPreview(
                 backupPath,
                 loaded.ManifestPath,
                 loaded.Manifest,
                 targetDirectory,
                 selectedFiles,
-                loaded.Manifest.Files.Count - selectedFiles.Count);
+                loaded.Manifest.Files.Count - selectedFiles.Count), cancellationToken).ConfigureAwait(false);
+            loaded.Manifest.Keys?.Dispose();
+            return preview;
         }
         finally
         {
@@ -374,7 +423,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         var manifestPath = backupPath;
         if (backupPath.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase))
         {
-            var headReference = await ResolveManifestPathFromHeadAsync(backupPath, tempDirectory, cancellationToken);
+            var headReference = await ResolveManifestPathFromHeadAsync(backupPath, tempDirectory, cancellationToken).ConfigureAwait(false);
             manifestPath = headReference.ManifestPath;
             expectedRootHashFromHead = headReference.RootHash;
         }
@@ -386,13 +435,15 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         }
 
         _logger.Log($"Downloading snapshot manifest: {manifestPath}", LogLevel.Debug);
-        await _storage.DownloadAsync(manifestPath, tempManifestPath);
+        await _storage.DownloadAsync(manifestPath, tempManifestPath).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var manifestJson = await File.ReadAllTextAsync(tempManifestPath, cancellationToken);
-        var manifest = JsonSerializer.Deserialize<SnapshotManifest>(manifestJson)
-            ?? throw new InvalidOperationException($"Failed to deserialize snapshot manifest: {manifestPath}");
+        // An encrypted v3 manifest unlocks the repository key file here (wrong password stops before any chunk is read);
+        // the unlocked keys stay on the manifest for chunk and file hash checks.
+        // The keys stay with the manifest (and are zeroed by the caller when the operation ends), so the reader must not zero them.
+        using var reader = new RepositoryManifestReader(_logger, _storage, _passwordProvider, zeroKeysOnDispose: false);
+        var manifest = await reader.ReadFileAsync(tempManifestPath, manifestPath, cancellationToken).ConfigureAwait(false);
 
         if (!SnapshotManifestHasher.IsValid(manifest))
         {
@@ -416,12 +467,18 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             return null;
         }
 
+        if (manifest.Keys != null)
+        {
+            // Encrypted v3: the key file was unlocked when the manifest was read.
+            return manifest.Keys.ChunkKey;
+        }
+
         if (_passwordProvider == null)
         {
             throw new InvalidOperationException("Encrypted snapshot detected but no password provider available");
         }
 
-        var password = await _passwordProvider.GetPasswordAsync();
+        var password = await _passwordProvider.GetPasswordAsync(PasswordPurpose.Decrypt).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(password))
         {
             throw new InvalidOperationException("Password required to decrypt snapshot");
@@ -437,6 +494,112 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             password,
             saltBytes,
             manifest.KeyDerivationIterations);
+    }
+
+    /// <summary>
+    /// Sets the times and attributes a v3 manifest recorded. Times first, attributes (read-only in particular) last, so a
+    /// read-only file can still have its times set. Best effort: a file whose content restored correctly is not failed
+    /// because the filesystem refused a timestamp.
+    /// </summary>
+    /// <summary>Windows refuses to replace a read-only file; clear the flag on the existing destination (attributes are re-applied last).</summary>
+    internal static void ClearReadOnly(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                var attributes = File.GetAttributes(path);
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                {
+                    File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The move reports the real failure.
+        }
+    }
+
+    private void ApplyFileMetadata(string path, SnapshotFileManifestEntry file)
+    {
+        try
+        {
+            if (file.CreatedUtc is { } created && created.Year > 1601)
+            {
+                File.SetCreationTimeUtc(path, DateTime.SpecifyKind(created, DateTimeKind.Utc));
+            }
+
+            if (file.LastModifiedUtc.Year > 1601)
+            {
+                File.SetLastWriteTimeUtc(path, DateTime.SpecifyKind(file.LastModifiedUtc, DateTimeKind.Utc));
+            }
+
+            if (file.Attributes is { } attributes)
+            {
+                File.SetAttributes(path, attributes == 0 ? FileAttributes.Normal : (FileAttributes)attributes);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _logger.Log($"Restored '{path}' but could not set its timestamps/attributes: {ex.Message}", LogLevel.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Recreates the empty directories a v3 manifest recorded. A selective restore only creates those it named. An
+    /// existing directory is left untouched (its times and attributes are the user's).
+    /// </summary>
+    private void RestoreEmptyDirectories(
+        SnapshotManifest manifest,
+        string targetDirectory,
+        IReadOnlySet<string>? selectedRelativePaths,
+        RestoreOutcome outcome)
+    {
+        if (manifest.Directories is not { Count: > 0 } directories)
+        {
+            return;
+        }
+
+        HashSet<string>? selection = selectedRelativePaths?
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeManifestRelativePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var verifiedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var directory in directories.OrderBy(d => d.RelativePath, StringComparer.Ordinal))
+        {
+            if (selection != null && !selection.Contains(NormalizeManifestRelativePath(directory.RelativePath)))
+            {
+                continue;
+            }
+
+            var outputPath = ResolveSafeOutputPath(targetDirectory, directory.RelativePath, verifiedDirectories);
+            if (Directory.Exists(outputPath))
+            {
+                continue;
+            }
+
+            Directory.CreateDirectory(outputPath);
+            outcome.DirectoriesRestored++;
+
+            try
+            {
+                if (directory.LastWriteUtc.Year > 1601)
+                {
+                    Directory.SetLastWriteTimeUtc(outputPath, DateTime.SpecifyKind(directory.LastWriteUtc, DateTimeKind.Utc));
+                }
+
+                if (directory.Attributes != 0)
+                {
+                    File.SetAttributes(outputPath, (FileAttributes)directory.Attributes);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                _logger.Log($"Created directory '{outputPath}' but could not set its time/attributes: {ex.Message}", LogLevel.Warning);
+            }
+        }
     }
 
     private static List<SnapshotFileManifestEntry> SelectFiles(
@@ -475,12 +638,13 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         int filesFilteredOut)
     {
         var entries = new List<RestorePreviewEntry>(selectedFiles.Count);
+        var verifiedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in selectedFiles)
         {
             // Rejects traversal before anything is reported, so a hostile manifest cannot
             // have its escaping paths shown as if they were legitimate targets.
-            var targetPath = ResolveSafeOutputPath(targetDirectory, file.RelativePath);
+            var targetPath = ResolveSafeOutputPath(targetDirectory, file.RelativePath, verifiedDirectories);
 
             var conflict = RestoreConflictKind.None;
             long? existingSize = null;
@@ -492,7 +656,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                 existingSize = existing.Length;
                 existingLastModified = existing.LastWriteTimeUtc;
 
-                conflict = IsSameContent(existing, file)
+                conflict = IsSameContent(existing, file, manifest.GetHashScheme())
                     ? RestoreConflictKind.Identical
                     : RestoreConflictKind.Differs;
             }
@@ -523,7 +687,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         };
     }
 
-    private static bool IsSameContent(FileInfo existing, SnapshotFileManifestEntry file)
+    private static bool IsSameContent(FileInfo existing, SnapshotFileManifestEntry file, ChunkHashScheme scheme)
     {
         if (existing.Length != file.SizeBytes)
         {
@@ -537,7 +701,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
 
         try
         {
-            return FileHasher.ComputeHash(existing.FullName)
+            return (scheme.IsKeyed ? scheme.HashFile(existing.FullName) : FileHasher.ComputeHash(existing.FullName))
                 .Equals(file.ContentHash, StringComparison.OrdinalIgnoreCase);
         }
         catch (IOException)
@@ -575,9 +739,9 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         CancellationToken cancellationToken = default)
     {
         var tempHeadPath = Path.Combine(tempDirectory, "snapshot.head");
-        await _storage.DownloadAsync(headPath, tempHeadPath);
+        await _storage.DownloadAsync(headPath, tempHeadPath).ConfigureAwait(false);
 
-        var lines = await File.ReadAllLinesAsync(tempHeadPath, cancellationToken);
+        var lines = await File.ReadAllLinesAsync(tempHeadPath, cancellationToken).ConfigureAwait(false);
         var nonEmptyLines = lines
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .Select(line => line.Trim())
@@ -593,33 +757,81 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         return new SnapshotHeadReference(manifestPath, string.IsNullOrWhiteSpace(rootHash) ? null : rootHash);
     }
 
-    private async Task<byte[]> LoadChunkBytesAsync(
+    /// <summary>
+    /// Downloads one chunk object and returns its stored (possibly encrypted) bytes. Safe to run concurrently with other
+    /// downloads: each uses its own temp file, deleted as soon as it has been read so %TEMP% holds roughly one chunk per
+    /// in-flight download rather than the whole unique data set.
+    /// </summary>
+    private async Task<byte[]> DownloadStoredChunkAsync(
         SnapshotChunkManifestEntry chunk,
         string? chunkStorageNamespace,
+        string tempDirectory,
+        RestoreTelemetry telemetry,
+        CancellationToken cancellationToken)
+    {
+        var normalizedChunkId = SnapshotStoragePaths.NormalizeChunkId(chunk.ChunkId);
+        var chunkRemotePath = SnapshotStoragePaths.GetChunkPath(normalizedChunkId, chunkStorageNamespace);
+        var chunkTempPath = Path.Combine(tempDirectory, $"{normalizedChunkId}.{Guid.NewGuid():N}.chunk");
+
+        try
+        {
+            await _storage.DownloadAsync(chunkRemotePath, chunkTempPath, cancellationToken).ConfigureAwait(false);
+            Interlocked.Increment(ref telemetry.ChunkDownloads);
+            return await File.ReadAllBytesAsync(chunkTempPath, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDeleteTemporaryFile(chunkTempPath);
+        }
+    }
+
+    /// <summary>
+    /// Decrypts (when encrypted) and verifies one downloaded chunk, then caches it. Always called by the single consumer
+    /// in manifest order, never from a download task. That keeps the wrong-password rule well defined under parallel
+    /// downloads: the first authentication failure before any chunk has decrypted is reported as a wrong password, a
+    /// later one as a corrupted chunk, exactly as in a sequential restore.
+    /// </summary>
+    private static byte[] DecodeChunk(
+        SnapshotChunkManifestEntry chunk,
+        byte[] storedBytes,
         bool encrypted,
         byte[]? encryptionMasterKey,
-        string tempDirectory,
+        ChunkHashScheme hashScheme,
         ChunkByteCache chunkCache,
-        RestoreTelemetry telemetry,
-        CancellationToken cancellationToken = default)
+        RestoreTelemetry telemetry)
     {
         var normalizedChunkId = SnapshotStoragePaths.NormalizeChunkId(chunk.ChunkId);
 
-        if (chunkCache.TryGetValue(normalizedChunkId, out var cachedBytes))
+        byte[] plaintextBytes;
+        try
         {
-            telemetry.ChunkCacheHits++;
-            return cachedBytes;
+            plaintextBytes = encrypted
+                ? EncryptionService.DecryptChunkDeterministic(storedBytes, encryptionMasterKey!, normalizedChunkId, hashScheme.IsKeyed ? SnapshotChunkCodecs.Normalize(chunk.Codec) : null)
+                : storedBytes;
+            telemetry.ChunksDecrypted++;
+        }
+        catch (CryptographicException ex) when (telemetry.ChunksDecrypted == 0)
+        {
+            // Nothing has decrypted yet, so the password is the likely culprit: stop with one
+            // clear error (the caller clears the cached password).
+            throw new CryptographicException(
+                "Wrong password (or corrupted data): chunk authentication failed. Restore stopped.", ex);
+        }
+        catch (CryptographicException ex)
+        {
+            // Earlier chunks decrypted, so the password is right and this chunk is damaged.
+            throw new InvalidOperationException($"Corrupted chunk '{normalizedChunkId}': authentication failed. {ex.Message}", ex);
         }
 
-        var chunkRemotePath = SnapshotStoragePaths.GetChunkPath(normalizedChunkId, chunkStorageNamespace);
-        var chunkTempPath = Path.Combine(tempDirectory, $"{normalizedChunkId}.chunk");
-        await _storage.DownloadAsync(chunkRemotePath, chunkTempPath);
-        telemetry.ChunkDownloads++;
-
-        var storedBytes = await File.ReadAllBytesAsync(chunkTempPath, cancellationToken);
-        var plaintextBytes = encrypted
-            ? EncryptionService.DecryptChunkDeterministic(storedBytes, encryptionMasterKey!, normalizedChunkId)
-            : storedBytes;
+        // Decompression runs after decryption, so a wrong password is still reported by the authentication step above.
+        try
+        {
+            plaintextBytes = ChunkCompression.Decode(chunk.Codec, plaintextBytes, chunk.PlainSizeBytes);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+        {
+            throw new InvalidOperationException($"Corrupted chunk '{normalizedChunkId}': {ex.Message}", ex);
+        }
 
         if (plaintextBytes.Length != chunk.PlainSizeBytes)
         {
@@ -627,7 +839,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                 $"Chunk size mismatch for chunk '{normalizedChunkId}'. Expected {chunk.PlainSizeBytes}, actual {plaintextBytes.Length}.");
         }
 
-        var actualChunkHash = Convert.ToHexStringLower(SHA256.HashData(plaintextBytes));
+        var actualChunkHash = hashScheme.ChunkId(plaintextBytes);
         if (!actualChunkHash.Equals(chunk.ContentHash, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
@@ -636,6 +848,185 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
 
         chunkCache.Set(normalizedChunkId, plaintextBytes);
         return plaintextBytes;
+    }
+
+    /// <summary>
+    /// Keeps up to <c>window</c> chunk downloads running ahead of the consumer and hands results back strictly in the
+    /// order the chunks were supplied. Scheduling and cache access happen only on the consumer's thread (inside
+    /// <see cref="NextAsync"/>), so the cache needs no lock. A chunk that is already cached, or already being downloaded
+    /// for an earlier slot, is not downloaded again. Disposing cancels and awaits whatever is still running.
+    /// </summary>
+    private sealed class ChunkPrefetcher : IAsyncDisposable
+    {
+        private readonly IEnumerator<SnapshotChunkManifestEntry> _source;
+        private readonly int _window;
+        private readonly Func<SnapshotChunkManifestEntry, CancellationToken, Task<byte[]>> _download;
+        private readonly Func<string, byte[]?> _tryCache;
+        private readonly Action _onCacheHit;
+        private readonly CancellationTokenSource _cts;
+        private readonly Queue<Slot> _pending = new();
+        private readonly Dictionary<string, Task<byte[]>> _inFlight = new(StringComparer.OrdinalIgnoreCase);
+        private bool _exhausted;
+
+        public ChunkPrefetcher(
+            IEnumerable<SnapshotChunkManifestEntry> chunks,
+            int maxConcurrency,
+            Func<SnapshotChunkManifestEntry, CancellationToken, Task<byte[]>> download,
+            Func<string, byte[]?> tryCache,
+            Action onCacheHit,
+            CancellationToken cancellationToken)
+        {
+            _source = chunks.GetEnumerator();
+            _window = Math.Max(1, maxConcurrency);
+            _download = download;
+            _tryCache = tryCache;
+            _onCacheHit = onCacheHit;
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+
+        /// <summary>Returns the next chunk's bytes (plaintext when it came from the cache, otherwise stored bytes).</summary>
+        public async Task<FetchedChunk> NextAsync(SnapshotChunkManifestEntry expected)
+        {
+            Fill(_window);
+
+            if (_pending.Count == 0)
+            {
+                throw new InvalidOperationException("Chunk prefetcher ran out of chunks before the restore finished.");
+            }
+
+            var slot = _pending.Dequeue();
+            if (!ReferenceEquals(slot.Chunk, expected))
+            {
+                throw new InvalidOperationException("Chunk prefetcher is out of step with the restore loop.");
+            }
+
+            // The chunk handed to the caller counts against the window, so with a window of one nothing is
+            // started ahead and the restore stays strictly sequential.
+            if (slot.CachedPlaintext != null)
+            {
+                Fill(_window - 1);
+                return new FetchedChunk(slot.CachedPlaintext, IsPlaintext: true);
+            }
+
+            byte[] stored;
+            try
+            {
+                stored = await slot.Download!.ConfigureAwait(false);
+            }
+            finally
+            {
+                if (_inFlight.TryGetValue(slot.ChunkId, out var current) && ReferenceEquals(current, slot.Download))
+                {
+                    _inFlight.Remove(slot.ChunkId);
+                }
+            }
+
+            Fill(_window - 1);
+            return new FetchedChunk(stored, IsPlaintext: false);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cts.Cancel();
+            _source.Dispose();
+
+            foreach (var slot in _pending)
+            {
+                if (slot.Download != null)
+                {
+                    try { await slot.Download.ConfigureAwait(false); } catch { /* the restore already failed or was cancelled */ }
+                }
+            }
+
+            _pending.Clear();
+            _cts.Dispose();
+        }
+
+        private void Fill(int limit)
+        {
+            while (!_exhausted && _pending.Count < limit)
+            {
+                if (!_source.MoveNext())
+                {
+                    _exhausted = true;
+                    return;
+                }
+
+                var chunk = _source.Current;
+                var chunkId = SnapshotStoragePaths.NormalizeChunkId(chunk.ChunkId);
+
+                var cached = _tryCache(chunkId);
+                if (cached != null)
+                {
+                    _onCacheHit();
+                    _pending.Enqueue(new Slot(chunk, chunkId, cached, null));
+                    continue;
+                }
+
+                if (_inFlight.TryGetValue(chunkId, out var shared))
+                {
+                    _onCacheHit();
+                    _pending.Enqueue(new Slot(chunk, chunkId, null, shared));
+                    continue;
+                }
+
+                var token = _cts.Token;
+                var download = Task.Run(() => _download(chunk, token), CancellationToken.None);
+                _inFlight[chunkId] = download;
+                _pending.Enqueue(new Slot(chunk, chunkId, null, download));
+            }
+        }
+
+        private sealed record Slot(SnapshotChunkManifestEntry Chunk, string ChunkId, byte[]? CachedPlaintext, Task<byte[]>? Download);
+    }
+
+    private readonly record struct FetchedChunk(byte[] Bytes, bool IsPlaintext);
+
+    /// <summary>
+    /// Deletes <c>*.restorepartial</c> files left in the target tree by a restore that crashed or could not clean up.
+    /// Only the suffix Restore itself appends, and only files last written before this run started, so a partial
+    /// being written by another restore is not touched (it is also open exclusively, so deleting it would fail).
+    /// Junctions and symlinks are not followed.
+    /// </summary>
+    private void SweepStalePartialFiles(string targetDirectory, DateTime runStartedUtc)
+    {
+        try
+        {
+            var options = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint
+            };
+
+            var removed = 0;
+            foreach (var path in Directory.EnumerateFiles(targetDirectory, "*" + FileSelectionService.RestorePartialExtension, options))
+            {
+                try
+                {
+                    if (!FileSelectionService.IsRestorePartialFile(path) || File.GetLastWriteTimeUtc(path) >= runStartedUtc)
+                    {
+                        continue;
+                    }
+
+                    File.Delete(path);
+                    removed++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.Log($"Could not remove leftover '{path}': {ex.Message}", LogLevel.Warning);
+                }
+            }
+
+            if (removed > 0)
+            {
+                _logger.Log($"Removed {removed} leftover {FileSelectionService.RestorePartialExtension} file(s) from {targetDirectory}.", LogLevel.Info);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Log($"Could not sweep leftover {FileSelectionService.RestorePartialExtension} files in {targetDirectory}: {ex.Message}", LogLevel.Warning);
+        }
     }
 
     private static void TryDeleteTemporaryFile(string path)
@@ -718,7 +1109,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         public long SizeBytes { get; } = bytes.LongLength;
     }
 
-    private static string ResolveSafeOutputPath(string targetDirectory, string relativePath)
+    private static string ResolveSafeOutputPath(string targetDirectory, string relativePath, HashSet<string>? verifiedDirectories = null)
     {
         if (string.IsNullOrWhiteSpace(relativePath))
         {
@@ -744,7 +1135,39 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
                 $"Snapshot manifest path '{relativePath}' resolves outside the restore target directory.");
         }
 
+        RejectLinkedDirectories(normalizedTargetDirectory, combinedPath, relativePath, verifiedDirectories);
         return combinedPath;
+    }
+
+    /// <summary>
+    /// A symbolic link or junction planted inside the restore target would carry a write out of it, past the textual containment
+    /// check above. Directories between the target and the output path must not be links (the target folder itself may be one).
+    /// <paramref name="verifiedDirectories"/> remembers directories already checked so a large restore does not re-check each one per file.
+    /// </summary>
+    private static void RejectLinkedDirectories(string targetDirectory, string outputPath, string relativePath, HashSet<string>? verifiedDirectories)
+    {
+        var root = Path.TrimEndingDirectorySeparator(targetDirectory);
+        var current = Path.GetDirectoryName(outputPath);
+        var pending = new List<string>();
+        while (current != null
+            && !string.Equals(Path.TrimEndingDirectorySeparator(current), root, StringComparison.OrdinalIgnoreCase)
+            && verifiedDirectories?.Contains(current) != true)
+        {
+            var directory = new DirectoryInfo(current);
+            if (directory.Exists && directory.LinkTarget != null)
+            {
+                throw new InvalidOperationException(
+                    $"Snapshot manifest path '{relativePath}' passes through a link ('{current}') inside the restore target directory; refusing to write through it.");
+            }
+
+            pending.Add(current);
+            current = Path.GetDirectoryName(current);
+        }
+
+        foreach (var directory in pending)
+        {
+            verifiedDirectories?.Add(directory);
+        }
     }
 
     private static string ClassifyRestoreFailure(Exception exception)
@@ -772,6 +1195,7 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
             }
 
             if (invalidOperationException.Message.Contains("Chunk hash mismatch", StringComparison.OrdinalIgnoreCase)
+                || invalidOperationException.Message.Contains("Corrupted chunk", StringComparison.OrdinalIgnoreCase)
                 || invalidOperationException.Message.Contains("Chunk size mismatch", StringComparison.OrdinalIgnoreCase))
             {
                 return "chunk-validation-failure";
@@ -826,8 +1250,12 @@ public class Restore(ILogger logger, IStorage storage, IPasswordProvider? passwo
         public int FileCountCompleted { get; set; }
         public int ChunkReferencesExpected { get; set; }
         public int ChunkReferencesProcessed { get; set; }
-        public int ChunkDownloads { get; set; }
+
+        /// <summary>Updated with Interlocked from concurrent download tasks.</summary>
+        public int ChunkDownloads;
+
         public int ChunkCacheHits { get; set; }
+        public int ChunksDecrypted { get; set; }
         public string? FailureCategory { get; set; }
         public string? FailureMessage { get; set; }
     }

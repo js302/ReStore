@@ -84,7 +84,7 @@ public class SnapshotIntegrityVerifierTests : IDisposable
             snapshot.StorageRoot,
             snapshot.ManifestPath.Replace('/', Path.DirectorySeparatorChar));
 
-        await File.WriteAllTextAsync(manifestLocalPath, JsonSerializer.Serialize(manifest));
+        await ManifestIo.WriteAsync(manifestLocalPath, manifest);
 
         var verifier = new SnapshotIntegrityVerifier(_logger, snapshot.Storage);
         var result = await verifier.VerifyAsync(snapshot.ManifestPath);
@@ -128,7 +128,7 @@ public class SnapshotIntegrityVerifierTests : IDisposable
             snapshot.StorageRoot,
             snapshot.ManifestPath.Replace('/', Path.DirectorySeparatorChar));
 
-        await File.WriteAllTextAsync(manifestLocalPath, JsonSerializer.Serialize(manifest));
+        await ManifestIo.WriteAsync(manifestLocalPath, manifest);
 
         var verifier = new SnapshotIntegrityVerifier(_logger, snapshot.Storage);
         var result = await verifier.VerifyAsync(snapshot.ManifestPath);
@@ -150,7 +150,7 @@ public class SnapshotIntegrityVerifierTests : IDisposable
             snapshot.StorageRoot,
             snapshot.ManifestPath.Replace('/', Path.DirectorySeparatorChar));
 
-        await File.WriteAllTextAsync(manifestLocalPath, JsonSerializer.Serialize(manifest));
+        await ManifestIo.WriteAsync(manifestLocalPath, manifest);
 
         var verifier = new SnapshotIntegrityVerifier(_logger, snapshot.Storage, new StaticPasswordProvider("StrongPassword123!"));
         var result = await verifier.VerifyAsync(snapshot.ManifestPath);
@@ -195,24 +195,106 @@ public class SnapshotIntegrityVerifierTests : IDisposable
     public async Task VerifyAsync_ShouldLeaveNoTempDirectoryBehind()
     {
         var snapshot = await CreateSnapshotAsync(encrypted: false);
-        var verifier = new SnapshotIntegrityVerifier(_logger, snapshot.Storage);
+        var scratchRoot = Path.Combine(Path.GetTempPath(), "ReStoreTests", "verify_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scratchRoot);
+        try
+        {
+            var verifier = new SnapshotIntegrityVerifier(_logger, snapshot.Storage, tempRoot: scratchRoot);
 
-        await verifier.VerifyAsync(snapshot.ManifestPath);
+            await verifier.VerifyAsync(snapshot.ManifestPath);
 
-        Directory.GetDirectories(Path.GetTempPath(), "restore_verify_*")
-            .Should().BeEmpty("the verifier must clean up its scratch directory");
+            Directory.GetFileSystemEntries(scratchRoot)
+                .Should().BeEmpty("the verifier must clean up its scratch directory");
+        }
+        finally
+        {
+            Directory.Delete(scratchRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ShouldDownloadEachChunkExactlyOnce()
+    {
+        var snapshot = await CreateSnapshotAsync(encrypted: false, multiChunk: true);
+        var manifest = await LoadManifestAsync(snapshot.StorageRoot, snapshot.ManifestPath);
+        var uniqueChunks = manifest.Files.SelectMany(file => file.Chunks).Select(chunk => chunk.ChunkId).Distinct().Count();
+        uniqueChunks.Should().BeGreaterThan(2);
+
+        var counting = new CountingStorage(snapshot.Storage);
+        var result = await new SnapshotIntegrityVerifier(_logger, counting).VerifyAsync(snapshot.ManifestPath);
+
+        result.IsValid.Should().BeTrue();
+        counting.ChunkDownloads.Values.Should().OnlyContain(count => count == 1);
+        counting.ChunkDownloads.Should().HaveCount(uniqueChunks);
+        result.ChunksDownloaded.Should().Be(uniqueChunks);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ShouldReportOneErrorAndClearPassword_WhenPasswordIsWrong()
+    {
+        var snapshot = await CreateSnapshotAsync(encrypted: true, multiChunk: true);
+        var provider = new Mock<IPasswordProvider>();
+        provider.Setup(p => p.GetPasswordAsync()).ReturnsAsync("Definitely-Wrong-Password!");
+
+        var counting = new CountingStorage(snapshot.Storage);
+        var result = await new SnapshotIntegrityVerifier(_logger, counting, provider.Object).VerifyAsync(snapshot.ManifestPath);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle().Which.Should().Contain("Wrong password");
+        provider.Verify(p => p.ClearPassword(), Times.Once);
+        counting.ChunkDownloads.Values.Sum().Should().Be(1, "verification stops at the first authentication failure");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ShouldReportOnlyTheTamperedChunk_WhenPasswordIsRight()
+    {
+        var snapshot = await CreateSnapshotAsync(encrypted: true, multiChunk: true);
+        var manifest = await LoadManifestAsync(snapshot.StorageRoot, snapshot.ManifestPath);
+        var big = manifest.Files.Single(file => file.RelativePath.EndsWith("big.bin", StringComparison.OrdinalIgnoreCase));
+        big.Chunks.Count.Should().BeGreaterThan(2);
+        var victim = big.Chunks[^1].ChunkId;
+        var chunkFile = Path.Combine(
+            snapshot.StorageRoot,
+            SnapshotStoragePaths.GetChunkPath(victim, manifest.ChunkStorageNamespace).Replace('/', Path.DirectorySeparatorChar));
+        var bytes = await File.ReadAllBytesAsync(chunkFile);
+        bytes[^1] ^= 0xFF;
+        await File.WriteAllBytesAsync(chunkFile, bytes);
+
+        var provider = new Mock<IPasswordProvider>();
+        provider.Setup(p => p.GetPasswordAsync()).ReturnsAsync("StrongPassword123!");
+        var result = await new SnapshotIntegrityVerifier(_logger, snapshot.Storage, provider.Object).VerifyAsync(snapshot.ManifestPath);
+
+        result.InvalidChunks.Should().Be(1);
+        result.Errors.Should().Contain(e => e.Contains(victim) && e.Contains("Corrupted chunk"));
+        result.Errors.Should().NotContain(e => e.Contains("Wrong password"));
+        provider.Verify(p => p.ClearPassword(), Times.Never);
+    }
+
+    private sealed class CountingStorage(IStorage inner) : DelegatingStorage(inner)
+    {
+        public Dictionary<string, int> ChunkDownloads { get; } = [];
+
+        public override Task DownloadAsync(string remotePath, string localPath, CancellationToken ct = default)
+        {
+            if (remotePath.Contains("chunks/", StringComparison.OrdinalIgnoreCase))
+            {
+                ChunkDownloads[remotePath] = ChunkDownloads.GetValueOrDefault(remotePath) + 1;
+            }
+
+            return Inner.DownloadAsync(remotePath, localPath, ct);
+        }
+
+        public override void Dispose() => Inner.Dispose();
     }
 
     /// <summary>Counts chunk files staged in the verifier's temp dir after each download.</summary>
-    private sealed class TempDirectoryProbingStorage(IStorage inner) : IStorage
+    private sealed class TempDirectoryProbingStorage(IStorage inner) : DelegatingStorage(inner)
     {
-        private readonly IStorage _inner = inner;
-
         public int PeakChunkFileCount { get; private set; }
 
-        public async Task DownloadAsync(string remotePath, string localPath)
+        public override async Task DownloadAsync(string remotePath, string localPath, CancellationToken ct = default)
         {
-            await _inner.DownloadAsync(remotePath, localPath);
+            await Inner.DownloadAsync(remotePath, localPath, ct);
 
             var directory = Path.GetDirectoryName(localPath);
             if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
@@ -227,16 +309,10 @@ public class SnapshotIntegrityVerifierTests : IDisposable
             }
         }
 
-        public Task InitializeAsync(Dictionary<string, string> options) => _inner.InitializeAsync(options);
-        public Task UploadAsync(string localPath, string remotePath) => _inner.UploadAsync(localPath, remotePath);
-        public Task<bool> ExistsAsync(string remotePath) => _inner.ExistsAsync(remotePath);
-        public Task DeleteAsync(string remotePath) => _inner.DeleteAsync(remotePath);
-        public Task<string> GenerateShareLinkAsync(string remotePath, TimeSpan expiration) => _inner.GenerateShareLinkAsync(remotePath, expiration);
-        public bool SupportsSharing => _inner.SupportsSharing;
-        public void Dispose() => _inner.Dispose();
+        public override void Dispose() => Inner.Dispose();
     }
 
-    private async Task<SnapshotTestContext> CreateSnapshotAsync(bool encrypted)
+    private async Task<SnapshotTestContext> CreateSnapshotAsync(bool encrypted, bool multiChunk = false)
     {
         var sourceDirectory = Path.Combine(_testRoot, "source_" + Guid.NewGuid().ToString("N"));
         var storageDirectory = Path.Combine(_testRoot, "storage_" + Guid.NewGuid().ToString("N"));
@@ -246,6 +322,11 @@ public class SnapshotIntegrityVerifierTests : IDisposable
 
         await File.WriteAllTextAsync(Path.Combine(sourceDirectory, "alpha.txt"), "alpha-content");
         await File.WriteAllTextAsync(Path.Combine(sourceDirectory, "beta.txt"), "beta-content");
+        if (multiChunk)
+        {
+            // Random data never dedupes and is well over the 512 KB max chunk size.
+            await File.WriteAllBytesAsync(Path.Combine(sourceDirectory, "big.bin"), System.Security.Cryptography.RandomNumberGenerator.GetBytes(2 * 1024 * 1024));
+        }
 
         var storage = new LocalStorage(_logger);
         await storage.InitializeAsync(new Dictionary<string, string>
@@ -267,7 +348,7 @@ public class SnapshotIntegrityVerifierTests : IDisposable
         configMock.SetupGet(config => config.BackupType).Returns(BackupType.ChunkSnapshot);
         configMock.SetupGet(config => config.WatchDirectories).Returns([]);
         configMock.SetupGet(config => config.MaxFileSizeMB).Returns(100);
-        configMock.SetupGet(config => config.ChunkDiffing).Returns(new ChunkDiffingConfig());
+        configMock.SetupGet(config => config.ChunkDiffing).Returns(new ChunkDiffingConfig { ManifestVersion = 2 }); // legacy (v2) encrypted behaviour
         configMock.SetupGet(config => config.Encryption).Returns(new EncryptionConfig
         {
             Enabled = encrypted,
@@ -300,9 +381,7 @@ public class SnapshotIntegrityVerifierTests : IDisposable
     private static async Task<SnapshotManifest> LoadManifestAsync(string storageRoot, string manifestPath)
     {
         var localManifestPath = Path.Combine(storageRoot, manifestPath.Replace('/', Path.DirectorySeparatorChar));
-        var json = await File.ReadAllTextAsync(localManifestPath);
-        return JsonSerializer.Deserialize<SnapshotManifest>(json)
-            ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest from test storage");
+        return await SnapshotManifestSerializer.ReadFileAsync(localManifestPath);
     }
 
     private sealed class SnapshotTestContext

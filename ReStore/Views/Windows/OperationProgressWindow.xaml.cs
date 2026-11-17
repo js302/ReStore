@@ -14,12 +14,23 @@ namespace ReStore.Views.Windows
     {
         private const int MaxLogBufferChars = 256 * 1024;
         private const int KeepLogBufferChars = 128 * 1024;
+        private static readonly TimeSpan UiUpdateInterval = TimeSpan.FromMilliseconds(100);
 
         private readonly StringBuilder _logBuffer = new();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _pendingLog = new();
         private readonly CancellationTokenSource _cancellation = new();
         private readonly ILogger? _fileLogger;
 
+        // Operations run on a pool thread, so the progress sinks are created once, here on the UI thread
+        // (Progress<T> posts to the context it was constructed on), and rate-limited to ~10 Hz before posting.
+        private readonly ThrottledProgress<BackupProgress> _backupProgress;
+        private readonly ThrottledProgress<RestoreProgress> _restoreProgress;
+        private readonly ThrottledProgress<VerificationProgress> _verificationProgress;
+        private readonly ThrottledProgress<string> _statusProgress;
+        private readonly System.Windows.Threading.DispatcherTimer _flushTimer;
+
         private bool _isComplete;
+        private bool _finished;
 
         public OperationProgressWindow(string title, ILogger? fileLogger = null)
         {
@@ -30,7 +41,64 @@ namespace ReStore.Views.Windows
             Title = title;
             TitleText.Text = title;
             StatusText.Text = title;
+
+            _backupProgress = Throttle(new Progress<BackupProgress>(report =>
+            {
+                if (_finished)
+                {
+                    return;
+                }
+
+                PhaseText.Text = report.Phase.ToString();
+                DetailText.Text = string.IsNullOrWhiteSpace(report.CurrentFile) ? "Working..." : report.CurrentFile;
+                FileCountText.Text = $"{report.FilesDone} / {report.FilesTotal}";
+                BytesText.Text = ByteFormatter.Format(report.BytesDone);
+                ApplyFraction(report.FilesTotal > 0 || report.BytesTotal > 0, report.Fraction);
+            }));
+            _restoreProgress = Throttle(new Progress<RestoreProgress>(report =>
+            {
+                if (_finished)
+                {
+                    return;
+                }
+
+                PhaseText.Text = report.Phase.ToString();
+                DetailText.Text = string.IsNullOrWhiteSpace(report.CurrentFile) ? "Working..." : report.CurrentFile;
+                FileCountText.Text = $"{report.FilesDone} / {report.FilesTotal}";
+                BytesText.Text = ByteFormatter.Format(report.BytesDone);
+                ApplyFraction(report.FilesTotal > 0 || report.BytesTotal > 0, report.Fraction);
+            }));
+            _verificationProgress = Throttle(new Progress<VerificationProgress>(report =>
+            {
+                if (_finished)
+                {
+                    return;
+                }
+
+                PhaseText.Text = report.Phase;
+                DetailText.Text = string.IsNullOrWhiteSpace(report.CurrentItem) ? "Working..." : report.CurrentItem;
+                FileCountText.Text = $"{report.ItemsDone} / {report.ItemsTotal}";
+                ApplyFraction(report.ItemsTotal > 0, report.Fraction);
+            }));
+            _statusProgress = Throttle(new Progress<string>(message =>
+            {
+                if (_finished)
+                {
+                    return;
+                }
+
+                PhaseText.Text = "Working";
+                DetailText.Text = message;
+                ProgressBar.IsIndeterminate = true;
+            }));
+
+            // Delivers each throttle's trailing report and drains the batched log, both on the UI thread.
+            _flushTimer = new System.Windows.Threading.DispatcherTimer(
+                UiUpdateInterval, System.Windows.Threading.DispatcherPriority.Background, (_, __) => FlushUi(), Dispatcher);
+            _flushTimer.Start();
         }
+
+        private static ThrottledProgress<T> Throttle<T>(IProgress<T> inner) => new(inner.Report, UiUpdateInterval);
 
         /// <summary>True when the operation finished without throwing.</summary>
         public bool Succeeded { get; private set; }
@@ -59,47 +127,61 @@ namespace ReStore.Views.Windows
             return Succeeded;
         }
 
-        public IProgress<BackupProgress> BackupProgress => new Progress<BackupProgress>(report =>
-        {
-            PhaseText.Text = report.Phase.ToString();
-            DetailText.Text = string.IsNullOrWhiteSpace(report.CurrentFile) ? "Working..." : report.CurrentFile;
-            FileCountText.Text = $"{report.FilesDone} / {report.FilesTotal}";
-            BytesText.Text = ByteFormatter.Format(report.BytesDone);
-            ApplyFraction(report.FilesTotal > 0 || report.BytesTotal > 0, report.Fraction);
-        });
+        public IProgress<BackupProgress> BackupProgress => _backupProgress;
 
-        public IProgress<RestoreProgress> RestoreProgress => new Progress<RestoreProgress>(report =>
-        {
-            PhaseText.Text = report.Phase.ToString();
-            DetailText.Text = string.IsNullOrWhiteSpace(report.CurrentFile) ? "Working..." : report.CurrentFile;
-            FileCountText.Text = $"{report.FilesDone} / {report.FilesTotal}";
-            BytesText.Text = ByteFormatter.Format(report.BytesDone);
-            ApplyFraction(report.FilesTotal > 0 || report.BytesTotal > 0, report.Fraction);
-        });
+        public IProgress<RestoreProgress> RestoreProgress => _restoreProgress;
 
-        public IProgress<VerificationProgress> VerificationProgress => new Progress<VerificationProgress>(report =>
-        {
-            PhaseText.Text = report.Phase;
-            DetailText.Text = string.IsNullOrWhiteSpace(report.CurrentItem) ? "Working..." : report.CurrentItem;
-            FileCountText.Text = $"{report.ItemsDone} / {report.ItemsTotal}";
-            ApplyFraction(report.ItemsTotal > 0, report.Fraction);
-        });
+        public IProgress<VerificationProgress> VerificationProgress => _verificationProgress;
 
+        /// <summary>Free-text status line for operations without file/byte counters (scan, repair).</summary>
+        public IProgress<string> StatusProgress => _statusProgress;
+
+        /// <summary>
+        /// Thread-safe: operations log from pool threads. Lines are queued and appended in one batch per UI tick
+        /// rather than one dispatcher round-trip (and one TextBox append) per line.
+        /// </summary>
         public void Log(string message, LogLevel level = LogLevel.Info)
         {
             _fileLogger?.Log(message, level);
 
-            var line = $"[{DateTime.Now:HH:mm:ss}] [{level}] {message}";
+            _pendingLog.Enqueue($"[{DateTime.Now:HH:mm:ss}] [{level}] {message}");
+        }
 
-            Dispatcher.Invoke(() =>
+        private void FlushUi()
+        {
+            _backupProgress.Flush();
+            _restoreProgress.Flush();
+            _verificationProgress.Flush();
+            _statusProgress.Flush();
+            DrainLog();
+        }
+
+        private void DrainLog()
+        {
+            if (_pendingLog.IsEmpty)
             {
-                // Append rather than reassigning Text, and keep only a bounded tail: a large
-                // backup logs per chunk.
-                _logBuffer.AppendLine(line);
+                return;
+            }
+
+            var batch = new StringBuilder();
+            while (_pendingLog.TryDequeue(out var line))
+            {
+                batch.AppendLine(line);
+            }
+
+            // Append rather than reassigning Text, and keep only a bounded tail: a large
+            // backup logs per chunk.
+            _logBuffer.Append(batch);
+            if (_logBuffer.Length > MaxLogBufferChars)
+            {
                 TrimLogBufferIfNeeded();
-                LogBox.AppendText(line + Environment.NewLine);
-                LogBox.ScrollToEnd();
-            });
+            }
+            else
+            {
+                LogBox.AppendText(batch.ToString());
+            }
+
+            LogBox.ScrollToEnd();
         }
 
         private void TrimLogBufferIfNeeded()
@@ -125,7 +207,10 @@ namespace ReStore.Views.Windows
         {
             try
             {
-                await operation(_cancellation.Token);
+                var token = _cancellation.Token;
+                // Off the UI thread: Core awaits no longer capture the dispatcher, and synchronous stretches
+                // (hashing, chunking, compression) must not freeze the window.
+                await Task.Run(() => operation(token));
 
                 Succeeded = true;
                 StatusText.Text = "Completed";
@@ -152,6 +237,11 @@ namespace ReStore.Views.Windows
             }
             finally
             {
+                // Stop applying progress (reports still queued on the dispatcher must not overwrite the final
+                // status), then show whatever the operation logged last.
+                _flushTimer.Stop();
+                _finished = true;
+                DrainLog();
                 _isComplete = true;
                 CancelButton.IsEnabled = false;
                 CloseButton.IsEnabled = true;

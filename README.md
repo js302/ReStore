@@ -23,9 +23,17 @@ For building from source, see [Installation Docs](docs/installation.md).
 - **CLI Access**: Full command-line interface for scripting and automation.
 - **System Backup**: Save installed programs, environment variables, and Windows settings.
 - **Smart Backup**: File backups are chunk snapshots — a point-in-time manifest plus deduplicated chunk objects, so unchanged data is never re-uploaded.
+- **Disaster Recovery**: Reconnect to backups already in your storage from a new PC, adopt them into this PC's history, and repair leftover data.
 - **Restore Safety**: Every restore previews what it would touch first, and never replaces an existing file unless you ask it to.
 - **Encryption**: AES-256-GCM encryption for secure backups.
 - **File Sharing**: Right-click in file explorer to share files via your cloud storage.
+
+### Use ReStore from an AI agent
+
+An agent can install and drive ReStore from the command line: `irm https://github.com/js302/ReStore/releases/latest/download/install.ps1 | iex`
+installs the portable CLI (no admin rights). Then `restore agent-guide` prints the guide (rules, exit codes, recipes; also in
+[docs/agents.md](docs/agents.md)), `restore doctor --json` checks the setup and `restore commands --json` lists every command.
+Everything supports `--json` and `--non-interactive`. See also [llms.txt](llms.txt).
 
 ## Documentation
 
@@ -34,6 +42,10 @@ For building from source, see [Installation Docs](docs/installation.md).
 **[Features](docs/features.md)**: Detailed overview of ReStore's capabilities.
 
 **[Configuration](docs/configuration.md)**: Settings, config files, and retention policies.
+
+**[AI agents](docs/agents.md)**: A short guide for agents that operate ReStore on a user's behalf.
+
+**[Updates](docs/updates.md)**: How update checks work, what is contacted, and how to install or turn them off.
 
 **[Storage Providers](docs/storage/README.md)**: Setup guides for all supported storage backends.
 
@@ -59,6 +71,10 @@ For building from source, see [Installation Docs](docs/installation.md).
 
 **[Security & Best Practices](docs/security.md)**: Important security notes and recommendations.
 
+**[Telemetry](docs/telemetry.md)**: What anonymous usage statistics are collected, and how to turn them off.
+
+**[Release notes](docs/release-notes/README.md)**: every release; [1.8.0](docs/release-notes/1.8.0.md) lists what is new and what behaves differently.
+
 **[Architecture](docs/architecture/README.md)**: Technical architecture and component diagrams.
 
 - [Components](docs/architecture/components.md)
@@ -71,6 +87,10 @@ For building from source, see [Installation Docs](docs/installation.md).
 **[Development](docs/development.md)**: Project structure and testing.
 
 **[Limitations](docs/limitations.md)**: Known limitations.
+
+**Upgrading from 1.6:** version 1.7.0 changed chunk boundaries, so the first 1.7 backup of each folder re-chunks and re-uploads everything once. See the [release note in the chunk model](docs/architecture/chunk-manifest.md).
+
+**Upgrading from 1.7:** protection auto-starts for configs with watch directories (`protection.autoStart`, set `false` to opt out), the backup format stays v2 until you choose "Upgrade backup format", and the first run re-hashes every file once. See [Upgrading from 1.7](docs/configuration.md#upgrading-from-17).
 
 ## License
 

@@ -1,0 +1,106 @@
+<Page x:Class="ReStore.Views.Pages.AboutPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Background="Transparent" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" Loaded="Page_Loaded">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="About" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <TextBlock Text="Version, environment, data locations and crash reports" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,16"/>
+
+            <!-- Version and environment -->
+            <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="ReStore" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                    <Grid x:Name="FactsGrid">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <ui:Button x:Name="CopyDiagnosticsBtn" Content="Copy diagnostics" Click="CopyDiagnostics_Click" Margin="0,0,8,0"/>
+                        <ui:Button x:Name="DocsBtn" Content="Open documentation" Click="Docs_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="Diagnostics contain versions, your OS, the configuration and the last 200 log lines, with secrets removed." FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Data locations -->
+            <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Data locations" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8"/>
+                    <ItemsControl x:Name="PathsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Path}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <ui:Button Grid.Column="2" Content="Open" Tag="{Binding}" Click="OpenPath_Click" Margin="8,0,0,0" AutomationProperties.Name="Open location"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- Crash reports -->
+            <Border Padding="20" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Effect="{StaticResource CardShadow}" Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <TextBlock Text="Recent crash reports" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <ui:Button HorizontalAlignment="Right" Content="Refresh" Click="RefreshCrashes_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="PendingCrashesHeader" Text="Anonymous crash reports waiting on this PC" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" Visibility="Collapsed" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <ItemsControl x:Name="PendingCrashList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <ui:Button Grid.Column="1" Content="Send" Tag="{Binding}" Click="SendPendingCrash_Click" Margin="8,0,0,0" AutomationProperties.Name="Send anonymous crash report"/>
+                                    <ui:Button Grid.Column="2" Content="View report" Tag="{Binding}" Click="ViewPendingCrash_Click" Margin="8,0,0,0" AutomationProperties.Name="View anonymous crash report"/>
+                                    <ui:Button Grid.Column="3" Content="Delete" Tag="{Binding}" Click="DeletePendingCrash_Click" Margin="8,0,0,0" AutomationProperties.Name="Delete anonymous crash report"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock x:Name="NoCrashesText" Text="No crash reports." FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <ItemsControl x:Name="CrashList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <ui:Button Grid.Column="1" Content="Open" Tag="{Binding}" Click="OpenCrash_Click" Margin="8,0,0,0" AutomationProperties.Name="Open crash report"/>
+                                    <ui:Button Grid.Column="2" Content="Copy" Tag="{Binding}" Click="CopyCrash_Click" Margin="8,0,0,0" AutomationProperties.Name="Copy crash report"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

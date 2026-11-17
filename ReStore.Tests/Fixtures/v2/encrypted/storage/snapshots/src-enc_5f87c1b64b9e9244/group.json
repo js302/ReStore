@@ -1,0 +1,12 @@
+{
+  "FormatVersion": 1,
+  "Encrypted": true,
+  "Index": null,
+  "Salt": "CQ7hNHx6ez\u002BYXT4IlAxCefz7RgS0w7df1QA7zqyjU4w=",
+  "KeyDerivationIterations": 1000,
+  "IV": "hiD4i5bQbARWOuoa",
+  "EncryptedDek": "sVsrdhwP5yaeBZppF9GVy8BqyX6Nvh22CxdHAnoPDr/12VkMRMT/LpIikpJYCLnyZJ1nAuM998nzejuc",
+  "Algorithm": "AES-256-GCM",
+  "MetadataVersion": 1,
+  "Payload": "hiD4i5bQbARWOuoaWwEAAEB1W3CBvATXI3Y25nDiPXrkEtipCSpx8beKW8QD/HFEFatYrWzbqX8T2G0ebTEdHFwCMNU61MKKtG8fetlMiTtcm5GT\u002BFOqa7AM/hKqhAxrY/m6fdyDXFK2rX7B3To7X3c7tfUfiCrDBBHbJBJBgbPm2wHJm6W0zjHFsR\u002BUtQokYiyntqIam3ayR3OI3gYn3OAIps0S/67zr2RAYxKTokNWCwiJRPC01sUZezdyOVSc5AIiYsBtfZQQIU4G3W0S6NK/19NKIZ4JdCTBz6PnKRfjt/\u002Bq8yvv2Xzk\u002B97rKc9LSRFw4Ll540bBTtnylJq72Ev2\u002BPx7LCIU2SJijePqR3T9KPVPo5tyz\u002Bk52mycxoDCt\u002BgK8U5UnmB7s0qZFK\u002Bq1r6S\u002BsXw9Jh\u002BWX3t98BZIROfCPIm5O6PrrvRQobhzJD8e4EPidlghBOPsys7fManwoT6fNTIUnm5rnP975IFdk9Pi8hiOgSMdi0ZCw=="
+}

@@ -6,9 +6,28 @@ using System.Text.Json;
 
 namespace ReStore.Tests;
 
+[Collection("GlobalState")]
 public class ConfigManagerTests
 {
   private readonly ConfigManager _configManager = new(new TestLogger());
+
+  [Theory]
+  [InlineData("{ \"logging\": { \"level\": \"Debug\" } }", LogLevel.Debug)]
+  [InlineData("{ \"logging\": { \"level\": \"warning\" } }", LogLevel.Warning)]
+  [InlineData("{ }", LogLevel.Info)]
+  [InlineData("{ \"logging\": { \"level\": \"Nonsense\" } }", LogLevel.Info)]
+  public void LoadLoggingSettings_ShouldApplyMinimumLevelToTheLogger(string json, LogLevel expected)
+  {
+    using var logger = new Logger();
+    var manager = new ConfigManager(logger);
+    using var document = JsonDocument.Parse(json);
+
+    var method = typeof(ConfigManager).GetMethod("LoadLoggingSettings", BindingFlags.Instance | BindingFlags.NonPublic);
+    method.Should().NotBeNull();
+    method!.Invoke(manager, [document.RootElement]);
+
+    logger.MinimumLevel.Should().Be(expected);
+  }
 
   [Fact]
   public async Task CreateStorageAsync_ShouldThrow_WhenConfigNotLoaded()
@@ -51,8 +70,7 @@ public class ConfigManagerTests
     using var storage = await _configManager.CreateStorageAsync("local");
 
     storage.Should().BeOfType<LocalStorage>();
-    storageSources["local"].Options.Should().ContainKey("path");
-    storageSources["local"].Options["path"].Should().Be(tempStoragePath);
+    storageSources["local"].Options.Should().NotContainKey("path", "the model is not mutated with expanded values");
   }
 
   [Fact]
@@ -71,13 +89,15 @@ public class ConfigManagerTests
 
     _configManager.WatchDirectories.Should().HaveCount(2);
     _configManager.WatchDirectories[0].StorageType.Should().BeNull();
-    _configManager.WatchDirectories[0].Path.Should().NotContain("%TEMP%");
+    _configManager.WatchDirectories[0].Path.Should().StartWith("%TEMP%", "the model keeps the raw value");
+    _configManager.WatchDirectories[0].ExpandedPath.Should().NotContain("%TEMP%");
     _configManager.WatchDirectories[1].StorageType.Should().Be("local");
-    _configManager.WatchDirectories[1].Path.Should().NotContain("%TEMP%");
+    _configManager.WatchDirectories[1].Path.Should().StartWith("%TEMP%");
+    _configManager.WatchDirectories[1].ExpandedPath.Should().NotContain("%TEMP%");
   }
 
   [Fact]
-  public void LoadStorageSettings_ShouldExpandPaths_AndDefaultGlobalStorageType()
+  public void LoadStorageSettings_ShouldKeepRawPaths_AndDefaultGlobalStorageType()
   {
     var root = ParseRoot("""
 {
@@ -97,8 +117,10 @@ public class ConfigManagerTests
 
     _configManager.GlobalStorageType.Should().Be("local");
     _configManager.StorageSources.Should().ContainKey("local");
-    _configManager.StorageSources["local"].Path.Should().NotContain("%TEMP%");
-    _configManager.StorageSources["local"].Options["path"].Should().NotContain("%TEMP%");
+    _configManager.StorageSources["local"].Path.Should().StartWith("%TEMP%");
+    _configManager.StorageSources["local"].Options["path"].Should().StartWith("%TEMP%");
+    _configManager.StorageSources["local"].Expanded().Path.Should().NotContain("%TEMP%");
+    _configManager.StorageSources["local"].Expanded().Options["path"].Should().NotContain("%TEMP%");
     _configManager.StorageSources["local"].Options["bucketName"].Should().Be("demo");
   }
 
@@ -209,6 +231,21 @@ public class ConfigManagerTests
   }
 
   [Fact]
+  public void LoadSystemBackupSettings_DevTools_IsOffForOlderConfigs_AndReadWhenPresent()
+  {
+    InvokePrivate(_configManager, "LoadSystemBackupSettings", ParseRoot("""{ "systemBackup": { "enabled": true, "includePrograms": true } }"""));
+    _configManager.SystemBackup.IncludeDevTools.Should().BeFalse();
+    _configManager.SystemBackup.IncludeSshConfig.Should().BeFalse();
+
+    InvokePrivate(_configManager, "LoadSystemBackupSettings", ParseRoot("""
+{ "systemBackup": { "includeDevTools": true, "includeSshConfig": true, "devToolsStorageType": "s3" } }
+"""));
+    _configManager.SystemBackup.IncludeDevTools.Should().BeTrue();
+    _configManager.SystemBackup.IncludeSshConfig.Should().BeTrue();
+    _configManager.SystemBackup.DevToolsStorageType.Should().Be("s3");
+  }
+
+  [Fact]
   public void LoadEncryptionRetentionAndChunkSettings_ShouldPopulateValues()
   {
     var root = ParseRoot("""
@@ -259,7 +296,7 @@ public class ConfigManagerTests
   }
 
   [Fact]
-  public void LoadExclusions_ShouldExpandConfiguredPaths()
+  public void LoadExclusions_ShouldKeepRawConfiguredPaths()
   {
     var root = ParseRoot("""
     {
@@ -272,8 +309,8 @@ public class ConfigManagerTests
 
     _configManager.ExcludedPatterns.Should().ContainSingle().Which.Should().Be("*.cache");
     _configManager.ExcludedPaths.Should().ContainSingle();
-    _configManager.ExcludedPaths[0].Should().NotContain("%TEMP%");
-    _configManager.ExcludedPaths[0].Should().Contain("restore-cache");
+    _configManager.ExcludedPaths[0].Should().StartWith("%TEMP%");
+    ConfigManager.ExpandConfiguredPath(_configManager.ExcludedPaths[0]).Should().NotContain("%TEMP%").And.Contain("restore-cache");
   }
 
   [Fact]
@@ -288,6 +325,71 @@ public class ConfigManagerTests
     _configManager.SystemBackup.IncludeEnvironmentVariables.Should().BeFalse();
     _configManager.SystemBackup.IncludeWindowsSettings.Should().BeFalse();
     _configManager.SystemBackup.ExcludeSystemPrograms.Should().Contain(program => program.Contains("Microsoft Visual C++"));
+  }
+
+  [Theory]
+  [InlineData("{ }", true, true, false)]
+  [InlineData("{ \"telemetry\": { \"enabled\": false }, \"updates\": { \"checkAutomatically\": false, \"includePrereleases\": true } }", false, false, true)]
+  [InlineData("{ \"telemetry\": { \"enabled\": \"no\" }, \"updates\": 3 }", true, true, false)]
+  public void LoadTelemetryAndUpdatesSettings_ReadsValuesAndDefaultsInvalidOnes(string json, bool telemetry, bool check, bool prereleases)
+  {
+    var manager = new ConfigManager(new TestLogger());
+    using var document = JsonDocument.Parse(json);
+
+    typeof(ConfigManager).GetMethod("LoadTelemetrySettings", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(manager, [document.RootElement]);
+    typeof(ConfigManager).GetMethod("LoadUpdatesSettings", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(manager, [document.RootElement]);
+
+    manager.Telemetry.Enabled.Should().Be(telemetry);
+    manager.Updates.CheckAutomatically.Should().Be(check);
+    manager.Updates.IncludePrereleases.Should().Be(prereleases);
+  }
+
+  [Fact]
+  public async Task SaveAsync_ShouldPersistTelemetryAndUpdatesSettings()
+  {
+    var tempDir = Path.Combine(Path.GetTempPath(), "ReStoreConfigTelemetry_" + Guid.NewGuid().ToString("N"));
+    var configPath = Path.Combine(tempDir, "config.json");
+
+    try
+    {
+      _configManager.Telemetry.Enabled.Should().BeTrue("telemetry is on by default");
+      _configManager.Telemetry.Enabled = false;
+      _configManager.Updates.CheckAutomatically = false;
+      _configManager.Updates.IncludePrereleases = true;
+
+      await _configManager.SaveAsync(configPath);
+
+      using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(configPath));
+      doc.RootElement.GetProperty("telemetry").GetProperty("enabled").GetBoolean().Should().BeFalse();
+      doc.RootElement.GetProperty("updates").GetProperty("checkAutomatically").GetBoolean().Should().BeFalse();
+      doc.RootElement.GetProperty("updates").GetProperty("includePrereleases").GetBoolean().Should().BeTrue();
+    }
+    finally
+    {
+      if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+    }
+  }
+
+  [Fact]
+  public async Task SaveAsync_ShouldPersistProtectionAutoStart()
+  {
+    var tempDir = Path.Combine(Path.GetTempPath(), "ReStoreConfigProtection_" + Guid.NewGuid().ToString("N"));
+    var configPath = Path.Combine(tempDir, "config.json");
+
+    try
+    {
+      _configManager.Protection.AutoStart.Should().BeTrue("auto-start is on unless the user turns it off");
+      _configManager.Protection.AutoStart = false;
+
+      await _configManager.SaveAsync(configPath);
+
+      using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(configPath));
+      doc.RootElement.GetProperty("protection").GetProperty("autoStart").GetBoolean().Should().BeFalse();
+    }
+    finally
+    {
+      if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+    }
   }
 
   [Fact]

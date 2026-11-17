@@ -236,6 +236,41 @@ public class ProgressAndCancellationTests : IDisposable
         reports.Select(report => report.Fraction).Should().OnlyContain(fraction => fraction >= 0 && fraction <= 1);
     }
 
+    [Fact]
+    public async Task VerifyAsync_RecordsActivity_AndBackupRecordsChunkSizes()
+    {
+        var fixture = await CreateFixtureAsync(fileCount: 3);
+        var backup = new Backup(_logger, fixture.State, new SizeAnalyzer(), fixture.Config, null);
+        await backup.BackupDirectoryAsync(fixture.SourceDirectory);
+        var manifestPath = fixture.State.GetPreviousBackupPath(fixture.SourceDirectory);
+
+        fixture.State.GetBackupsForGroup(fixture.SourceDirectory).Should().ContainSingle().Which.StoredBytes.Should().BeGreaterThan(0);
+
+        await new SnapshotIntegrityVerifier(_logger, fixture.Storage, null, fixture.State).VerifyAsync(manifestPath!);
+
+        var entry = fixture.State.GetRecentActivity().Should().ContainSingle().Subject;
+        entry.Type.Should().Be(ActivityType.Verify);
+        entry.Result.Should().Be(ActivityResult.Succeeded);
+        entry.Target.Should().Be(manifestPath);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_RecordsCancelledActivity()
+    {
+        var fixture = await CreateFixtureAsync(fileCount: 3);
+        var backup = new Backup(_logger, fixture.State, new SizeAnalyzer(), fixture.Config, null);
+        await backup.BackupDirectoryAsync(fixture.SourceDirectory);
+        var manifestPath = fixture.State.GetPreviousBackupPath(fixture.SourceDirectory);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var act = async () => await new SnapshotIntegrityVerifier(_logger, fixture.Storage, null, fixture.State).VerifyAsync(manifestPath!, null, cts.Token);
+
+        // Cancelled before the lease is taken: nothing recorded, which is fine; cancelled after is recorded as Cancelled.
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        fixture.State.GetRecentActivity().Should().OnlyContain(e => e.Result == ActivityResult.Cancelled);
+    }
+
     private async Task<BackupFixture> CreateFixtureAsync(int fileCount)
     {
         var sourceDirectory = Path.Combine(_testRoot, "source-" + Guid.NewGuid().ToString("N"));

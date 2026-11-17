@@ -67,11 +67,15 @@ public class BackupTests : IDisposable
 
         var uploadedPaths = new List<string>();
 
-        _storageMock.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .Callback<string, string>((_, remotePath) => uploadedPaths.Add(remotePath))
+        _storageMock.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((_, remotePath, _) => uploadedPaths.Add(remotePath))
             .Returns(Task.CompletedTask);
 
-        _storageMock.Setup(s => s.ExistsAsync(It.IsAny<string>()))
+        _storageMock.Setup(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Stream, string, CancellationToken>((_, remotePath, _) => { lock (uploadedPaths) { uploadedPaths.Add(remotePath); } })
+            .Returns(Task.CompletedTask);
+
+        _storageMock.Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>()))
@@ -90,7 +94,7 @@ public class BackupTests : IDisposable
         _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
             .ReturnsAsync((100, false));
 
-        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), It.IsAny<BackupType>()))
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<IReadOnlyList<ScannedFile>>(), It.IsAny<BackupType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ChangeScanContext>()))
             .Returns(new List<string> { filePath });
 
         var backup = new Backup(
@@ -102,11 +106,40 @@ public class BackupTests : IDisposable
 
         await backup.BackupDirectoryAsync(_testDir);
 
-        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.AtLeastOnce);
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
         _stateMock.Verify(s => s.SaveStateAsync(), Times.AtLeastOnce);
         uploadedPaths.Should().Contain(path => path.StartsWith("chunks/", StringComparison.OrdinalIgnoreCase));
         uploadedPaths.Should().Contain(path => path.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase));
         uploadedPaths.Should().Contain(path => path.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task BackupDirectoryAsync_ShouldFail_WhenStateSaveFailsAfterHeadUpload()
+    {
+        var filePath = Path.Combine(_testDir, "save-failure.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        var uploadedPaths = new List<string>();
+        _storageMock.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((_, remotePath, _) => uploadedPaths.Add(remotePath))
+            .Returns(Task.CompletedTask);
+        _storageMock.Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _configMock.Setup(c => c.CreateStorageAsync(It.IsAny<string>())).ReturnsAsync(_storageMock.Object);
+        _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>())).ReturnsAsync((100, false));
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<IReadOnlyList<ScannedFile>>(), It.IsAny<BackupType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ChangeScanContext>()))
+            .Returns(new List<string> { filePath });
+        _stateMock.Setup(s => s.SaveStateAsync()).ThrowsAsync(new IOException("disk full"));
+
+        var backup = new Backup(_loggerMock.Object, _stateMock.Object, _sizeAnalyzerMock.Object, _configMock.Object);
+
+        var action = () => backup.BackupDirectoryAsync(_testDir);
+
+        await action.Should().ThrowAsync<IOException>().WithMessage("disk full");
+        uploadedPaths.Should().Contain(path => path.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase));
+        // The failure is reported at the save right after the snapshot is recorded, before the metadata pass.
+        _stateMock.Verify(s => s.SaveStateAsync(), Times.Once);
+        _stateMock.Verify(s => s.RecordFileMetadata(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<SnapshotFileManifestEntry>>()), Times.Never);
     }
 
     [Fact]
@@ -131,10 +164,10 @@ public class BackupTests : IDisposable
         _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
             .ReturnsAsync((100, false));
 
-        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), It.IsAny<BackupType>()))
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<IReadOnlyList<ScannedFile>>(), It.IsAny<BackupType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ChangeScanContext>()))
             .Returns(new List<string> { filePath });
 
-        _storageMock.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()))
+        _storageMock.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("simulated upload failure"));
 
         var backup = new Backup(
@@ -147,7 +180,7 @@ public class BackupTests : IDisposable
         var act = () => backup.BackupDirectoryAsync(_testDir);
 
         await Assert.ThrowsAsync<InvalidOperationException>(act);
-        _stateMock.Verify(s => s.AddOrUpdateFileMetadataAsync(It.IsAny<string>()), Times.Never);
+        _stateMock.Verify(s => s.RecordFileMetadata(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<SnapshotFileManifestEntry>>()), Times.Never);
     }
 
     [Fact]
@@ -236,7 +269,7 @@ public class BackupTests : IDisposable
         _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
             .ReturnsAsync((100, false));
 
-        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), BackupType.Incremental))
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<IReadOnlyList<ScannedFile>>(), BackupType.Incremental, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ChangeScanContext>()))
             .Returns([filePath]);
 
         var backup = new Backup(
@@ -263,8 +296,12 @@ public class BackupTests : IDisposable
         _sizeAnalyzerMock.Setup(s => s.AnalyzeDirectoryAsync(It.IsAny<string>()))
             .ReturnsAsync((100, false));
 
-        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<List<string>>(), BackupType.Incremental))
+        _stateMock.Setup(s => s.GetChangedFiles(It.IsAny<IReadOnlyList<ScannedFile>>(), BackupType.Incremental, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ChangeScanContext>()))
             .Returns([]);
+        // The destination holds a usable snapshot, so the recorded metadata ("nothing changed") can be trusted.
+        _stateMock.Setup(s => s.GetLatestSnapshotForGroup(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .Returns(new BackupInfo { Path = "snapshots/x/a.manifest.json", ManifestPath = "snapshots/x/a.manifest.json", StorageType = "local" });
+        _storageMock.Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var backup = new Backup(
             _loggerMock.Object,
@@ -275,7 +312,7 @@ public class BackupTests : IDisposable
 
         await backup.BackupDirectoryAsync(_testDir);
 
-        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _stateMock.Verify(s => s.SaveStateAsync(), Times.Once);
     }
 
@@ -311,9 +348,11 @@ public class BackupTests : IDisposable
 
         await backup.BackupFilesAsync([deletedFile], _testDir);
 
-        _stateMock.Verify(s => s.AddOrUpdateFileMetadataAsync(deletedFile), Times.Once);
-        _stateMock.Verify(s => s.SaveStateAsync(), Times.Once);
-        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.AtLeastOnce);
+        _stateMock.Verify(s => s.RemoveFileMetadata(
+            It.IsAny<string>(), It.IsAny<string>(), It.Is<IEnumerable<string>>(paths => paths.Contains(deletedFile))), Times.Once);
+        // One save right after the snapshot is recorded, one final save.
+        _stateMock.Verify(s => s.SaveStateAsync(), Times.Exactly(2));
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
     [Fact]
@@ -343,7 +382,7 @@ public class BackupTests : IDisposable
         await action.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*no password provider is available*");
 
-        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -411,7 +450,7 @@ public class BackupTests : IDisposable
         sourceBManifestPath.Should().NotBeNullOrWhiteSpace();
 
         var sourceBManifestLocalPath = Path.Combine(storageDir, sourceBManifestPath!.Replace('/', Path.DirectorySeparatorChar));
-        var sourceBManifest = JsonSerializer.Deserialize<SnapshotManifest>(await File.ReadAllTextAsync(sourceBManifestLocalPath));
+        var sourceBManifest = ManifestIo.Read(sourceBManifestLocalPath);
         sourceBManifest.Should().NotBeNull();
 
         var sourceAHeadPath = SnapshotStoragePaths.GetHeadPath(sourceADir);

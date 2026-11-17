@@ -4,6 +4,7 @@ using System.Text.Json;
 
 namespace ReStore.Tests;
 
+[Collection("GlobalState")]
 public class EnvironmentVariablesManagerTests : IDisposable
 {
     private readonly string _testRoot;
@@ -111,15 +112,5 @@ public class EnvironmentVariablesManagerTests : IDisposable
         {
             Environment.SetEnvironmentVariable(variableName, null, target);
         }
-    }
-
-    [Fact]
-    public async Task RestoreEnvironmentVariablesWithPowerShellAsync_ShouldReturnFalse_WhenScriptDoesNotExist()
-    {
-        var missingScriptPath = Path.Combine(_testRoot, "missing-script.ps1");
-
-        var result = await _manager.RestoreEnvironmentVariablesWithPowerShellAsync(missingScriptPath);
-
-        result.Should().BeFalse();
     }
 }

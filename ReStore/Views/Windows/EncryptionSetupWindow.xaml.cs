@@ -52,17 +52,17 @@ public partial class EncryptionSetupWindow : FluentWindow
         if (score <= 2)
         {
             strength = "Weak";
-            color = "#D32F2F";
+            color = "SystemFillColorCriticalBrush";
         }
         else if (score <= 4)
         {
             strength = "Medium";
-            color = "#F57C00";
+            color = "SystemFillColorCautionBrush";
         }
         else
         {
             strength = "Strong";
-            color = "#388E3C";
+            color = "SystemFillColorSuccessBrush";
         }
 
         var features = new List<string>();
@@ -74,8 +74,7 @@ public partial class EncryptionSetupWindow : FluentWindow
         var featureText = features.Any() ? $" ({string.Join(", ", features)})" : "";
         
         StrengthIndicator.Text = $"{strength} - {length} characters{featureText}";
-        StrengthIndicator.Foreground = new System.Windows.Media.SolidColorBrush(
-            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color)!);
+        StrengthIndicator.Foreground = (System.Windows.Media.Brush)FindResource(color);
     }
 
     private void ValidatePasswords()

@@ -14,11 +14,7 @@ namespace ReStore.Services
 
     public class ThemeSettings
     {
-        private const string SETTINGS_FILE = "theme.json";
-        private static readonly string SettingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ReStore",
-            SETTINGS_FILE);
+        private static string SettingsPath => ReStore.Core.src.utils.AppPaths.ThemeSettingsFile;
 
         public ThemePreference Preference { get; set; } = ThemePreference.System;
 

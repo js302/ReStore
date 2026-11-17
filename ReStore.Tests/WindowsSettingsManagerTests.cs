@@ -99,7 +99,7 @@ public class WindowsSettingsManagerTests : IDisposable
         var outputPath = Path.Combine(_testRoot, "missing.reg");
         var registryPath = "HKEY_CURRENT_USER\\Software\\ReStore_Test_Missing_" + Guid.NewGuid().ToString("N");
 
-        var result = await InvokePrivateAsync<bool>(_manager, "ExportRegistryKeyAsync", registryPath, outputPath);
+        var result = await InvokePrivateAsync<bool>(_manager, "ExportRegistryKeyAsync", registryPath, outputPath, CancellationToken.None);
 
         result.Should().BeFalse();
     }
