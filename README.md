@@ -96,6 +96,13 @@ Everything supports `--json` and `--non-interactive`. See also [llms.txt](llms.t
 
 AGPL-3.0 License - see [LICENSE](LICENSE) file for details.
 
+## Privacy Policy
+
+Privacy policy: ReStore can send anonymous usage statistics; what is collected and how to turn it off is described in
+[docs/telemetry.md](docs/telemetry.md). Update checks contact GitHub only ([docs/updates.md](docs/updates.md)). Apart from that, this
+program will not transfer any information to other networked systems unless specifically requested by the user or the person
+installing or operating it (for example the backup storage they configure).
+
 ## Contributing
 
 Issues and pull requests are welcome.

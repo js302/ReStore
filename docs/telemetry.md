@@ -24,7 +24,7 @@ Any one of these turns it off:
 | Settings > Application Behavior > "Share anonymous usage statistics" | GUI toggle for the same setting. |
 | `"telemetry": { "enabled": false }` in config.json | See [Configuration](configuration.md#telemetry). |
 | Environment variable `RESTORE_TELEMETRY_OPTOUT=1` (also `true`, `yes`) | Per process or per machine. |
-| Environment variable `DO_NOT_TRACK=1` | The [Do Not Track convention](https://consoledonottrack.com/). |
+| Environment variable `DO_NOT_TRACK=1` | The [Do Not Track convention](https://donottrack.sh/). |
 | Environment variable `CI` set to `true` or `1` | Telemetry is automatically off in CI. |
 | Development builds | Off unless `RESTORE_TELEMETRY_DEV=1`. |
 
